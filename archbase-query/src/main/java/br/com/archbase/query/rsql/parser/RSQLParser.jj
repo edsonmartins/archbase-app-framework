@@ -1,0 +1,204 @@
+options {
+    LOOKAHEAD = 1;
+    CHOICE_AMBIGUITY_CHECK = 3;
+    OTHER_AMBIGUITY_CHECK = 2;
+    STATIC = false;
+    DEBUG_PARSER = false;
+    DEBUG_LOOKAHEAD = false;
+    DEBUG_TOKEN_MANAGER = false;
+    UNICODE_INPUT = true;
+    SUPPORT_CLASS_VISIBILITY_PUBLIC = false;
+}
+
+PARSER_BEGIN(Parser)
+
+package br.com.archbase.query.rsql.parser;
+
+import br.com.archbase.query.rsql.parser.ast.*;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+final class Parser {
+
+    private NodesFactory factory;
+
+    public Parser(InputStream stream, String encoding, NodesFactory factory) {
+        this(stream, encoding);
+        this.factory = factory;
+    }
+
+    private String unescape(String s) {
+        if (s.indexOf('\\') < 0) {
+            return s;
+        }
+        final StringBuilder sb = new StringBuilder(s.length());
+
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) == '\\') {
+                i++;
+            }
+            if (i < s.length()) {
+                sb.append(s.charAt(i));
+            }
+        }
+        return sb.toString();
+    }
+}
+
+PARSER_END(Parser)
+
+
+SKIP : {
+    " " | "\t"
+}
+
+TOKEN : {
+    < #ALPHA        : ["a"-"z", "A"-"Z"] >
+  | < #ESCAPED_CHAR : "\\" ~[] >
+}
+
+TOKEN : {
+    < UNRESERVED_STR    : ( ~["\"", "'", "(", ")", ";", ",", "=", "<", ">", "!", "~", " "] )+ >
+  | < SINGLE_QUOTED_STR : ( "'" ( <ESCAPED_CHAR> | ~["'", "\\"] )* "'" ) >
+  | < DOUBLE_QUOTED_STR : ( "\"" ( <ESCAPED_CHAR> | ~["\"", "\\"] )* "\"" ) >
+}
+
+TOKEN : {
+    < AND        : ( ";" | " and ") >
+  | < OR         : ( "," | " or " ) >
+  | < LPAREN     : "(" >
+  | < RPAREN     : ")" >
+  | < COMP_FIQL  : ( ( "=" (<ALPHA>)* ) | "!" ) "=" >
+  | < COMP_ALT   : ( ">" | "<" ) ( "=" )? >
+}
+
+
+Node Input():
+{
+    final Node node;
+}
+{
+    node = Or() <EOF>
+    {
+        return node;
+    }
+}
+
+Node Or():
+{
+    final List<Node> nodes = new ArrayList<Node>(3);
+    Node node;
+}
+{
+    node = And() { nodes.add(node); }
+    (
+        <OR> node = And() { nodes.add(node); }
+    )*
+    {
+        return nodes.size() != 1 ? factory.createLogicalNode(LogicalOperator.OR, nodes) : nodes.get(0);
+    }
+}
+
+Node And():
+{
+    final List<Node> nodes = new ArrayList<Node>(3);
+    Node node;
+}
+{
+    node = Constraint() { nodes.add(node); }
+    (
+        <AND> node = Constraint() { nodes.add(node); }
+    )*
+    {
+        return nodes.size() != 1 ? factory.createLogicalNode(LogicalOperator.AND, nodes) : nodes.get(0);
+    }
+}
+
+Node Constraint():
+{
+    final Node node;
+}
+{
+    ( node = Group() | node = Comparison() )
+    {
+        return node;
+    }
+}
+
+Node Group():
+{
+    final Node node;
+}
+{
+    <LPAREN> node = Or() <RPAREN>
+    {
+        return node;
+    }
+}
+
+ComparisonNode Comparison():
+{
+    final String sel;
+    final String op;
+    final List<String> args;
+}
+{
+    ( sel = Selector() op = Operator() args = Arguments() )
+    {
+        return factory.createComparisonNode(op, sel, args);
+    }
+}
+
+String Selector(): {}
+{
+    token = <UNRESERVED_STR>
+    {
+        return token.image;
+    }
+}
+
+String Operator(): {}
+{
+    ( token = <COMP_FIQL> | token = <COMP_ALT> )
+    {
+        return token.image;
+    }
+}
+
+List<String> Arguments():
+{
+    final Object value;
+}
+{
+    ( <LPAREN> value = CommaSepArguments() <RPAREN> ) { return (List) value; }
+    |
+    value = Argument() { return Arrays.asList((String) value); }
+}
+
+List<String> CommaSepArguments():
+{
+    final List<String> list = new ArrayList<String>(3);
+    String arg;
+}
+{
+    arg = Argument() { list.add(arg); }
+    (
+        <OR>
+        arg = Argument() { list.add(arg); }
+    )*
+    {
+        return list;
+    }
+}
+
+String Argument(): {}
+{
+    token = <UNRESERVED_STR> { return token.image; }
+    |
+    ( token = <DOUBLE_QUOTED_STR> | token = <SINGLE_QUOTED_STR> )
+    {
+        return unescape(token.image.substring(1, token.image.length() -1));
+    }
+}

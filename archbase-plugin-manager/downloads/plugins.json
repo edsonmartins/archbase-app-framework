@@ -1,0 +1,24 @@
+[
+  {
+    "id": "welcome-plugin",
+    "description": "Welcome plugin",
+    "releases": [
+      {
+        "version": "1.0.0",
+        "date": "Jan 10, 2021, 9:50:29 AM",
+        "url": "archbase-demo-plugin1/1.0.0/plugin1-1.0.0.zip"
+      }
+    ]
+  },
+  {
+    "id": "hello-plugin",
+    "description": "Hello plugin",
+    "releases": [
+      {
+        "version": "1.0.0",
+        "date": "Jan 10, 2021, 9:50:29 AM",
+        "url": "archbase-demo-plugin2/1.0.0/plugin2-1.0.0.zip"
+      }
+    ]
+  }
+]

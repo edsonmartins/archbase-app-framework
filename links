@@ -1,0 +1,57 @@
+Erros:
+
+https://github.com/zalando/problem
+
+Saga:
+    - https://github.com/QNJR-GROUP/EasyTransaction
+    - https://github.com/berndruecker/trip-booking-saga-java
+    - https://github.com/eventuate-tram/eventuate-tram-sagas-examples-customers-and-orders
+    - https://github.com/seata/seata
+    - https://github.com/eventuate-tram/eventuate-tram-sagas-examples-customers-and-orders
+    - https://github.com/da0hn/food-ordering-system
+
+DDD:
+
+https://github.com/changmingxie/aggregate-framework
+https://github.com/banq/jdonframework
+https://github.com/AlicanAkkus/Modular-Architecture-Hexagonal-Demo-Project
+https://github.com/da0hn/Designing-Hexagonal-Architecture-with-Java
+
+Transaction:
+
+https://github.com/changmingxie/tcc-transaction
+https://github.com/seata/seata
+https://github.com/gruelbox/transaction-outbox
+https://github.com/ashutoshsahoo/distributed-transactions-kafka
+https://github.com/changmingxie/tcc-transaction
+https://github.com/dromara/hmily/tree/master/hmily-annotation
+https://github.com/eventuate-tram/eventuate-tram-core
+https://github.com/apache/servicecomb-pack
+https://github.com/Zh1Cheung/tyloo
+https://github.com/liuyangming/ByteTCC
+https://github.com/openquartz/easy-transaction
+https://github.com/eventuate-local/eventuate-local
+https://github.com/eventuate-tram/eventuate-tram-core
+https://github.com/banq/jdonframework
+https://github.com/gruelbox/transaction-outbox
+https://github.com/binghe001/mykit-transaction-message
+https://github.com/beston123/Tarzan
+https://github.com/wuyichen24/microservices-patterns
+https://github.com/centiservice/mats3
+
+
+Authentication
+https://github.com/daniel-shuy/oauth2-keycloak-spring-boot-starter
+https://github.com/nonestack-blog/spring-authorization-server-oauth-jwt
+https://github.com/NatanLisboa/algafood-auth
+https://github.com/m-thirumal/oauth-authorization-server
+
+https://github.com/ali-bouali/spring-boot-3-jwt-security/tree/main DEMO COM SPRING 3 ÓTIMO
+
+Tentant - OAuth2
+
+https://github.com/quantics-io/multitenant-oauth2-spring-boot-starter
+https://github.com/justauth/JustAuth
+
+
+https://gitee.com/dromara/x-file-storage

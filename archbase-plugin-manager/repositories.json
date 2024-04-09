@@ -1,0 +1,7 @@
+[
+  {
+    "id": "localhost",
+    "url": "http://localhost:8081/",
+    "pluginsJsonFileName": "plugins.json"
+  }
+]
