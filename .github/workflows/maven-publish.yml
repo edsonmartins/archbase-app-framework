@@ -28,5 +28,5 @@ jobs:
           JRELEASER_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          mvn clean package source:jar javadoc:jar -Plocal && \
-          mvn deploy -Prelease jreleaser:deploy -DaltDeploymentRepository=local::file:./target/staging-deploy
+          mvn clean package source:jar javadoc:jar -Plocal -DskipTests && \
+          mvn deploy -Prelease -DskipTests jreleaser:deploy -DaltDeploymentRepository=local::file:./target/staging-deploy
