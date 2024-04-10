@@ -1,0 +1,1 @@
+mvn versions:update-parent -DparentVersion=1.0.1 -DgenerateBackupPoms=false
