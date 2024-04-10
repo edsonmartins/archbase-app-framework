@@ -301,79 +301,34 @@
                             </execution>
                         </executions>
                     </plugin>
+                    <plugin>
+                        <groupId>org.jreleaser</groupId>
+                        <artifactId>jreleaser-maven-plugin</artifactId>
+                        <version>1.3.1</version>
+                        <configuration>
+                            <jreleaser>
+                                <signing>
+                                    <active>ALWAYS</active>
+                                    <armored>true</armored>
+                                </signing>
+                                <deploy>
+                                    <maven>
+                                        <nexus2>
+                                            <maven-central>
+                                                <active>ALWAYS</active>
+                                                <url>https://s01.oss.sonatype.org/service/local</url>;
+                                                <closeRepository>false</closeRepository>
+                                                <releaseRepository>false</releaseRepository>
+                                                <stagingRepositories>target/staging-deploy</stagingRepositories>
+                                            </maven-central>
+                                        </nexus2>
+                                    </maven>
+                                </deploy>
+                            </jreleaser>
+                        </configuration>
+                    </plugin>
                 </plugins>
-                <pluginManagement>
-                    <plugins>
-                        <plugin>
-                            <groupId>org.apache.maven.plugins</groupId>
-                            <artifactId>maven-compiler-plugin</artifactId>
-                            <version>3.1</version>
-                            <configuration>
-                                <target>${java.version}</target>
-                                <source>${java.version}</source>
-                            </configuration>
-                        </plugin>
-                        <plugin>
-                            <groupId>org.apache.maven.plugins</groupId>
-                            <artifactId>maven-source-plugin</artifactId>
-                            <executions>
-                                <execution>
-                                    <id>attach-sources</id>
-                                    <goals>
-                                        <goal>jar</goal>
-                                    </goals>
-                                </execution>
-                            </executions>
-                        </plugin>
-                        <plugin>
-                            <groupId>org.apache.maven.plugins</groupId>
-                            <artifactId>maven-javadoc-plugin</artifactId>
-                            <executions>
-                                <execution>
-                                    <id>attach-javadocs</id>
-                                    <goals>
-                                        <goal>jar</goal>
-                                    </goals>
-                                </execution>
-                            </executions>
-                        </plugin>
-                        <plugin>
-                            <groupId>org.jreleaser</groupId>
-                            <artifactId>jreleaser-maven-plugin</artifactId>
-                            <version>1.3.1</version>
-                            <configuration>
-                                <jreleaser>
-                                    <signing>
-                                        <active>ALWAYS</active>
-                                        <armored>true</armored>
-                                    </signing>
-                                    <deploy>
-                                        <maven>
-                                            <nexus2>
-                                                <maven-central>
-                                                    <active>ALWAYS</active>
-                                                    <url>https://s01.oss.sonatype.org/service/local</url>;
-                                                    <closeRepository>false</closeRepository>
-                                                    <releaseRepository>false</releaseRepository>
-                                                    <stagingRepositories>target/staging-deploy</stagingRepositories>
-                                                </maven-central>
-                                            </nexus2>
-                                        </maven>
-                                    </deploy>
-                                </jreleaser>
-                            </configuration>
-                        </plugin>
-                    </plugins>
-                </pluginManagement>
             </build>
-
-            <distributionManagement>
-                <repository>
-                    <id>nexus-releases</id>
-                    <name>Nexus Release Repository</name>
-                    <url>http://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
-                </repository>
-            </distributionManagement>
         </profile>
 
         <profile>
