@@ -1,0 +1,1 @@
+mvn clean package source:jar javadoc:jar -Pmaven-central deploy
