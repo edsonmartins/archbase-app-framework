@@ -8,6 +8,6 @@
 
 * `isInvalidThrow(final Class<T> clazz)`
 
-## 7.3 `getErrors` get collection errors
+## 7.3 `getErrors` get collection validationErrors
 
 * `getErrors()`

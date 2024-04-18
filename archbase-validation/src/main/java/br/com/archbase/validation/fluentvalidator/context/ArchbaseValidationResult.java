@@ -5,13 +5,15 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Optional;
 
+import br.com.archbase.ddd.domain.contracts.ValidationError;
+import br.com.archbase.ddd.domain.contracts.ValidationResult;
 import br.com.archbase.validation.fluentvalidator.exception.ArchbaseValidationException;
 
-public final class ArchbaseValidationResult {
+public final class ArchbaseValidationResult implements ValidationResult {
 
   private final boolean valid;
 
-  private final Collection<Error> errors;
+  private final Collection<ValidationError> validationErrors;
 
   /**
    *
@@ -26,13 +28,13 @@ public final class ArchbaseValidationResult {
    * @param messages
    * @return
    */
-  public static ArchbaseValidationResult fail(final Collection<Error> messages) {
+  public static ArchbaseValidationResult fail(final Collection<ValidationError> messages) {
     return new ArchbaseValidationResult(false, Optional.ofNullable(messages).orElse(new ArrayList<>()));
   }
 
-  private ArchbaseValidationResult(final boolean valid, final Collection<Error> messages) {
+  private ArchbaseValidationResult(final boolean valid, final Collection<ValidationError> messages) {
     this.valid = valid;
-    errors = Collections.unmodifiableCollection(messages);
+    validationErrors = Collections.unmodifiableCollection(messages);
   }
 
   /**
@@ -57,8 +59,8 @@ public final class ArchbaseValidationResult {
    *
    * @return
    */
-  public Collection<Error> getErrors() {
-    return errors;
+  public Collection<ValidationError> getErrors() {
+    return validationErrors;
   }
 
   @Override
@@ -68,7 +70,7 @@ public final class ArchbaseValidationResult {
     builder.append(valid);
     builder.append(", ");
     builder.append("errors=");
-    builder.append(errors);
+    builder.append(validationErrors);
     builder.append("]");
     return builder.toString();
   }

@@ -8,7 +8,7 @@ import java.util.function.Predicate;
 
 import br.com.archbase.validation.fluentvalidator.AbstractArchbaseValidator;
 import br.com.archbase.validation.fluentvalidator.ArchbaseValidator;
-import br.com.archbase.validation.fluentvalidator.context.Error;
+import br.com.archbase.ddd.domain.contracts.ValidationError;
 import br.com.archbase.validation.fluentvalidator.exception.ArchbaseValidationException;
 import br.com.archbase.validation.fluentvalidator.handler.ArchbaseHandlerInvalidField;
 
@@ -157,8 +157,8 @@ abstract class AbstractValidationRule<T, P> implements ValidationRule<T, P>, Fie
     }
 
     @Override
-    public Collection<Error> handle(final Object instance, final P attemptedValue) {
-      return Collections.singletonList(Error.create(fieldDescriptor.getFieldName(instance), fieldDescriptor.getMessage(instance), fieldDescriptor.getCode(instance), fieldDescriptor.getAttemptedValue(instance, attemptedValue)));
+    public Collection<ValidationError> handle(final Object instance, final P attemptedValue) {
+      return Collections.singletonList(ValidationError.create(fieldDescriptor.getFieldName(instance), fieldDescriptor.getMessage(instance), fieldDescriptor.getCode(instance), fieldDescriptor.getAttemptedValue(instance, attemptedValue)));
     }
 
   }

@@ -1,5 +1,7 @@
 package br.com.archbase.validation.fluentvalidator.context;
 
+import br.com.archbase.ddd.domain.contracts.ValidationError;
+
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
@@ -40,7 +42,7 @@ public final class ArchbaseValidationContext {
 
     private final Map<String, Object> properties = new ConcurrentHashMap<>();
 
-    private final Queue<Error> errors = new ConcurrentLinkedQueue<>();
+    private final Queue<ValidationError> validationErrors = new ConcurrentLinkedQueue<>();
 
     /**
      *
@@ -49,8 +51,8 @@ public final class ArchbaseValidationContext {
      * @param code
      * @param attemptedValue
      */
-    public void addErrors(final Collection<Error> errs) {
-      errs.stream().forEach(errors::add);
+    public void addErrors(final Collection<ValidationError> errs) {
+      errs.stream().forEach(validationErrors::add);
     }
 
     /**
@@ -70,7 +72,7 @@ public final class ArchbaseValidationContext {
      */
     public ArchbaseValidationResult getValidationResult() {
       ArchbaseValidationContext.remove();
-      return errors.isEmpty() ? ArchbaseValidationResult.ok() : ArchbaseValidationResult.fail(errors);
+      return validationErrors.isEmpty() ? ArchbaseValidationResult.ok() : ArchbaseValidationResult.fail(validationErrors);
     }
 
     /**

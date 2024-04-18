@@ -2,15 +2,15 @@ package br.com.archbase.validation.fluentvalidator.handler;
 
 import java.util.Collection;
 import java.util.Collections;
-import br.com.archbase.validation.fluentvalidator.context.Error;
+import br.com.archbase.ddd.domain.contracts.ValidationError;
 
 public interface ArchbaseHandlerInvalidField<P> {
 
-  default Collection<Error> handle(final P attemptedValue) {
+  default Collection<ValidationError> handle(final P attemptedValue) {
     return Collections.emptyList();
   }
 
-  default Collection<Error> handle(final Object instance, final P attemptedValue) {
+  default Collection<ValidationError> handle(final Object instance, final P attemptedValue) {
     return handle(attemptedValue);
   }
 

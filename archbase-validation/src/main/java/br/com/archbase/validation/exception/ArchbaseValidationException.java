@@ -1,18 +1,18 @@
 package br.com.archbase.validation.exception;
 
-import br.com.archbase.validation.fluentvalidator.context.Error;
+import br.com.archbase.ddd.domain.contracts.ValidationError;
 
 import java.util.Collection;
 
 public class ArchbaseValidationException extends RuntimeException{
 
-    private Collection<Error> errors;
+    private Collection<ValidationError> validationErrors;
 
     public ArchbaseValidationException() {
     }
 
-    public ArchbaseValidationException(Collection<Error> errors) {
-        this.errors = errors;
+    public ArchbaseValidationException(Collection<ValidationError> validationErrors) {
+        this.validationErrors = validationErrors;
     }
 
     public ArchbaseValidationException(String message) {
@@ -31,7 +31,7 @@ public class ArchbaseValidationException extends RuntimeException{
         super(message, cause, enableSuppression, writableStackTrace);
     }
 
-    public Collection<Error> getErrors() {
-        return errors;
+    public Collection<ValidationError> getErrors() {
+        return validationErrors;
     }
 }

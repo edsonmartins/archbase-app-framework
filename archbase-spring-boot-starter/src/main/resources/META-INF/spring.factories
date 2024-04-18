@@ -1,1 +1,0 @@
-org.springframework.boot.autoconfigure.EnableAutoConfiguration=br.com.archbase.spring.boot.auto.configuration.ArchbaseSpringBootAutoConfiguration

@@ -36,7 +36,7 @@ handlerInvalidField(final HandlerInvalidField<P> handlerInvalidField)
             });
     ```
 
-    The result when was error produce two custom errors.
+    The result when was error produce two custom validationErrors.
 
 * Using property
 

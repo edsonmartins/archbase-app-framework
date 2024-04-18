@@ -1245,14 +1245,14 @@ Para realizar a validação da restrição, temos a classe de extensão da class
 Se a contagem de assentos for inferior a dois, ele retornará falso e uma mensagem de erro será inserida no contexto. Se a estratégia de _falha rápida_ estiver ativada, a saída do resultado será:
 
 ```
-Result{isSuccess=false, errors=[Seat count is not valid, invalid value=99]}
+Result{isSuccess=false, validationErrors=[Seat count is not valid, invalid value=99]}
 
 ```
 
 Se a contagem de assentos for validada com sucesso, ele retornará verdadeiro. Para que o processo passe para o próximo validador. Se nenhum dos campos violar qualquer restrição, a saída do resultado seria:
 
 ```
-Result{isSuccess=true, errors=null}
+Result{isSuccess=true, validationErrors=null}
 
 ```
 #### Validação básica passo a passo
@@ -1434,7 +1434,7 @@ ComplexResult ret = FluentValidator.checkAll().failOver()
 Por exemplo, a saída ComplexResult seria:
 
 ```
-Result{isSuccess=false, errors=[ValidationError{errorCode=101, errorMsg='{departmentList} pode não ser nulo', field='departmentList', invalidValue=null}, ValidationError{errorCode=99, errorMsg='ID da empresa não é válido, invalid value=-1', field='id', invalidValue=8}], timeElapsed(ms)=164}
+Result{isSuccess=false, validationErrors=[ValidationError{errorCode=101, errorMsg='{departmentList} pode não ser nulo', field='departmentList', invalidValue=null}, ValidationError{errorCode=99, errorMsg='ID da empresa não é válido, invalid value=-1', field='id', invalidValue=8}], timeElapsed(ms)=164}
 
 ```
 
@@ -1745,7 +1745,7 @@ jakarta.validation.Validator validator = factory.getValidator();
 Por exemplo, quando o nome da empresa é inválido, o resultado seria:
 
 ```
-Result{isSuccess=false, errors=[{name} must match "[0-9a-zA-Z\4e00-\u9fa5]+"]}
+Result{isSuccess=false, validationErrors=[{name} must match "[0-9a-zA-Z\4e00-\u9fa5]+"]}
 
 ```
 
@@ -1892,7 +1892,7 @@ Este é o padrão que o **Spring Boot** retorna:
   "timestamp": "2020-10-04T09:03:16",
   "status": 400,
   "error": "Bad Request",
-  "errors": [
+  "validationErrors": [
     {
       "codes": [
         "Size.PessoaRequestBody.nome",
