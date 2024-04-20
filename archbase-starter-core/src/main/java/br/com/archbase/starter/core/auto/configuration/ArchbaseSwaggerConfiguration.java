@@ -16,10 +16,9 @@ import springfox.documentation.spring.web.plugins.Docket;
 import springfox.documentation.swagger2.annotations.EnableSwagger2;
 
 
-@Configuration
-@EnableSwagger2
-@PropertySource(value = "classpath:application.properties")
-@ConditionalOnProperty(name = "archbase.swagger.enabled", havingValue = "true", matchIfMissing = true)
+//@Configuration
+//@EnableSwagger2
+//@ConditionalOnProperty(name = "archbase.swagger.enabled", havingValue = "true", matchIfMissing = true)
 public class ArchbaseSwaggerConfiguration {
 
     @Value("${archbase.app.swagger.contact.name}")

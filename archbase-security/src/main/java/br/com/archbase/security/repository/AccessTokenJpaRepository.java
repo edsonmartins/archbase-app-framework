@@ -10,9 +10,9 @@ import java.util.Optional;
 public interface AccessTokenJpaRepository extends ArchbaseCommonJpaRepository<AccessTokenEntity, String, Long> {
 
   @Query(value = """
-      select t from TokenAcessoEntity t inner join UsuarioEntity u\s
-      on t.usuario.id = u.id\s
-      where u.id = :id and (t.expirado = false or t.revogado = false)\s
+      select t from AccessTokenEntity t inner join UserEntity u\s
+      on t.user.id = u.id\s
+      where u.id = :id and (t.expired = false or t.revoked = false)\s
       """)
   List<AccessTokenEntity> findAllValidTokenByUser(String id);
 

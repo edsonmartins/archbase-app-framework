@@ -32,7 +32,7 @@
         </dependency>
         <dependency>
             <groupId>br.com.archbase</groupId>
-            <version>1.0.0</version>
+            <version>1.0.1</version>
             <artifactId>archbase-domain-driven-design</artifactId>
         </dependency>
         <dependency>

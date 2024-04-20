@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import javax.annotation.PostConstruct;
 import java.lang.reflect.Method;
+import java.util.Optional;
 import java.util.Set;
 import java.util.List;
 
@@ -71,12 +72,15 @@ public class ArchbaseActionSynchronizationService {
     }
 
     private void synchronizeAction(String actionName, ResourceEntity resource) {
-        ActionEntity action = actionRepository.findByActionNameAndResourceName(actionName, resource.getName());
-        if (action == null) {
+        ActionEntity action = null;
+        Optional<ActionEntity> actionEntityOptional = actionRepository.findByActionNameAndResourceName(actionName, resource.getName());
+        if (actionEntityOptional.isEmpty()) {
             action = new ActionEntity();
             action.setName(actionName);
             action.setResource(resource);
             action.setActive(true);
+        } else {
+            action = actionEntityOptional.get();
         }
         actionRepository.save(action);
     }

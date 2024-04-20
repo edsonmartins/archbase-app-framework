@@ -18,29 +18,29 @@ public class TenantPersistenceEntityBase {
     @Column(name="ID")
     protected String id;
 
-    @Column(name="CODE")
+    @Column(name="CODIGO")
     protected String code;
 
     @Version
-    @Column(name="VERSION")
+    @Column(name="VERSAO")
     protected Long version;
 
     @Temporal(TemporalType.TIMESTAMP)
-    @Column(name="CREATION_DATE")
+    @Column(name="DH_CRIACAO")
     protected LocalDateTime createEntityDate;
 
-    @Column(name="CREATED_BY")
+    @Column(name="USUARIO_CRIOU")
     protected String createdByUser;
 
     @Temporal(TemporalType.TIMESTAMP)
-    @Column(name="UPDATE_DATE")
+    @Column(name="DH_ATUALIZACAO")
     protected LocalDateTime updateEntityDate;
 
-    @Column(name="LAST_MODIFIED_BY")
+    @Column(name="ULTIMO_USUARIO_ALTEROU")
     protected String lastModifiedByUser;
 
     @TenantId
-    @Column(name = "TENANT_ID", length = 40)
+    @Column(name = "TENANT_ID", length = 40, nullable = true)
     private String tenantId;
 
     public TenantPersistenceEntityBase() {

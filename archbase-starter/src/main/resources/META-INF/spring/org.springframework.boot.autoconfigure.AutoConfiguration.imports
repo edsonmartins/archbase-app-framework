@@ -1,0 +1,4 @@
+br.com.archbase.starter.auto.configuration.ArchbaseStarterAutoConfiguration
+br.com.archbase.starter.core.auto.configuration.ArchbaseCoreAutoConfiguration
+br.com.archbase.starter.security.auto.configuration.ArchbaseSecurityAutoConfiguration
+br.com.archbase.starter.multitenancy.auto.configuration.ArchbaseMultitenancyAutoConfiguration

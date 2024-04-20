@@ -77,9 +77,6 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     @Column(name = "AVATAR", columnDefinition="blob")
     private byte[] avatar;
 
-    @Enumerated(EnumType.STRING)
-    private ProfileEntity role;
-
     @OneToMany(mappedBy = "user")
     private List<AccessTokenEntity> tokens;
 
@@ -88,7 +85,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     }
 
     @Builder
-    public UserEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, String email, String username, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleEntity accessSchedule, List<GroupEntity> groups, ProfileEntity profile, byte[] avatar, ProfileEntity role, List<AccessTokenEntity> tokens) {
+    public UserEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, String email, String username, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleEntity accessSchedule, List<GroupEntity> groups, ProfileEntity profile, byte[] avatar, List<AccessTokenEntity> tokens) {
         super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId, name, description, email);
         this.username = username;
         this.password = password;
@@ -104,7 +101,6 @@ public class UserEntity extends SecurityEntity implements UserDetails {
         this.groups = groups;
         this.profile = profile;
         this.avatar = avatar;
-        this.role = role;
         this.tokens = tokens;
     }
 

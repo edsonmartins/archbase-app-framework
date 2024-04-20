@@ -1,1 +1,0 @@
-org.springframework.boot.autoconfigure.EnableAutoConfiguration=br.com.archbase.starter.auto.configuration.ArchbaseSecurityAutoConfiguration

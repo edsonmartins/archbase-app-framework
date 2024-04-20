@@ -5,10 +5,10 @@ import org.springframework.context.annotation.Import;
 
 @Configuration
 @Import(value = {
-        ArchbaseRepositoryConfiguration.class,
         ArchbaseServerMvcConfiguration.class,
         ArchbaseThreadConfiguration.class, ArchbaseRSQLConfiguration.class,
         ArchbaseBeanValidateConfiguration.class,
-        ArchbaseSwaggerConfiguration.class})
+//        ArchbaseSwaggerConfiguration.class
+})
 public class ArchbaseCoreAutoConfiguration {
 }

@@ -31,17 +31,17 @@ public class CompanyPersistenceEntityBase {
 
     @Temporal(TemporalType.TIMESTAMP)
     @Column(name="CREATION_DATE")
-    protected LocalDateTime creationDateTime;
+    protected LocalDateTime createEntityDate;
 
     @Column(name="CREATED_BY")
-    protected String createdBy;
+    protected String createdByUser;
 
     @Temporal(TemporalType.TIMESTAMP)
     @Column(name="UPDATE_DATE")
-    protected LocalDateTime updateDateTime;
+    protected LocalDateTime updateEntityDate;
 
     @Column(name="LAST_MODIFIED_BY")
-    protected String lastModifiedBy;
+    protected String lastModifiedByUser;
 
     @TenantId
     @Column(name = "TENANT_ID", length = 40)
@@ -53,8 +53,8 @@ public class CompanyPersistenceEntityBase {
     public CompanyPersistenceEntityBase() {
         this.id = UUID.randomUUID().toString();
         this.version = 1L;
-        this.updateDateTime = LocalDateTime.now();
-        this.creationDateTime = LocalDateTime.now();
+        this.updateEntityDate = LocalDateTime.now();
+        this.createEntityDate = LocalDateTime.now();
     }
 
     public CompanyPersistenceEntityBase(String id, String code) {
@@ -70,13 +70,13 @@ public class CompanyPersistenceEntityBase {
         this.code = code;
     }
 
-    public CompanyPersistenceEntityBase(String id, String code, Long version, LocalDateTime creationDateTime, LocalDateTime updateDateTime, String createdBy, String lastModifiedBy) {
+    public CompanyPersistenceEntityBase(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser) {
         this.id = id;
         this.code = code;
         this.version = version;
-        this.creationDateTime = creationDateTime;
-        this.updateDateTime = updateDateTime;
-        this.createdBy = createdBy;
-        this.lastModifiedBy = lastModifiedBy;
+        this.createEntityDate = createEntityDate;
+        this.updateEntityDate = updateEntityDate;
+        this.createdByUser = createdByUser;
+        this.lastModifiedByUser = lastModifiedByUser;
     }
 }

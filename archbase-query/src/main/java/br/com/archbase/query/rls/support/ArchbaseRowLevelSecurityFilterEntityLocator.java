@@ -15,7 +15,7 @@ import java.util.Map;
  */
 
 
-@Service
+//@Service
 public class ArchbaseRowLevelSecurityFilterEntityLocator {
 
     /**
