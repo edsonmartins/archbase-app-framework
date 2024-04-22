@@ -5,13 +5,13 @@
     <parent>
         <artifactId>archbase-app-framework</artifactId>
         <groupId>br.com.archbase</groupId>
-        <version>1.0.1</version>
+        <version>1.0.2</version>
     </parent>
     <properties>
         <javaparser-core.version>3.25.10</javaparser-core.version>
         <archbase-domain-driven-design-spec.version>${archbase-security.version}</archbase-domain-driven-design-spec.version>
         <archbase-security.version>${archbase-validation.version}</archbase-security.version>
-        <archbase-validation.version>1.0.1</archbase-validation.version>
+        <archbase-validation.version>1.0.2</archbase-validation.version>
     </properties>
     <modelVersion>4.0.0</modelVersion>
 

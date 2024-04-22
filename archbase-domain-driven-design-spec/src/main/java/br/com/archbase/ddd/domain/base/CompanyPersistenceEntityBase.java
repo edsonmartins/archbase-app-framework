@@ -53,7 +53,6 @@ public class CompanyPersistenceEntityBase {
     public CompanyPersistenceEntityBase() {
         this.id = UUID.randomUUID().toString();
         this.version = 1L;
-        this.updateEntityDate = LocalDateTime.now();
         this.createEntityDate = LocalDateTime.now();
     }
 

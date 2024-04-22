@@ -10,6 +10,7 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface HasPermission {
     String action();
+    String description();
     String resource();
     String tenantId() default "";
     String companyId() default "";

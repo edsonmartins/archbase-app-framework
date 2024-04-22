@@ -5,8 +5,6 @@ import br.com.archbase.ddd.infraestructure.persistence.jpa.repository.SimpleArch
 import br.com.archbase.resource.logger.aspect.SimpleArchbaseResourceAspect;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.hibernate5.Hibernate5Module;
-import com.fasterxml.jackson.module.afterburner.AfterburnerModule;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -50,7 +48,7 @@ import java.util.Locale;
 @EnableWebMvc
 @EnableTransactionManagement
 @EnableJpaAuditing(auditorAwareRef = "auditorAware")
-@ComponentScan(basePackages = {"br.com.archbase","${archbase.app.component.scan}"})
+@ComponentScan(basePackages = {"br.com.archbase.multitenancy","br.com.archbase.security","${archbase.app.component.scan}"})
 @EntityScan(basePackages = {"br.com.archbase.security.persistence","${archbase.app.jpa.entities}" })
 @EnableJpaRepositories(
         basePackages = {"br.com.archbase.security.repository", "${archbase.app.jpa.repositories}"},
@@ -64,29 +62,27 @@ public class ArchbaseServerMvcConfiguration implements WebMvcConfigurer, Reposit
     private ApplicationContext applicationContext;
 
 
-    @Override
-    public void configureMessageConverters(List<HttpMessageConverter<?>> converters) {
-        StringHttpMessageConverter stringHttpMessageConverter = new StringHttpMessageConverter();
-        stringHttpMessageConverter.setWriteAcceptCharset(false);
-        converters.add(new ByteArrayHttpMessageConverter());
-        converters.add(stringHttpMessageConverter);
-        converters.add(new ResourceHttpMessageConverter());
-        converters.add(new ResourceRegionHttpMessageConverter());
-        converters.add(new SourceHttpMessageConverter<>());
-        converters.add(new AllEncompassingFormHttpMessageConverter());
-        converters.add(createJackson2HttpMessageConverter());
+//    @Override
+//    public void configureMessageConverters(List<HttpMessageConverter<?>> converters) {
+//        StringHttpMessageConverter stringHttpMessageConverter = new StringHttpMessageConverter();
+//        stringHttpMessageConverter.setWriteAcceptCharset(false);
+//        converters.add(new ByteArrayHttpMessageConverter());
+//        converters.add(stringHttpMessageConverter);
+//        converters.add(new ResourceHttpMessageConverter());
+//        converters.add(new ResourceRegionHttpMessageConverter());
+//        converters.add(new SourceHttpMessageConverter<>());
+//        converters.add(new AllEncompassingFormHttpMessageConverter());
+//        converters.add(createJackson2HttpMessageConverter());
+//
+//    }
 
-    }
-
-    private HttpMessageConverter<?> createJackson2HttpMessageConverter() {
-        MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter();
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.configure(SerializationFeature.INDENT_OUTPUT, true);
-        mapper.registerModule(new AfterburnerModule());
-        mapper.registerModule(new Hibernate5Module());
-        converter.setObjectMapper(mapper);
-        return converter;
-    }
+//    private HttpMessageConverter<?> createJackson2HttpMessageConverter() {
+//        MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter();
+//        ObjectMapper mapper = new ObjectMapper();
+//        mapper.configure(SerializationFeature.INDENT_OUTPUT, true);
+//        converter.setObjectMapper(mapper);
+//        return converter;
+//    }
 
     @Bean
     public SimpleArchbaseResourceAspect genericControllerAspect() {

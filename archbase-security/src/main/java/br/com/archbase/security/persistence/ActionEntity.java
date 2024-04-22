@@ -35,14 +35,14 @@ public class ActionEntity extends TenantPersistenceEntityBase {
     @JoinColumn(name = "ID_RECURSO", nullable = false)
     private ResourceEntity resource;
 
-    @Column(name = "CATEGORIA", nullable = false)
+    @Column(name = "CATEGORIA", nullable = true)
     private String category;
 
     @Column(name = "BO_ATIVA", nullable = false, length = 1)
     @Convert(converter = BooleanToSNConverter.class)
     private Boolean active;
 
-    @Column(name = "VERSAO_ACAO", nullable = false)
+    @Column(name = "VERSAO_ACAO", nullable = true)
     private String actionVersion;
 
     public ActionEntity() {

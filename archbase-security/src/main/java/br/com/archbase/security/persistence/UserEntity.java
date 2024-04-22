@@ -167,9 +167,9 @@ public class UserEntity extends SecurityEntity implements UserDetails {
                 .accountLocked(this.getAccountLocked())
                 .unlimitedAccessHours(this.getUnlimitedAccessHours())
                 .isAdministrator(this.getIsAdministrator())
-                .accessSchedule(this.accessSchedule.toDomain())
+                .accessSchedule(this.accessSchedule != null ? this.accessSchedule.toDomain(): null)
                 .groups(groupsDomain)
-                .profile(this.profile.toDomain())
+                .profile(this.profile != null ? this.profile.toDomain():null)
                 .avatar(this.getAvatar())
                 .build();
     }
@@ -237,9 +237,9 @@ public class UserEntity extends SecurityEntity implements UserDetails {
                 .accountLocked(this.getAccountLocked())
                 .unlimitedAccessHours(this.getUnlimitedAccessHours())
                 .isAdministrator(this.getIsAdministrator())
-                .accessSchedule(this.accessSchedule.toDto())
+                .accessSchedule(this.accessSchedule != null ? this.accessSchedule.toDto():null)
                 .groups(groupsDto)
-                .profile(this.profile.toDto())
+                .profile(this.profile != null ? this.profile.toDto(): null)
                 .avatar(this.getAvatar())
                 .build();
     }

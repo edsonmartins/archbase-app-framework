@@ -32,7 +32,6 @@ public abstract class DomainAggregatorBase<T extends AggregateRoot<T, Identifier
     public DomainAggregatorBase() {
         this.id = new ArchbaseIdentifier();
         this.version = 1L;
-        this.updateEntityDate = LocalDateTime.now();
         this.createEntityDate = LocalDateTime.now();
     }
 

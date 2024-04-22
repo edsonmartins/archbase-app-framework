@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import javax.annotation.PostConstruct;
 import java.lang.reflect.Method;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.Set;
 import java.util.List;
@@ -52,10 +53,11 @@ public class ArchbaseActionSynchronizationService {
         for (Method method : methods) {
             HasPermission permission = method.getAnnotation(HasPermission.class);
             String actionName = permission.action();
+            String description = permission.description();
             String resourceName = permission.resource();
 
             ResourceEntity resource = ensureResourceExists(resourceName);
-            synchronizeAction(actionName, resource);
+            synchronizeAction(actionName, description, resource);
         }
         disableUnusedActionsAndResources();
     }
@@ -65,20 +67,25 @@ public class ArchbaseActionSynchronizationService {
         if (resource == null) {
             resource = new ResourceEntity();
             resource.setName(resourceName);
-            // Setar outros atributos necessários aqui
+            resource.setDescription(resourceName);
+            resource.setCreateEntityDate(LocalDateTime.now());
+            resource.setCreatedByUser("archbase");
             resourceRepository.save(resource);
         }
         return resource;
     }
 
-    private void synchronizeAction(String actionName, ResourceEntity resource) {
+    private void synchronizeAction(String actionName, String description, ResourceEntity resource) {
         ActionEntity action = null;
         Optional<ActionEntity> actionEntityOptional = actionRepository.findByActionNameAndResourceName(actionName, resource.getName());
         if (actionEntityOptional.isEmpty()) {
             action = new ActionEntity();
             action.setName(actionName);
             action.setResource(resource);
+            action.setDescription(description);
             action.setActive(true);
+            action.setCreateEntityDate(LocalDateTime.now());
+            action.setCreatedByUser("archbase");
         } else {
             action = actionEntityOptional.get();
         }
@@ -93,6 +100,8 @@ public class ArchbaseActionSynchronizationService {
         allActions.forEach(action -> {
             if (!actionStillExists(action)) {
                 action.setActive(false);
+                action.setUpdateEntityDate(LocalDateTime.now());
+                action.setLastModifiedByUser("archbase");
                 actionRepository.save(action);
             }
         });
@@ -100,6 +109,8 @@ public class ArchbaseActionSynchronizationService {
         allResources.forEach(resource -> {
             if (!resourceStillExists(resource)) {
                 resource.setActive(false);
+                resource.setUpdateEntityDate(LocalDateTime.now());
+                resource.setLastModifiedByUser("archbase");
                 resourceRepository.save(resource);
             }
         });

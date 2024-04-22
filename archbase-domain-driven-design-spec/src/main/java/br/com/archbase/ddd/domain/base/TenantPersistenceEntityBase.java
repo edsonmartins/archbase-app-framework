@@ -47,7 +47,6 @@ public class TenantPersistenceEntityBase {
         this.id = UUID.randomUUID().toString();
         this.version = 1L;
         this.createEntityDate = LocalDateTime.now();
-        this.updateEntityDate = LocalDateTime.now();
     }
 
     public TenantPersistenceEntityBase(String id, String code) {

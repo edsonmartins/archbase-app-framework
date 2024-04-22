@@ -56,7 +56,7 @@ public class AccessIntervalDto {
 				.updateEntityDate(this.updateEntityDate)
 				.lastModifiedByUser(this.lastModifiedByUser)
 				.createdByUser(this.createdByUser)
-				.accessSchedule(this.accessSchedule.toDomain())
+				.accessSchedule(this.accessSchedule != null ? this.accessSchedule.toDomain(): null)
 				.dayOfWeek(this.dayOfWeek)
 				.startTime(this.startTime)
 				.endTime(this.endTime)

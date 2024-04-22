@@ -30,7 +30,6 @@ public abstract class DomainEntityBase<T extends AggregateRoot<T, Identifier>> i
         this.id = new ArchbaseIdentifier();
         this.version = 1L;
         this.createEntityDate = LocalDateTime.now();
-        this.updateEntityDate = LocalDateTime.now();
     }
 
     public DomainEntityBase(String id, String code) {
