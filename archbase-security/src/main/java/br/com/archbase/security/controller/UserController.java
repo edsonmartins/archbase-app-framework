@@ -45,27 +45,24 @@ public class UserController {
 
     @PostMapping
     public ResponseEntity<UserDto> createUser(@RequestBody UserDto user)  {
-        User createdUser = userService.createUser(user.toDomain());
-        return ResponseEntity.ok(UserDto.fromDomain(createdUser));
+        return ResponseEntity.ok(userService.createUser(user));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<UserDto> updateUser(@PathVariable String id, @RequestBody UserDto usuario)  {
-        User updatedUser = userService.updateUser(usuario.toDomain());
-        return ResponseEntity.ok(UserDto.fromDomain(updatedUser));
+    public ResponseEntity<UserDto> updateUser(@PathVariable String id, @RequestBody UserDto user)  {
+        return ResponseEntity.ok(userService.updateUser(id, user).get());
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<UserDto> removeUser(@PathVariable String id)  {
-        User removedUser = userService.removeUser(id);
-        return ResponseEntity.ok(UserDto.fromDomain(removedUser));
+    public void removeUser(@PathVariable String id)  {
+        userService.removeUser(id);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<User> getUserById(@PathVariable String id) {
+    public ResponseEntity<UserDto> getUserById(@PathVariable String id) {
         try {
-            Optional<User> userOptional = userService.getUserById(id);
-            return userOptional.map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
+            UserDto user = userService.findById(id);
+            return ResponseEntity.ok(user);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }

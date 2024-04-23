@@ -1,7 +1,7 @@
 package br.com.archbase.security.persistence;
 
 import br.com.archbase.ddd.domain.base.TenantPersistenceEntityBase;
-import br.com.archbase.security.domain.entity.Permission;
+import br.com.archbase.security.domain.entity.*;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Builder;
@@ -22,12 +22,10 @@ public class PermissionEntity extends TenantPersistenceEntityBase {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ID_SEGURANCA", nullable = false)
-    private UserEntity user;
-
+    private SecurityEntity security;
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ID_ACAO", nullable = false)
     private ActionEntity action;
-
     @Column(name="TENTANT_ID", nullable = true)
     private String tenantId;
     @Column(name="COMPANY_ID", nullable = true)
@@ -40,9 +38,9 @@ public class PermissionEntity extends TenantPersistenceEntityBase {
     }
 
     @Builder
-    public PermissionEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, UserEntity user, ActionEntity action, String tenantId1, String companyId, String projectId) {
+    public PermissionEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, SecurityEntity security, ActionEntity action, String tenantId1, String companyId, String projectId) {
         super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId);
-        this.user = user;
+        this.security = security;
         this.action = action;
         this.tenantId = tenantId1;
         this.companyId = companyId;
@@ -53,6 +51,16 @@ public class PermissionEntity extends TenantPersistenceEntityBase {
         if (permission == null) {
             return null;
         }
+        SecurityEntity securityEntity = null;
+        if (permission.getSecurity() != null) {
+            if (permission.getSecurity() instanceof User) {
+                securityEntity = UserEntity.fromDomain((User) permission.getSecurity());
+            } else if (permission.getSecurity() instanceof Group){
+                securityEntity = GroupEntity.fromDomain((Group) permission.getSecurity());
+            } else if (permission.getSecurity() instanceof Profile) {
+                securityEntity = ProfileEntity.fromDomain((Profile) permission.getSecurity());
+            }
+        }
 
         return PermissionEntity.builder()
                 .id(permission.getId().toString())
@@ -62,12 +70,23 @@ public class PermissionEntity extends TenantPersistenceEntityBase {
                 .updateEntityDate(permission.getUpdateEntityDate())
                 .createdByUser(permission.getCreatedByUser())
                 .lastModifiedByUser(permission.getLastModifiedByUser())
-                .user(UserEntity.fromDomain(permission.getUser()))
+                .security(securityEntity)
                 .action(ActionEntity.fromDomain(permission.getAction()))
                 .build();
     }
 
     public Permission toDomain() {
+        Security security = null;
+        if (this.security != null) {
+            if (this.security instanceof UserEntity) {
+                security = ((UserEntity) this.security).toDomain();
+            } else if (this.security instanceof GroupEntity){
+                security = ((GroupEntity) this.security).toDomain();
+            } else if (this.security instanceof ProfileEntity) {
+                security = ((ProfileEntity) this.security).toDomain();
+            }
+        }
+
         return Permission.builder()
                 .id(this.getId())
                 .code(this.getCode())
@@ -76,7 +95,7 @@ public class PermissionEntity extends TenantPersistenceEntityBase {
                 .createEntityDate(this.getCreateEntityDate())
                 .createdByUser(this.getCreatedByUser())
                 .lastModifiedByUser(this.getLastModifiedByUser())
-                .user(this.user.toDomain())
+                .security(security)
                 .action(this.action.toDomain())
                 .build();
     }

@@ -1,9 +1,10 @@
 package br.com.archbase.security.domain.dto;
 
-import br.com.archbase.security.domain.entity.Action;
-import br.com.archbase.security.domain.entity.Permission;
-import br.com.archbase.security.domain.entity.Profile;
-import br.com.archbase.security.domain.entity.User;
+import br.com.archbase.security.domain.entity.*;
+import br.com.archbase.security.persistence.GroupEntity;
+import br.com.archbase.security.persistence.ProfileEntity;
+import br.com.archbase.security.persistence.SecurityEntity;
+import br.com.archbase.security.persistence.UserEntity;
 import com.fasterxml.jackson.annotation.JsonIdentityInfo;
 import com.fasterxml.jackson.annotation.ObjectIdGenerators;
 import lombok.Builder;
@@ -25,7 +26,7 @@ public class PermissionDto  {
     protected LocalDateTime updateEntityDate;
     protected String createdByUser;
     protected String lastModifiedByUser;
-    protected UserDto user;
+    protected SecurityDto security;
     protected ActionDto action;
     protected String tenantId;
     protected String companyId;
@@ -35,7 +36,7 @@ public class PermissionDto  {
     }
 
     @Builder
-    public PermissionDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, UserDto user, ActionDto action, String tenantId, String companyId, String projectId) {
+    public PermissionDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, SecurityDto security, ActionDto action, String tenantId, String companyId, String projectId) {
         this.id = id;
         this.code = code;
         this.version = version;
@@ -43,7 +44,7 @@ public class PermissionDto  {
         this.updateEntityDate = updateEntityDate;
         this.createdByUser = createdByUser;
         this.lastModifiedByUser = lastModifiedByUser;
-        this.user = user;
+        this.security = security;
         this.action = action;
         this.tenantId = tenantId;
         this.companyId = companyId;
@@ -55,6 +56,18 @@ public class PermissionDto  {
             return null;
         }
 
+        SecurityDto securityDto = null;
+        if (permission.getSecurity() != null) {
+            if (permission.getSecurity() instanceof User) {
+                securityDto = UserDto.fromDomain((User) permission.getSecurity());
+            } else if (permission.getSecurity() instanceof Group){
+                securityDto = GroupDto.fromDomain((Group) permission.getSecurity());
+            } else if (permission.getSecurity() instanceof Profile) {
+                securityDto = ProfileDto.fromDomain((Profile) permission.getSecurity());
+            }
+        }
+
+
         return PermissionDto.builder()
                 .id(permission.getId().toString())
                 .code(permission.getCode())
@@ -63,7 +76,7 @@ public class PermissionDto  {
                 .updateEntityDate(permission.getUpdateEntityDate())
                 .createdByUser(permission.getCreatedByUser())
                 .lastModifiedByUser(permission.getLastModifiedByUser())
-                .user(UserDto.fromDomain(permission.getUser()))
+                .security(securityDto)
                 .action(ActionDto.fromDomain(permission.getAction()))
                 .tenantId(permission.getTenantId())
                 .companyId(permission.getCompanyId())
@@ -72,6 +85,18 @@ public class PermissionDto  {
     }
 
     public Permission toDomain() {
+        Security<?,?> security = null;
+        if (this.security != null) {
+            if (this.security instanceof UserDto) {
+                security = ((UserDto) this.security).toDomain();
+            } else if (this.security instanceof GroupDto){
+                security = ((GroupDto) this.security).toDomain();
+            } else if (this.security instanceof ProfileDto) {
+                security = ((ProfileDto) this.security).toDomain();
+            }
+        }
+
+
         return Permission.builder()
                 .id(this.id)
                 .code(this.code)
@@ -83,7 +108,7 @@ public class PermissionDto  {
                 .tenantId(this.tenantId)
                 .companyId(this.companyId)
                 .projectId(this.projectId)
-                .user(this.user != null ? this.user.toDomain() : null)
+                .security(security)
                 .action(this.action != null ? this.action.toDomain() : null)
                 .build();
     }

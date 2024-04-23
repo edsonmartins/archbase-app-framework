@@ -1,6 +1,8 @@
 package br.com.archbase.security.domain.dto;
 
 import com.fasterxml.jackson.annotation.JsonIdentityInfo;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.ObjectIdGenerators;
 import lombok.Getter;
 import lombok.Setter;
@@ -12,6 +14,12 @@ import java.util.Set;
 @Getter
 @Setter
 @JsonIdentityInfo(generator = ObjectIdGenerators.UUIDGenerator.class, property = "@id")
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+@JsonSubTypes({
+		@JsonSubTypes.Type(value = ProfileDto.class, name = "profile"),
+		@JsonSubTypes.Type(value = GroupDto.class, name = "group"),
+		@JsonSubTypes.Type(value = UserDto.class, name = "user")
+})
 public abstract class SecurityDto {
 
 	protected String id;

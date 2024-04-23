@@ -6,10 +6,7 @@ import br.com.archbase.security.adapter.SecurityAdapter;
 import br.com.archbase.security.adapter.UserPersistenceAdapter;
 import br.com.archbase.security.domain.dto.UserDto;
 import br.com.archbase.security.domain.entity.User;
-import br.com.archbase.security.usecase.CreateOrUpdateUserUseCase;
-import br.com.archbase.security.usecase.GetLoggedUserUseCase;
-import br.com.archbase.security.usecase.GetUserUseCase;
-import br.com.archbase.security.usecase.RemoveUserUseCase;
+import br.com.archbase.security.usecase.UserUseCase;
 import br.com.archbase.validation.exception.ArchbaseValidationException;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
@@ -18,7 +15,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Component
-public class UserService implements CreateOrUpdateUserUseCase, GetUserUseCase, RemoveUserUseCase, FindDataWithFilterQuery<String, UserDto>, GetLoggedUserUseCase {
+public class UserService implements UserUseCase, FindDataWithFilterQuery<String, UserDto> {
 
     private final UserPersistenceAdapter persistenceAdapter;
     private final SecurityAdapter securityAdapter;
@@ -67,24 +64,38 @@ public class UserService implements CreateOrUpdateUserUseCase, GetUserUseCase, R
     }
 
     @Override
-    public Optional<User> getUserById(String id)  {
-        return persistenceAdapter.getUserById(id);
-    }
-
-
-    @Override
-    public User createUser(User user)  {
-        return null;
+    public List<UserDto> getAllUsersByGroup(String groupId) {
+        return persistenceAdapter.getAllUsersByGroup(groupId);
     }
 
     @Override
-    public User updateUser(User user)  {
-        return null;
+    public Optional<UserDto> findGroupById(String id) {
+        return Optional.empty();
     }
 
     @Override
-    public User removeUser(String id)  {
-        return null;
+    public UserDto createUser(UserDto userDto) {
+        return persistenceAdapter.createUser(userDto);
+    }
+
+    @Override
+    public Optional<UserDto> updateUser(String id, UserDto userDto) {
+        return persistenceAdapter.updateUser(id,userDto);
+    }
+
+    @Override
+    public void removeUser(String id) {
+        persistenceAdapter.removerUser(id);
+    }
+
+    @Override
+    public void addPermission(String userId, String actionId) {
+        persistenceAdapter.addPermission(userId, actionId);
+    }
+
+    @Override
+    public void removePermission(String permissionId) {
+        persistenceAdapter.removePermission(permissionId);
     }
 
     @Override

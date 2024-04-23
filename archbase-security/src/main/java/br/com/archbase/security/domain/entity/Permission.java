@@ -12,16 +12,16 @@ import java.time.LocalDateTime;
 @Getter
 @DomainEntity
 public class Permission extends DomainAggregatorBase<Resource> {
-    private User user;
+    private Security security;
     private Action action;
     private String tenantId;
     private String companyId;
     private String projectId;
 
     @Builder
-    public Permission(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, User user, Action action, String tenantId, String companyId, String projectId) {
+    public Permission(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, Security security, Action action, String tenantId, String companyId, String projectId) {
         super(id, code, version, updateEntityDate, createEntityDate, createdByUser, lastModifiedByUser);
-        this.user = user;
+        this.security = security;
         this.action = action;
         this.tenantId = tenantId;
         this.companyId = companyId;

@@ -2,29 +2,44 @@ package br.com.archbase.security.adapter;
 
 import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
 import br.com.archbase.query.rsql.jpa.SortUtils;
+import br.com.archbase.security.adapter.port.UserPersistencePort;
 import br.com.archbase.security.domain.dto.UserDto;
 import br.com.archbase.security.domain.entity.User;
+import br.com.archbase.security.exception.ArchbaseSecurityException;
 import br.com.archbase.security.mapper.UserPersistenceMapper;
-import br.com.archbase.security.persistence.UserEntity;
+import br.com.archbase.security.persistence.*;
+import br.com.archbase.security.repository.ActionJpaRepository;
+import br.com.archbase.security.repository.PermissionJpaRepository;
 import br.com.archbase.security.repository.UserJpaRepository;
+import com.querydsl.jpa.impl.JPAQueryFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Component
 public class UserPersistenceAdapter implements UserPersistencePort, FindDataWithFilterQuery<String, UserDto> {
 
-    private final UserJpaRepository repository;
-    private final UserPersistenceMapper mapper;
+    @Autowired
+    private UserJpaRepository repository;
+    @Autowired
+    private ActionJpaRepository actionJpaRepository;
 
-    public UserPersistenceAdapter(UserJpaRepository repository, UserPersistenceMapper mapper) {
-        this.repository = repository;
-        this.mapper = mapper;
-    }
+    @Autowired
+    private PermissionJpaRepository permissionJpaRepository;
+
+    @Autowired
+    private SecurityAdapter securityAdapter;
+
+    @Autowired
+    private JPAQueryFactory queryFactory;
+
 
     @Override
     public UserDto findById(String id) {
@@ -71,14 +86,65 @@ public class UserPersistenceAdapter implements UserPersistencePort, FindDataWith
     }
 
     @Override
-    public User saveUser(User user)  {
-        return null;
+    public UserDto createUser(UserDto userDto)  {
+        return repository.save(UserEntity.fromDomain(userDto.toDomain())).toDto();
+    }
+
+    @Override
+    public Optional<UserDto> updateUser(String id, UserDto userDto) {
+        User loggedUser = securityAdapter.getLoggedUser();
+        return Optional.of(repository.findById(id))
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .map(existingEntity -> {
+                    existingEntity.setName(userDto.getName());
+                    existingEntity.setDescription(userDto.getDescription());
+                    existingEntity.setCode(userDto.getCode());
+                    existingEntity.setPassword(userDto.getPassword());
+                    existingEntity.setAvatar(userDto.getAvatar());
+                    existingEntity.setAccountDeactivated(userDto.getAccountDeactivated());
+                    existingEntity.setAccountLocked(userDto.getAccountLocked());
+                    existingEntity.setAllowMultipleLogins(userDto.getAllowMultipleLogins());
+                    existingEntity.setAllowPasswordChange(userDto.getAllowPasswordChange());
+                    existingEntity.setChangePasswordOnNextLogin(userDto.getChangePasswordOnNextLogin());
+                    existingEntity.setIsAdministrator(userDto.getIsAdministrator());
+                    existingEntity.setPasswordNeverExpires(userDto.getPasswordNeverExpires());
+                    existingEntity.setUnlimitedAccessHours(userDto.getUnlimitedAccessHours());
+                    existingEntity.setUsername(userDto.getUserName());
+                    existingEntity.setEmail(userDto.getEmail());
+                    existingEntity.setUpdateEntityDate(LocalDateTime.now());
+                    existingEntity.setLastModifiedByUser(loggedUser.getUserName());
+                    existingEntity.setProfile(userDto.getProfile() != null ? ProfileEntity.fromDomain(userDto.getProfile().toDomain()):null);
+                    existingEntity.setAccessSchedule(userDto.getAccessSchedule() != null ? AccessScheduleEntity.fromDomain(userDto.getAccessSchedule().toDomain()):null);
+                    return repository.save(existingEntity).toDto();
+                });
+    }
+
+    @Override
+    public void removerUser(String id) {
+        repository.deleteById(id);
     }
 
     @Override
     public Optional<User> getUserById(String id)  {
         Optional<UserEntity> byId = repository.findById(id);
         return byId.map(UserEntity::toDomain);
+    }
+
+    @Override
+    public List<UserDto> getAllUsersByGroup(String groupId) {
+        QUserEntity qUser = QUserEntity.userEntity;
+        QGroupEntity qGroup = QGroupEntity.groupEntity;
+
+        List<UserEntity> users = queryFactory
+                .selectFrom(qUser)
+                .join(qUser.groups, qGroup)
+                .where(qGroup.id.eq(groupId))
+                .fetch();
+
+        return users.stream()
+                .map(UserEntity::toDto)
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -90,6 +156,23 @@ public class UserPersistenceAdapter implements UserPersistencePort, FindDataWith
     @Override
     public boolean existeUserByEmail(String email)  {
         return repository.existsByEmail(email);
+    }
+
+    @Override
+    public void addPermission(String userId, String actionId) {
+        UserEntity user = repository.findById(userId).orElseThrow(() -> new ArchbaseSecurityException("Usuário %s não encontrado".formatted(userId)));
+        ActionEntity action = actionJpaRepository.findById(actionId).orElseThrow(() -> new ArchbaseSecurityException("Ação %s não encontrada".formatted(actionId)));
+
+        PermissionEntity permission = new PermissionEntity();
+        permission.setAction(action);
+        permission.setSecurity(user);
+        permissionJpaRepository.save(permission);
+    }
+
+    @Override
+    public void removePermission(String permissionId) {
+        PermissionEntity permission = permissionJpaRepository.findById(permissionId).orElseThrow(() -> new ArchbaseSecurityException("Permissão %s não encontrada.".formatted(permissionId)));
+        permissionJpaRepository.delete(permission);
     }
 
     static class PageUser extends PageImpl<UserDto> {

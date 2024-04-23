@@ -28,6 +28,7 @@ public class ResourceDto {
 	protected String name;
 	protected String description;
 	protected List<ActionDto> actions = new ArrayList<>();
+	protected Boolean active;
 
 	public static ResourceDto fromDomain(Resource resource) {
 		if (resource == null) {
@@ -44,6 +45,7 @@ public class ResourceDto {
 				.lastModifiedByUser(resource.getLastModifiedByUser())
 				.name(resource.getName())
 				.description(resource.getDescription())
+				.active(resource.getActive())
 				.actions(resource.getActions().stream()
 						.map(ActionDto::fromDomain)
 						.collect(Collectors.toList()))
@@ -60,6 +62,7 @@ public class ResourceDto {
 				.lastModifiedByUser(this.lastModifiedByUser)
 				.createdByUser(this.createdByUser)
 				.name(this.name)
+				.active(this.active)
 				.description(this.description)
 				.actions(this.actions.stream()
 						.map(ActionDto::toDomain)
