@@ -1,1 +1,3 @@
 mvn versions:update-parent -DparentVersion=1.0.1 -DgenerateBackupPoms=false
+
+mvn versions:set -DnewVersion=1.0.3 -DgenerateBackupPoms=false

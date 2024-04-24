@@ -74,7 +74,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     private ProfileEntity profile;
 
     @Lob
-    @Column(name = "AVATAR", columnDefinition="blob")
+    @Column(name = "AVATAR")
     private byte[] avatar;
 
     @OneToMany(mappedBy = "user")
