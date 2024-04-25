@@ -3,7 +3,6 @@ import br.com.archbase.security.adapter.port.ActionPersistencePort;
 import br.com.archbase.security.persistence.ActionEntity;
 import br.com.archbase.security.repository.ActionJpaRepository;
 import com.querydsl.core.types.dsl.BooleanExpression;
-import com.querydsl.jpa.impl.JPAQueryFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -19,12 +18,10 @@ import java.util.stream.Collectors;
 public class ActionPersistenceAdapter implements ActionPersistencePort {
 
     private final ActionJpaRepository repository;
-    private final JPAQueryFactory queryFactory;
 
     @Autowired
-    public ActionPersistenceAdapter(ActionJpaRepository repository,JPAQueryFactory queryFactory) {
+    public ActionPersistenceAdapter(ActionJpaRepository repository) {
         this.repository = repository;
-        this.queryFactory = queryFactory;
     }
 
     @Override
@@ -34,18 +31,14 @@ public class ActionPersistenceAdapter implements ActionPersistencePort {
 
     @Override
     public List<ActionDto> findAllActionsByResource(String resourceId) {
-        QActionEntity action = QActionEntity.actionEntity;
-        return queryFactory.selectFrom(action)
-                .where(action.resource.id.eq(resourceId))
-                .fetch()
-                .stream().map(ActionEntity::toDto).collect(Collectors.toList());
+        BooleanExpression predicate = QActionEntity.actionEntity.resource.id.eq(resourceId);
+        List<ActionEntity> actions = (List<ActionEntity>) repository.findAll(predicate);
+        return actions.stream().map(ActionEntity::toDto).collect(Collectors.toList());
     }
 
     @Override
     public Optional<ActionDto> findActionById(String id) {
-        return Optional.ofNullable(queryFactory.selectFrom(QActionEntity.actionEntity)
-                        .where(QActionEntity.actionEntity.id.eq(id))
-                        .fetchOne())
+        return repository.findById(id)
                 .map(ActionEntity::toDto);
     }
 
@@ -53,9 +46,9 @@ public class ActionPersistenceAdapter implements ActionPersistencePort {
     public Optional<ActionDto> findActionByName(String name, String resourceId) {
         BooleanExpression byName = QActionEntity.actionEntity.name.eq(name);
         BooleanExpression byResourceId = QActionEntity.actionEntity.resource.id.eq(resourceId);
-        return Optional.ofNullable(queryFactory.selectFrom(QActionEntity.actionEntity)
-                        .where(byName.and(byResourceId))
-                        .fetchOne())
+        BooleanExpression predicate = byName.and(byResourceId);
+
+        return repository.findOne(predicate)
                 .map(ActionEntity::toDto);
     }
 

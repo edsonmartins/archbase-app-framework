@@ -14,14 +14,14 @@ import java.util.List;
 @Repository
 public interface PermissionJpaRepository extends ArchbaseCommonJpaRepository<PermissionEntity, String, Long> {
     @Query("SELECT p FROM PermissionEntity p " +
-            "JOIN p.user u " +
+            "JOIN p.security u " +
             "JOIN p.action a " +
             "JOIN a.resource r " +
-            "WHERE u.id = :userId " +
+            "WHERE u.id = :securityId " +  // Corrigido para corresponder ao parâmetro do método
             "AND a.name = :actionName " +
             "AND r.name = :resourceName")
-    List<PermissionEntity> findByUserIdAndActionNameAndResourceName(
-            @Param("userId") String userId,
+    List<PermissionEntity> findBySecurityIdAndActionNameAndResourceName(
+            @Param("securityId") String securityId,
             @Param("actionName") String actionName,
             @Param("resourceName") String resourceName);
 }

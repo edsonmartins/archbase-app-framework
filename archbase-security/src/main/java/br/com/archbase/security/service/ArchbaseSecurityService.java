@@ -16,7 +16,7 @@ public class ArchbaseSecurityService {
 
     public boolean hasPermission(Authentication authentication, String action, String resource, String tenantId, String companyId, String projectId) {
         String userId = ((User) authentication.getPrincipal()).getId().toString();
-        List<PermissionEntity> permissions = permissionRepository.findByUserIdAndActionNameAndResourceName(
+        List<PermissionEntity> permissions = permissionRepository.findBySecurityIdAndActionNameAndResourceName(
                 userId, action, resource);
 
         if (permissions.stream().anyMatch(PermissionEntity::allowAllTenantsAndCompaniesAndProjects)){

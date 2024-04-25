@@ -6,12 +6,11 @@ import br.com.archbase.security.adapter.port.UserPersistencePort;
 import br.com.archbase.security.domain.dto.UserDto;
 import br.com.archbase.security.domain.entity.User;
 import br.com.archbase.security.exception.ArchbaseSecurityException;
-import br.com.archbase.security.mapper.UserPersistenceMapper;
 import br.com.archbase.security.persistence.*;
 import br.com.archbase.security.repository.ActionJpaRepository;
 import br.com.archbase.security.repository.PermissionJpaRepository;
 import br.com.archbase.security.repository.UserJpaRepository;
-import com.querydsl.jpa.impl.JPAQueryFactory;
+import com.querydsl.core.types.dsl.BooleanExpression;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Component;
@@ -36,9 +35,6 @@ public class UserPersistenceAdapter implements UserPersistencePort, FindDataWith
 
     @Autowired
     private SecurityAdapter securityAdapter;
-
-    @Autowired
-    private JPAQueryFactory queryFactory;
 
 
     @Override
@@ -136,11 +132,10 @@ public class UserPersistenceAdapter implements UserPersistencePort, FindDataWith
         QUserEntity qUser = QUserEntity.userEntity;
         QGroupEntity qGroup = QGroupEntity.groupEntity;
 
-        List<UserEntity> users = queryFactory
-                .selectFrom(qUser)
-                .join(qUser.groups, qGroup)
-                .where(qGroup.id.eq(groupId))
-                .fetch();
+        // Construindo o predicado para QueryDSL
+        BooleanExpression predicate = qUser.groups.any().id.eq(groupId);
+
+        List<UserEntity> users = (List<UserEntity>) repository.findAll(predicate);
 
         return users.stream()
                 .map(UserEntity::toDto)
