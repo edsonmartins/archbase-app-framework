@@ -3,7 +3,6 @@ package br.com.archbase.security.service;
 import br.com.archbase.security.auth.AuthenticationRequest;
 import br.com.archbase.security.auth.AuthenticationResponse;
 import br.com.archbase.security.auth.RegisterNewUser;
-import br.com.archbase.security.service.ArchbaseJwtService;
 import br.com.archbase.security.persistence.AccessTokenEntity;
 import br.com.archbase.security.persistence.UserEntity;
 import br.com.archbase.security.repository.AccessTokenJpaRepository;

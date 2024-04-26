@@ -1,10 +1,6 @@
 package br.com.archbase.security.domain.dto;
 
 import br.com.archbase.security.domain.entity.*;
-import br.com.archbase.security.persistence.GroupEntity;
-import br.com.archbase.security.persistence.ProfileEntity;
-import br.com.archbase.security.persistence.SecurityEntity;
-import br.com.archbase.security.persistence.UserEntity;
 import com.fasterxml.jackson.annotation.JsonIdentityInfo;
 import com.fasterxml.jackson.annotation.ObjectIdGenerators;
 import lombok.Builder;

@@ -2,7 +2,6 @@ package br.com.archbase.security.service;
 
 import br.com.archbase.security.auth.ChangePasswordRequest;
 import br.com.archbase.security.persistence.UserEntity;
-import br.com.archbase.security.repository.AccessTokenJpaRepository;
 import br.com.archbase.security.repository.UserJpaRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;

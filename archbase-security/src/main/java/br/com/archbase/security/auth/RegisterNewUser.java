@@ -1,7 +1,6 @@
 package br.com.archbase.security.auth;
 
 
-import br.com.archbase.security.domain.entity.Profile;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
