@@ -14,17 +14,11 @@ import java.util.Set;
 @Getter
 @DomainEntity
 public class Group extends Security<Group, User> {
-    protected List<User> members;
-
     @Builder
-    public Group(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, AccessSchedule accessSchedule, String email, List<User> members) {
+    public Group(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, AccessSchedule accessSchedule, String email) {
         super(id, code, version, updateEntityDate, createEntityDate, createdByUser, lastModifiedByUser, name, description, accessSchedule, email);
-        this.members = members;
     }
 
-    public List<User> getMembers() {
-        return Collections.unmodifiableList(members);
-    }
 
     static class Validator extends AbstractArchbaseValidator<Group> {
         @Override

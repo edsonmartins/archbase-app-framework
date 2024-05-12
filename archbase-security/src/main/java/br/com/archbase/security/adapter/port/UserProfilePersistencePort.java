@@ -4,9 +4,8 @@ import br.com.archbase.security.domain.dto.ProfileDto;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
-public interface ProfilePersistencePort {
+public interface UserProfilePersistencePort {
     public List<ProfileDto> findAllProfiles();
     public Optional<ProfileDto> findProfileById(String id);
     public ProfileDto createProfile(ProfileDto profileDto);

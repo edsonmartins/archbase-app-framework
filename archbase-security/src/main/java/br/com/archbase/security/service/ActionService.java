@@ -1,6 +1,8 @@
 package br.com.archbase.security.service;
 
+import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import br.com.archbase.security.adapter.ActionPersistenceAdapter;
 import br.com.archbase.security.domain.dto.ActionDto;
@@ -10,7 +12,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Service
-public class ActionService implements ActionUseCase {
+public class ActionService implements ActionUseCase, FindDataWithFilterQuery<String, ActionDto> {
 
     private final ActionPersistenceAdapter actionPersistenceAdapter;
 
@@ -52,5 +54,35 @@ public class ActionService implements ActionUseCase {
     @Override
     public void deleteAction(String id) {
         actionPersistenceAdapter.deleteAction(id);
+    }
+
+    @Override
+    public ActionDto findById(String s) {
+        return null;
+    }
+
+    @Override
+    public Page<ActionDto> findAll(int page, int size) {
+        return null;
+    }
+
+    @Override
+    public Page<ActionDto> findAll(int page, int size, String[] sort) {
+        return null;
+    }
+
+    @Override
+    public List<ActionDto> findAll(List<String> strings) {
+        return List.of();
+    }
+
+    @Override
+    public Page<ActionDto> findWithFilter(String filter, int page, int size) {
+        return null;
+    }
+
+    @Override
+    public Page<ActionDto> findWithFilter(String filter, int page, int size, String[] sort) {
+        return null;
     }
 }

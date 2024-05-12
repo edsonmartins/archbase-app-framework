@@ -31,12 +31,12 @@ public class UserDto extends SecurityDto {
 	protected Boolean unlimitedAccessHours;
 	protected Boolean isAdministrator;
 	protected AccessScheduleDto accessSchedule;
-	protected List<GroupDto> groups = new ArrayList<>();
+	protected List<UserGroupDto> groups = new ArrayList<>();
 	protected ProfileDto profile;
 	protected byte[] avatar;
 
 	@Builder
-	public UserDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Set<ActionDto> actions, String email, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleDto accessSchedule, List<GroupDto> groups, ProfileDto profile, byte[] avatar) {
+	public UserDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Set<ActionDto> actions, String email, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleDto accessSchedule, List<UserGroupDto> groups, ProfileDto profile, byte[] avatar) {
 		super(id, code, version, createEntityDate, updateEntityDate, createdByUser, lastModifiedByUser, name, description, actions, email);
 		this.userName = userName;
 		this.password = password;
@@ -82,7 +82,7 @@ public class UserDto extends SecurityDto {
 				.isAdministrator(user.getIsAdministrator())
 				.accessSchedule(AccessScheduleDto.fromDomain(user.getAccessSchedule()))
 				.groups(user.getGroups().stream()
-						.map(GroupDto::fromDomain)
+						.map(UserGroupDto::fromDomain)
 						.collect(Collectors.toList()))
 				.profile(ProfileDto.fromDomain(user.getProfile()))
 				.avatar(user.getAvatar())
@@ -113,7 +113,7 @@ public class UserDto extends SecurityDto {
 				.isAdministrator(this.isAdministrator)
 				.accessSchedule(this.accessSchedule != null ? this.accessSchedule.toDomain() : null)
 				.groups(this.groups.stream()
-						.map(GroupDto::toDomain)
+						.map(UserGroupDto::toDomain)
 						.collect(Collectors.toList()))
 				.profile(this.profile != null ? this.profile.toDomain() : null)
 				.avatar(this.avatar)

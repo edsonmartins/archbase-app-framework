@@ -1,6 +1,9 @@
 package br.com.archbase.security.service;
 
+import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
+import br.com.archbase.security.domain.dto.UserDto;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 
 import br.com.archbase.security.adapter.GroupPersistenceAdapter;
@@ -11,7 +14,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Service
-public class GroupService implements GroupUseCase {
+public class GroupService implements GroupUseCase, FindDataWithFilterQuery<String, GroupDto> {
 
     private final GroupPersistenceAdapter adapter;
 
@@ -53,6 +56,36 @@ public class GroupService implements GroupUseCase {
     @Override
     public void removePermission(String permissionId) {
         adapter.removePermission(permissionId);
+    }
+
+    @Override
+    public GroupDto findById(String s) {
+        return adapter.findById(s);
+    }
+
+    @Override
+    public Page<GroupDto> findAll(int page, int size) {
+        return adapter.findAll(page,size);
+    }
+
+    @Override
+    public Page<GroupDto> findAll(int page, int size, String[] sort) {
+        return adapter.findAll(page,size,sort);
+    }
+
+    @Override
+    public List<GroupDto> findAll(List<String> ids) {
+        return adapter.findAll(ids);
+    }
+
+    @Override
+    public Page<GroupDto> findWithFilter(String filter, int page, int size) {
+        return adapter.findWithFilter(filter, page, size);
+    }
+
+    @Override
+    public Page<GroupDto> findWithFilter(String filter, int page, int size, String[] sort) {
+        return adapter.findWithFilter(filter, page, size, sort);
     }
 
 }

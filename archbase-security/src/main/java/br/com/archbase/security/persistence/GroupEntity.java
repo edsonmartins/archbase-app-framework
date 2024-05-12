@@ -19,22 +19,14 @@ import java.util.stream.Collectors;
 @Getter
 public class GroupEntity extends SecurityEntity {
 
-    @ManyToMany
-    @JoinTable(
-            name = "SEGURANCA_GRUPO_USUARIO",
-            joinColumns = @JoinColumn(name = "ID_GRUPO"),
-            inverseJoinColumns = @JoinColumn(name = "ID_USUARIO")
-    )
-    private List<UserEntity> members;
 
     public GroupEntity() {
         super();
     }
 
     @Builder
-    public GroupEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, Set<ActionEntity> actions, String email, List<UserEntity> members) {
+    public GroupEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, String email) {
         super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId, name, description, email);
-        this.members = members;
     }
 
     public static GroupEntity fromDomain(Group group) {
@@ -52,12 +44,7 @@ public class GroupEntity extends SecurityEntity {
         groupEntity.setLastModifiedByUser(group.getLastModifiedByUser());
         groupEntity.setName(group.getName());
         groupEntity.setDescription(group.getDescription());
-
         groupEntity.setEmail(group.getEmail());
-
-        groupEntity.members = group.getMembers() != null ?
-                group.getMembers().stream().map(UserEntity::fromDomain).collect(Collectors.toList()) :
-                new ArrayList<>();
 
         return groupEntity;
     }
@@ -74,7 +61,6 @@ public class GroupEntity extends SecurityEntity {
                 .name(this.getName())
                 .description(this.getDescription())
                 .email(this.getEmail())
-                .members(this.members != null ? this.members.stream().map(UserEntity::toDomain).collect(Collectors.toList()) : new ArrayList<>())
                 .build();
     }
 
@@ -90,7 +76,6 @@ public class GroupEntity extends SecurityEntity {
                 .name(this.getName())
                 .description(this.getDescription())
                 .email(this.getEmail())
-                .members(this.members != null ? this.members.stream().map(UserEntity::toDto).collect(Collectors.toList()) : new ArrayList<>())
                 .build();
     }
 }

@@ -53,6 +53,7 @@ import java.util.Locale;
 @EnableJpaRepositories(
         basePackages = {"br.com.archbase.security.repository", "${archbase.app.jpa.repositories}"},
         repositoryBaseClass = CommonArchbaseJpaRepository.class)
+//@Import(DynamicJpaRepositoriesRegistrar.class)
 public class ArchbaseServerMvcConfiguration implements WebMvcConfigurer, RepositoryRestConfigurer {
 
     @Autowired
@@ -61,8 +62,10 @@ public class ArchbaseServerMvcConfiguration implements WebMvcConfigurer, Reposit
     @Autowired
     private ApplicationContext applicationContext;
 
+    public ArchbaseServerMvcConfiguration() {
+    }
 
-//    @Override
+    //    @Override
 //    public void configureMessageConverters(List<HttpMessageConverter<?>> converters) {
 //        StringHttpMessageConverter stringHttpMessageConverter = new StringHttpMessageConverter();
 //        stringHttpMessageConverter.setWriteAcceptCharset(false);

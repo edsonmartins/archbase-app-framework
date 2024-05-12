@@ -31,13 +31,13 @@ public class User extends Security<User, User> implements AggregateRoot<User, Id
     protected Boolean unlimitedAccessHours;
     protected Boolean isAdministrator;
     protected AccessSchedule accessSchedule;
-    protected List<Group> groups = new ArrayList<>();
+    protected List<UserGroup> groups = new ArrayList<>();
     protected Profile profile;
     protected byte[] avatar;
 
 
     @Builder
-    public User(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Set<Action> actions, AccessSchedule accessSchedule, String email, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessSchedule accessSchedule1, List<Group> groups, Profile profile, byte[] avatar) {
+    public User(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, AccessSchedule accessSchedule, String email, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessSchedule accessSchedule1, List<UserGroup> groups, Profile profile, byte[] avatar) {
         super(id, code, version, updateEntityDate, createEntityDate, createdByUser, lastModifiedByUser, name, description, accessSchedule, email);
         this.userName = userName;
         this.password = password;
@@ -53,10 +53,6 @@ public class User extends Security<User, User> implements AggregateRoot<User, Id
         this.groups = groups;
         this.profile = profile;
         this.avatar = avatar;
-    }
-
-    public List<Group> getGroups() {
-        return Collections.unmodifiableList(groups);
     }
 
     static class Validator extends AbstractArchbaseValidator<User> {

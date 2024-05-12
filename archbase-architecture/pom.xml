@@ -6,7 +6,7 @@
     <parent>
         <groupId>br.com.archbase</groupId>
         <artifactId>archbase-app-framework</artifactId>
-        <version>1.0.4</version>
+        <version>1.0.5</version>
     </parent>
 
     <artifactId>archbase-architecture</artifactId>

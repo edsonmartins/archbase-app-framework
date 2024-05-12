@@ -29,7 +29,7 @@ public abstract class SecurityEntity extends TenantPersistenceEntityBase {
     @Column(name = "DESCRICAO", nullable = false)
     private String description;
 
-    @Column(name = "EMAIL", nullable = false)
+    @Column(name = "EMAIL", nullable = true)
     private String email;
 
     public SecurityEntity() {

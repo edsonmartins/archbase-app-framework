@@ -1,6 +1,8 @@
 package br.com.archbase.security.service;
 
+import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 
 import br.com.archbase.security.adapter.ResourcePersistenceAdapter;
@@ -11,7 +13,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Service
-public class ResourceService implements ResourceUseCase {
+public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery<String, ResourceDto> {
 
     private final ResourcePersistenceAdapter adapter;
 
@@ -43,5 +45,35 @@ public class ResourceService implements ResourceUseCase {
     @Override
     public void deleteResource(String id) {
         adapter.deleteResource(id);
+    }
+
+    @Override
+    public ResourceDto findById(String s) {
+        return adapter.findById(s);
+    }
+
+    @Override
+    public Page<ResourceDto> findAll(int page, int size) {
+        return adapter.findAll(page,size);
+    }
+
+    @Override
+    public Page<ResourceDto> findAll(int page, int size, String[] sort) {
+        return adapter.findAll(page,size,sort);
+    }
+
+    @Override
+    public List<ResourceDto> findAll(List<String> strings) {
+        return adapter.findAll(strings);
+    }
+
+    @Override
+    public Page<ResourceDto> findWithFilter(String filter, int page, int size) {
+        return adapter.findWithFilter(filter,page,size);
+    }
+
+    @Override
+    public Page<ResourceDto> findWithFilter(String filter, int page, int size, String[] sort) {
+        return adapter.findWithFilter(filter,page,size,sort);
     }
 }

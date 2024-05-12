@@ -2,8 +2,10 @@ package br.com.archbase.security.persistence;
 
 import br.com.archbase.security.domain.dto.GroupDto;
 import br.com.archbase.security.domain.dto.UserDto;
+import br.com.archbase.security.domain.dto.UserGroupDto;
 import br.com.archbase.security.domain.entity.Group;
 import br.com.archbase.security.domain.entity.User;
+import br.com.archbase.security.domain.entity.UserGroup;
 import br.com.archbase.shared.kernel.converters.BooleanToSNConverter;
 import jakarta.persistence.*;
 import lombok.Builder;
@@ -14,6 +16,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -66,8 +69,8 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     @JoinColumn(name = "HORARIO_ACESSO_ID")
     private AccessScheduleEntity accessSchedule;
 
-    @ManyToMany(mappedBy = "members")
-    private List<GroupEntity> groups;
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<UserGroupEntity> groups = new HashSet<>();
 
     @ManyToOne
     @JoinColumn(name = "PERFIL_ID")
@@ -85,7 +88,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     }
 
     @Builder
-    public UserEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, String email, String username, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleEntity accessSchedule, List<GroupEntity> groups, ProfileEntity profile, byte[] avatar, List<AccessTokenEntity> tokens) {
+    public UserEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, String email, String username, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleEntity accessSchedule, Set<UserGroupEntity> groups, ProfileEntity profile, byte[] avatar, List<AccessTokenEntity> tokens) {
         super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId, name, description, email);
         this.username = username;
         this.password = password;
@@ -104,7 +107,6 @@ public class UserEntity extends SecurityEntity implements UserDetails {
         this.tokens = tokens;
     }
 
-    // Implementation of UserDetails interface methods
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
@@ -142,8 +144,8 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     }
 
     public User toDomain() {
-        List<Group> groupsDomain = this.groups != null ? this.groups.stream()
-                .map(GroupEntity::toDomain)
+        List<UserGroup> groupsDomain = this.groups != null ? this.groups.stream()
+                .map(UserGroupEntity::toDomain)
                 .collect(Collectors.toList()) : null;
 
         return User.builder()
@@ -179,12 +181,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
             return null;
         }
 
-        List<GroupEntity> groups = user.getGroups()
-                .stream()
-                .map(GroupEntity::fromDomain)
-                .collect(Collectors.toList());
-
-        return UserEntity.builder()
+        UserEntity userEntity = UserEntity.builder()
                 .id(user.getId().toString())
                 .code(user.getCode())
                 .version(user.getVersion())
@@ -205,15 +202,23 @@ public class UserEntity extends SecurityEntity implements UserDetails {
                 .accountLocked(user.getAccountLocked())
                 .unlimitedAccessHours(user.getUnlimitedAccessHours())
                 .isAdministrator(user.getIsAdministrator())
-                .groups(groups)
                 .profile(ProfileEntity.fromDomain(user.getProfile()))
                 .avatar(user.getAvatar())
                 .build();
+
+        Set<UserGroupEntity> groups = user.getGroups()
+                .stream()
+                .map(item->UserGroupEntity.fromDomain(item,userEntity))
+                .collect(Collectors.toSet());
+
+        userEntity.setGroups(groups);
+
+        return userEntity;
     }
 
     public UserDto toDto() {
-        List<GroupDto> groupsDto = this.groups != null ? this.groups.stream()
-                .map(GroupEntity::toDto)
+        List<UserGroupDto> groupsDto = this.groups != null ? this.groups.stream()
+                .map(UserGroupEntity::toDto)
                 .collect(Collectors.toList()) : null;
 
         return UserDto.builder()
