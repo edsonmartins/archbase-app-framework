@@ -2,12 +2,11 @@ package br.com.archbase.security.persistence;
 
 import br.com.archbase.ddd.domain.base.TenantPersistenceEntityBase;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
 
 @Entity
 @Table(name="SEGURANCA")
@@ -22,10 +21,10 @@ import java.util.Set;
                 column=@Column(name="CD_SEGURANCA"))
 })
 public abstract class SecurityEntity extends TenantPersistenceEntityBase {
-
+    @NotBlank
     @Column(name = "NOME", nullable = false)
     private String name;
-
+    @NotBlank
     @Column(name = "DESCRICAO", nullable = false)
     private String description;
 
