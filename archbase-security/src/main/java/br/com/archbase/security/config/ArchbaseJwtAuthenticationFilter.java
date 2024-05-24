@@ -33,14 +33,14 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull HttpServletResponse response,
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
-        if (request.getServletPath().contains("/api/v1/auth")) {
-            filterChain.doFilter(request, response);
-            return;
-        }
         String tenantId = request.getHeader(ArchbaseTenantContext.X_TENANT_ID);
         String companyId = request.getHeader(ArchbaseTenantContext.X_COMPANY_ID);
         ArchbaseTenantContext.setTenantId(tenantId);
         ArchbaseTenantContext.setCompanyId(companyId);
+        if (request.getServletPath().contains("/api/v1/auth")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
         final String authHeader = request.getHeader("Authorization");
         final String jwt;
         final String userEmail;
