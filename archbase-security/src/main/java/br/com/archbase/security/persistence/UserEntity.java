@@ -28,7 +28,7 @@ import java.util.stream.Collectors;
 public class UserEntity extends SecurityEntity implements UserDetails {
 
     @Column(name = "USER_NAME")
-    private String username;
+    private String userName;
 
     @Column(name = "SENHA")
     private String password;
@@ -88,9 +88,9 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     }
 
     @Builder
-    public UserEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, String email, String username, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleEntity accessSchedule, Set<UserGroupEntity> groups, ProfileEntity profile, byte[] avatar, List<AccessTokenEntity> tokens) {
+    public UserEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, String email, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleEntity accessSchedule, Set<UserGroupEntity> groups, ProfileEntity profile, byte[] avatar, List<AccessTokenEntity> tokens) {
         super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId, name, description, email);
-        this.username = username;
+        this.userName = userName;
         this.password = password;
         this.changePasswordOnNextLogin = changePasswordOnNextLogin;
         this.allowPasswordChange = allowPasswordChange;
@@ -120,7 +120,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
 
     @Override
     public String getUsername() {
-        return this.username;
+        return this.userName;
     }
 
     @Override
@@ -192,7 +192,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
                 .name(user.getName())
                 .description(user.getDescription())
                 .email(user.getEmail())
-                .username(user.getUserName())
+                .userName(user.getUserName())
                 .password(user.getPassword())
                 .changePasswordOnNextLogin(user.getChangePasswordOnNextLogin())
                 .allowPasswordChange(user.getAllowPasswordChange())
