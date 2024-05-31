@@ -81,9 +81,9 @@ public class UserDto extends SecurityDto {
 				.unlimitedAccessHours(user.getUnlimitedAccessHours())
 				.isAdministrator(user.getIsAdministrator())
 				.accessSchedule(AccessScheduleDto.fromDomain(user.getAccessSchedule()))
-				.groups(user.getGroups().stream()
+				.groups(user.getGroups() != null?user.getGroups().stream()
 						.map(UserGroupDto::fromDomain)
-						.collect(Collectors.toList()))
+						.collect(Collectors.toList()):null)
 				.profile(ProfileDto.fromDomain(user.getProfile()))
 				.avatar(user.getAvatar())
 				.build();
@@ -112,9 +112,9 @@ public class UserDto extends SecurityDto {
 				.unlimitedAccessHours(this.unlimitedAccessHours)
 				.isAdministrator(this.isAdministrator)
 				.accessSchedule(this.accessSchedule != null ? this.accessSchedule.toDomain() : null)
-				.groups(this.groups.stream()
+				.groups(this.groups != null ? this.groups.stream()
 						.map(UserGroupDto::toDomain)
-						.collect(Collectors.toList()))
+						.collect(Collectors.toList()):null)
 				.profile(this.profile != null ? this.profile.toDomain() : null)
 				.avatar(this.avatar)
 				.build();

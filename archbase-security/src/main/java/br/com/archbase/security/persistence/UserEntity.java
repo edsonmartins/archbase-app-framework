@@ -206,10 +206,10 @@ public class UserEntity extends SecurityEntity implements UserDetails {
                 .avatar(user.getAvatar())
                 .build();
 
-        Set<UserGroupEntity> groups = user.getGroups()
+        Set<UserGroupEntity> groups = user.getGroups() != null ? user.getGroups()
                 .stream()
                 .map(item->UserGroupEntity.fromDomain(item,userEntity))
-                .collect(Collectors.toSet());
+                .collect(Collectors.toSet()):null;
 
         userEntity.setGroups(groups);
 
