@@ -51,7 +51,7 @@ public class ArchbaseAuthenticationService {
                     .name(request.getName())
                     .description(request.getDescription())
                     .email(request.getEmail())
-                    .username(request.getUserName())
+                    .userName(request.getUserName())
                     .passwordNeverExpires(true)
                     .password(passwordEncoder.encode(request.getPassword()))
                     .build();
