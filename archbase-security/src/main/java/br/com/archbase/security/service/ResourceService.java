@@ -1,6 +1,7 @@
 package br.com.archbase.security.service;
 
 import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
+import br.com.archbase.security.domain.dto.ResourcePermissionsDto;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
@@ -45,6 +46,11 @@ public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery
     @Override
     public void deleteResource(String id) {
         adapter.deleteResource(id);
+    }
+
+    @Override
+    public ResourcePermissionsDto findLoggedUserResourcePermissions(String resourceName) {
+        return adapter.findLoggedUserResourcePermissions(resourceName);
     }
 
     @Override

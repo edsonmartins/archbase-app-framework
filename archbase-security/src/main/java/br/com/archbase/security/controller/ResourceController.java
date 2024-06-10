@@ -3,6 +3,7 @@ package br.com.archbase.security.controller;
 import br.com.archbase.query.rsql.jpa.SortUtils;
 import br.com.archbase.security.domain.dto.GroupDto;
 import br.com.archbase.security.domain.dto.ResourceDto;
+import br.com.archbase.security.domain.dto.ResourcePermissionsDto;
 import br.com.archbase.security.service.GroupService;
 import br.com.archbase.security.service.ResourceService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,6 +41,11 @@ public class ResourceController {
     @DeleteMapping("/{id}")
     public void removeResoure(@PathVariable String id)  {
         resourceService.deleteResource(id);
+    }
+
+    @GetMapping("/permissions/{resourceName}")
+    public ResponseEntity<ResourcePermissionsDto> findLoggedUserResourcePermissions(@PathVariable String resourceName) {
+        return ResponseEntity.ok(resourceService.findLoggedUserResourcePermissions(resourceName));
     }
 
     @GetMapping("/{id}")

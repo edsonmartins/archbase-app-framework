@@ -3,11 +3,14 @@ package br.com.archbase.security.adapter;
 import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
 import br.com.archbase.query.rsql.jpa.SortUtils;
 import br.com.archbase.security.adapter.port.ResourcePersistencePort;
-import br.com.archbase.security.domain.dto.ProfileDto;
-import br.com.archbase.security.persistence.ProfileEntity;
-import br.com.archbase.security.persistence.ResourceEntity;
+import br.com.archbase.security.domain.dto.ResourcePermissionsDto;
+import br.com.archbase.security.domain.entity.User;
+import br.com.archbase.security.persistence.*;
 import br.com.archbase.security.repository.ResourceJpaRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.jpa.impl.JPAQueryFactory;
+import jakarta.persistence.EntityManager;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Component;
 
@@ -21,10 +24,13 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Component
+@RequiredArgsConstructor
 public class ResourcePersistenceAdapter implements ResourcePersistencePort, FindDataWithFilterQuery<String, ResourceDto> {
 
-    @Autowired
-    private ResourceJpaRepository repository;
+    private final ResourceJpaRepository repository;
+    private final SecurityAdapter securityAdapter;
+
+    private final EntityManager entityManager;
 
     @Override
     public List<ResourceDto> findAllResources() {
@@ -58,6 +64,47 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
     public void deleteResource(String id) {
         repository.deleteById(id);
     }
+
+    @Override
+    public ResourcePermissionsDto findLoggedUserResourcePermissions(String resourceName) {
+        User user = securityAdapter.getLoggedUser();
+
+        QPermissionEntity permissionEntity = QPermissionEntity.permissionEntity;
+        QUserGroupEntity userGroupEntity = QUserGroupEntity.userGroupEntity;
+        QGroupEntity groupEntity = QGroupEntity.groupEntity;
+        QProfileEntity profileEntity = QProfileEntity.profileEntity;
+
+        JPAQueryFactory queryFactory = new JPAQueryFactory(entityManager);
+
+        // Construção das condições individuais
+        BooleanExpression resourceCondition = permissionEntity.action.resource.name.eq(resourceName);
+        BooleanExpression userCondition = permissionEntity.security.id.eq(user.getId().toString());
+        BooleanExpression groupCondition = permissionEntity.security.eq(groupEntity._super)
+                .and(userGroupEntity.group.eq(groupEntity))
+                .and(userGroupEntity.user.id.eq(user.getId().toString()));
+        BooleanExpression profileCondition = permissionEntity.security.eq(profileEntity._super)
+                .and(profileEntity.id.eq(user.getProfile().getId().toString()));
+
+        // Combinação das condições com AND e OR
+        BooleanExpression predicate = resourceCondition.and(userCondition.or(groupCondition).or(profileCondition));
+
+        // Execução da consulta com junções apropriadas
+        List<PermissionEntity> permissionEntities = queryFactory
+                .selectFrom(permissionEntity)
+                .leftJoin(permissionEntity.security, groupEntity._super)
+                .leftJoin(userGroupEntity).on(userGroupEntity.group.eq(groupEntity))
+                .leftJoin(permissionEntity.security, profileEntity._super)
+                .where(predicate)
+                .fetch();
+
+        return ResourcePermissionsDto.builder()
+                .resourceName(resourceName)
+                .permissions(permissionEntities.stream()
+                        .map(permission -> permission.getAction().getName())
+                        .collect(Collectors.toSet()))
+                .build();
+    }
+
 
     @Override
     public ResourceDto findById(String id) {
