@@ -80,7 +80,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     @Column(name = "AVATAR")
     private byte[] avatar;
 
-    @OneToMany(mappedBy = "user")
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<AccessTokenEntity> tokens;
 
     public UserEntity() {
