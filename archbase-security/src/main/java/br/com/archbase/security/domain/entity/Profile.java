@@ -17,8 +17,8 @@ import java.util.Set;
 public class Profile extends Security<Profile, Profile> implements AggregateRoot<Profile, Identifier> {
 
     @Builder
-    public Profile(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, AccessSchedule accessSchedule, String email) {
-        super(id, code, version, updateEntityDate, createEntityDate, createdByUser, lastModifiedByUser, name, description, accessSchedule, email);
+    public Profile(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, AccessSchedule accessSchedule) {
+        super(id, code, version, updateEntityDate, createEntityDate, createdByUser, lastModifiedByUser, name, description, accessSchedule);
     }
 
     static class Validator extends AbstractArchbaseValidator<Profile> {

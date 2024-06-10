@@ -1,9 +1,7 @@
 package br.com.archbase.security.persistence;
 
-import br.com.archbase.security.domain.dto.GroupDto;
 import br.com.archbase.security.domain.dto.UserDto;
 import br.com.archbase.security.domain.dto.UserGroupDto;
-import br.com.archbase.security.domain.entity.Group;
 import br.com.archbase.security.domain.entity.User;
 import br.com.archbase.security.domain.entity.UserGroup;
 import br.com.archbase.shared.kernel.converters.BooleanToSNConverter;
@@ -80,6 +78,9 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     @Column(name = "AVATAR")
     private byte[] avatar;
 
+    @Column(name = "EMAIL", nullable = true)
+    private String email;
+
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<AccessTokenEntity> tokens;
 
@@ -89,7 +90,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
 
     @Builder
     public UserEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, String email, String username, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleEntity accessSchedule, Set<UserGroupEntity> groups, ProfileEntity profile, byte[] avatar, List<AccessTokenEntity> tokens) {
-        super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId, name, description, email);
+        super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId, name, description);
         this.username = username;
         this.password = password;
         this.changePasswordOnNextLogin = changePasswordOnNextLogin;
@@ -105,6 +106,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
         this.profile = profile;
         this.avatar = avatar;
         this.tokens = tokens;
+        this.email = email;
     }
 
 
