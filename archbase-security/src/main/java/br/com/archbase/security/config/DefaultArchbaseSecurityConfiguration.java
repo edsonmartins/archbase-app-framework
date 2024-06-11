@@ -27,8 +27,12 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
                 "/api/v1/auth/**",
                 "/v2/externalapi-docs",
                 "/v3/externalapi-docs",
+                "/v3/api-docs",
+                "/v3/api-docs.yaml",
+                "/v3/api-docs/swagger-config",
                 "/swagger-resources/**",
                 "/swagger-ui.html",
+                "/swagger-ui/index.html",
                 "/webjars/**"
         );
     }

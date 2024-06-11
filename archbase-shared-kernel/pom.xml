@@ -5,7 +5,7 @@
     <parent>
         <artifactId>archbase-app-framework</artifactId>
         <groupId>br.com.archbase</groupId>
-        <version>1.0.6</version>
+        <version>1.0.8</version>
     </parent>
     <properties>
         <javaparser-core.version>3.25.10</javaparser-core.version>
