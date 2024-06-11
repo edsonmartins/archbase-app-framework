@@ -109,7 +109,7 @@ public class UserPersistenceAdapter implements UserPersistencePort, FindDataWith
                     existingEntity.setIsAdministrator(userDto.getIsAdministrator());
                     existingEntity.setPasswordNeverExpires(userDto.getPasswordNeverExpires());
                     existingEntity.setUnlimitedAccessHours(userDto.getUnlimitedAccessHours());
-                    existingEntity.setUsername(userDto.getUserName());
+                    existingEntity.setUserName(userDto.getUserName());
                     existingEntity.setEmail(userDto.getEmail());
                     existingEntity.setUpdateEntityDate(LocalDateTime.now());
                     existingEntity.setLastModifiedByUser(loggedUser.getUserName());
