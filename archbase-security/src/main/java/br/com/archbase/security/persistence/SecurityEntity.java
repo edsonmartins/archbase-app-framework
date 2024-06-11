@@ -28,17 +28,13 @@ public abstract class SecurityEntity extends TenantPersistenceEntityBase {
     @Column(name = "DESCRICAO", nullable = false)
     private String description;
 
-    @Column(name = "EMAIL", nullable = true)
-    private String email;
-
     public SecurityEntity() {
         // Default empty constructor
     }
 
-    public SecurityEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, String email) {
+    public SecurityEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description) {
         super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId);
         this.name = name;
         this.description = description;
-        this.email = email;
     }
 }

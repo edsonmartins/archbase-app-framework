@@ -11,6 +11,7 @@ import br.com.archbase.security.repository.ActionJpaRepository;
 import br.com.archbase.security.repository.PermissionJpaRepository;
 import br.com.archbase.security.repository.UserJpaRepository;
 import com.querydsl.core.types.dsl.BooleanExpression;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Component;
@@ -96,7 +97,9 @@ public class UserPersistenceAdapter implements UserPersistencePort, FindDataWith
                     existingEntity.setName(userDto.getName());
                     existingEntity.setDescription(userDto.getDescription());
                     existingEntity.setCode(userDto.getCode());
-                    existingEntity.setPassword(userDto.getPassword());
+                    if (!StringUtils.isBlank(userDto.getPassword())) {
+                        existingEntity.setPassword(userDto.getPassword());
+                    }
                     existingEntity.setAvatar(userDto.getAvatar());
                     existingEntity.setAccountDeactivated(userDto.getAccountDeactivated());
                     existingEntity.setAccountLocked(userDto.getAccountLocked());
@@ -106,7 +109,7 @@ public class UserPersistenceAdapter implements UserPersistencePort, FindDataWith
                     existingEntity.setIsAdministrator(userDto.getIsAdministrator());
                     existingEntity.setPasswordNeverExpires(userDto.getPasswordNeverExpires());
                     existingEntity.setUnlimitedAccessHours(userDto.getUnlimitedAccessHours());
-                    existingEntity.setUsername(userDto.getUserName());
+                    existingEntity.setUserName(userDto.getUserName());
                     existingEntity.setEmail(userDto.getEmail());
                     existingEntity.setUpdateEntityDate(LocalDateTime.now());
                     existingEntity.setLastModifiedByUser(loggedUser.getUserName());

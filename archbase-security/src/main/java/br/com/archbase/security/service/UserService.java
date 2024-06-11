@@ -8,7 +8,9 @@ import br.com.archbase.security.domain.dto.UserDto;
 import br.com.archbase.security.domain.entity.User;
 import br.com.archbase.security.usecase.UserUseCase;
 import br.com.archbase.validation.exception.ArchbaseValidationException;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.data.domain.Page;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -19,10 +21,12 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
 
     private final UserPersistenceAdapter persistenceAdapter;
     private final SecurityAdapter securityAdapter;
+    private final PasswordEncoder passwordEncoder;
 
-    public UserService(UserPersistenceAdapter persistenceAdapter, SecurityAdapter securityAdapter) {
+    public UserService(UserPersistenceAdapter persistenceAdapter, SecurityAdapter securityAdapter, PasswordEncoder passwordEncoder) {
         this.persistenceAdapter =  persistenceAdapter;
         this.securityAdapter = securityAdapter;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Override
@@ -75,11 +79,15 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
 
     @Override
     public UserDto createUser(UserDto userDto) {
+        userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
         return persistenceAdapter.createUser(userDto);
     }
 
     @Override
     public Optional<UserDto> updateUser(String id, UserDto userDto) {
+        if (!StringUtils.isBlank(userDto.getPassword())) {
+            userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
+        }
         return persistenceAdapter.updateUser(id,userDto);
     }
 
