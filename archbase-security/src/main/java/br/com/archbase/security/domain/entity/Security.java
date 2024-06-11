@@ -15,14 +15,12 @@ public abstract class Security<T extends AggregateRoot<T, Identifier>, E> extend
     protected String name;
     protected String description;
     protected AccessSchedule accessSchedule;
-    protected String email;
 
-    public Security(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, AccessSchedule accessSchedule, String email) {
+    public Security(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, AccessSchedule accessSchedule) {
         super(id, code, version, updateEntityDate, createEntityDate, createdByUser, lastModifiedByUser);
         this.name = name;
         this.description = description;
         this.accessSchedule = accessSchedule;
-        this.email = email;
     }
 
 }

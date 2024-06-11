@@ -25,8 +25,8 @@ public class GroupEntity extends SecurityEntity {
     }
 
     @Builder
-    public GroupEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, String email) {
-        super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId, name, description, email);
+    public GroupEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description) {
+        super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId, name, description);
     }
 
     public static GroupEntity fromDomain(Group group) {
@@ -44,7 +44,6 @@ public class GroupEntity extends SecurityEntity {
         groupEntity.setLastModifiedByUser(group.getLastModifiedByUser());
         groupEntity.setName(group.getName());
         groupEntity.setDescription(group.getDescription());
-        groupEntity.setEmail(group.getEmail());
 
         return groupEntity;
     }
@@ -60,7 +59,6 @@ public class GroupEntity extends SecurityEntity {
                 .lastModifiedByUser(this.getLastModifiedByUser())
                 .name(this.getName())
                 .description(this.getDescription())
-                .email(this.getEmail())
                 .build();
     }
 
@@ -75,7 +73,6 @@ public class GroupEntity extends SecurityEntity {
                 .lastModifiedByUser(this.getLastModifiedByUser())
                 .name(this.getName())
                 .description(this.getDescription())
-                .email(this.getEmail())
                 .build();
     }
 }

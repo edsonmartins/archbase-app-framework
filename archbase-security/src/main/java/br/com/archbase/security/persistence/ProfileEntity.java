@@ -22,8 +22,8 @@ public class ProfileEntity extends SecurityEntity {
     }
 
     @Builder
-    public ProfileEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, Set<ActionEntity> actions, String email) {
-        super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId, name, description, email);
+    public ProfileEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, Set<ActionEntity> actions) {
+        super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId, name, description);
     }
 
 
@@ -44,7 +44,6 @@ public class ProfileEntity extends SecurityEntity {
         profileEntity.setLastModifiedByUser(profile.getLastModifiedByUser());
         profileEntity.setName(profile.getName());
         profileEntity.setDescription(profile.getDescription());
-        profileEntity.setEmail(profile.getEmail());
 
         return profileEntity;
     }
@@ -60,7 +59,6 @@ public class ProfileEntity extends SecurityEntity {
                 .lastModifiedByUser(this.getLastModifiedByUser())
                 .name(this.getName())
                 .description(this.getDescription())
-                .email(this.getEmail())
                 .build();
     }
 
@@ -75,7 +73,6 @@ public class ProfileEntity extends SecurityEntity {
                 .lastModifiedByUser(this.getLastModifiedByUser())
                 .name(this.getName())
                 .description(this.getDescription())
-                .email(this.getEmail())
                 .build();
     }
 }

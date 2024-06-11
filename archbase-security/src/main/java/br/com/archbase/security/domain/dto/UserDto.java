@@ -34,10 +34,11 @@ public class UserDto extends SecurityDto {
 	protected List<UserGroupDto> groups = new ArrayList<>();
 	protected ProfileDto profile;
 	protected byte[] avatar;
+	protected String email;
 
 	@Builder
 	public UserDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Set<ActionDto> actions, String email, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleDto accessSchedule, List<UserGroupDto> groups, ProfileDto profile, byte[] avatar) {
-		super(id, code, version, createEntityDate, updateEntityDate, createdByUser, lastModifiedByUser, name, description, actions, email);
+		super(id, code, version, createEntityDate, updateEntityDate, createdByUser, lastModifiedByUser, name, description, actions);
 		this.userName = userName;
 		this.password = password;
 		this.changePasswordOnNextLogin = changePasswordOnNextLogin;
@@ -52,6 +53,7 @@ public class UserDto extends SecurityDto {
 		this.groups = groups;
 		this.profile = profile;
 		this.avatar = avatar;
+		this.email = email;
 	}
 
 	public static UserDto fromDomain(User user) {

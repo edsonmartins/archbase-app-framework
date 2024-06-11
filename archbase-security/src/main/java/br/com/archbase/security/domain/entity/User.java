@@ -34,11 +34,12 @@ public class User extends Security<User, User> implements AggregateRoot<User, Id
     protected List<UserGroup> groups = new ArrayList<>();
     protected Profile profile;
     protected byte[] avatar;
+    protected String email;
 
 
     @Builder
     public User(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, AccessSchedule accessSchedule, String email, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessSchedule accessSchedule1, List<UserGroup> groups, Profile profile, byte[] avatar) {
-        super(id, code, version, updateEntityDate, createEntityDate, createdByUser, lastModifiedByUser, name, description, accessSchedule, email);
+        super(id, code, version, updateEntityDate, createEntityDate, createdByUser, lastModifiedByUser, name, description, accessSchedule);
         this.userName = userName;
         this.password = password;
         this.changePasswordOnNextLogin = changePasswordOnNextLogin;
@@ -53,6 +54,7 @@ public class User extends Security<User, User> implements AggregateRoot<User, Id
         this.groups = groups;
         this.profile = profile;
         this.avatar = avatar;
+        this.email = email;
     }
 
     static class Validator extends AbstractArchbaseValidator<User> {
