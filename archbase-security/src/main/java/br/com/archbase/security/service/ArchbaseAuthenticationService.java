@@ -1,6 +1,7 @@
 package br.com.archbase.security.service;
 
-import br.com.archbase.security.adapter.PasswordResetTokenAdapter;
+import br.com.archbase.security.adapter.AccessTokenPersistenceAdapter;
+import br.com.archbase.security.adapter.PasswordResetTokenPersistenceAdapter;
 import br.com.archbase.security.auth.*;
 import br.com.archbase.security.domain.entity.PasswordResetToken;
 import br.com.archbase.security.persistence.AccessTokenEntity;
@@ -10,12 +11,9 @@ import br.com.archbase.security.repository.UserJpaRepository;
 import br.com.archbase.security.token.TokenType;
 import br.com.archbase.security.util.TokenGeneratorUtil;
 import br.com.archbase.validation.exception.ArchbaseValidationException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+import io.jsonwebtoken.JwtException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -23,7 +21,6 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -38,7 +35,8 @@ public class ArchbaseAuthenticationService {
     private final ArchbaseJwtService jwtService;
     private final AuthenticationManager authenticationManager;
     private final ArchbaseEmailService archbaseEmailService;
-    private final PasswordResetTokenAdapter passwordResetTokenAdapter;
+    private final PasswordResetTokenPersistenceAdapter passwordResetTokenPersistenceAdapter;
+    private final AccessTokenPersistenceAdapter accessTokenPersistenceAdapter;
 
     public AuthenticationResponse register(RegisterNewUser request) {
         Optional<UserEntity> byEmail = repository.findByEmail(request.getEmail());
@@ -82,13 +80,20 @@ public class ArchbaseAuthenticationService {
         }
         var user = repository.findByEmail(request.getEmail())
                 .orElseThrow();
-        var jwtToken = jwtService.generateToken(user);
+
+        AccessTokenEntity accessToken = accessTokenPersistenceAdapter.findValidTokenByUser(user);
+
+        if (accessToken == null || jwtService.isTokenExpired(accessToken.getToken())) {
+            var jwtToken = jwtService.generateToken(user);
+            revokeAllUserTokens(user);
+            accessToken = saveUserToken(user, jwtToken);
+        }
+
         var refreshToken = jwtService.generateRefreshToken(user);
-        revokeAllUserTokens(user);
-        AccessTokenEntity savedUserToken = saveUserToken(user, jwtToken);
+
         return AuthenticationResponse.builder()
-                .id(savedUserToken.getId())
-                .accessToken(jwtToken.token()).expirationTime(jwtToken.expiresIn()).tokenType(TokenType.BEARER)
+                .id(accessToken.getId())
+                .accessToken(accessToken.getToken()).expirationTime(accessToken.getExpirationTime()).tokenType(TokenType.BEARER)
                 .refreshToken(refreshToken.token())
                 .build();
     }
@@ -106,7 +111,7 @@ public class ArchbaseAuthenticationService {
     }
 
     private void revokeAllUserTokens(UserEntity user) {
-        var validUserTokens = tokenRepository.findAllValidTokenByUser(user.getId());
+        var validUserTokens = accessTokenPersistenceAdapter.findAllValidTokenByUser(user);
         if (validUserTokens.isEmpty())
             return;
         validUserTokens.forEach(token -> {
@@ -116,33 +121,31 @@ public class ArchbaseAuthenticationService {
         tokenRepository.saveAll(validUserTokens);
     }
 
-    public void refreshToken(
-            HttpServletRequest request,
-            HttpServletResponse response
-    ) throws IOException {
-        final String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
-        final String refreshToken;
-        final String userEmail;
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return;
-        }
-        refreshToken = authHeader.substring(7);
-        userEmail = jwtService.extractUsername(refreshToken);
+    public AuthenticationResponse refreshToken(RefreshTokenRequest refreshToken) {
+        String userEmail = jwtService.extractUsername(refreshToken.getToken());
         if (userEmail != null) {
             var user = this.repository.findByEmail(userEmail)
                     .orElseThrow();
-            if (jwtService.isTokenValid(refreshToken, user)) {
-                var accessToken = jwtService.generateToken(user);
-                revokeAllUserTokens(user);
-                AccessTokenEntity savedUserToken = saveUserToken(user, accessToken);
-                var authResponse = AuthenticationResponse.builder()
-                        .id(savedUserToken.getId())
-                        .accessToken(accessToken.token()).expirationTime(accessToken.expiresIn()).tokenType(TokenType.BEARER)
-                        .refreshToken(refreshToken)
+            if (jwtService.isTokenValid(refreshToken.getToken(), user)) {
+
+                AccessTokenEntity accessToken = accessTokenPersistenceAdapter.findValidTokenByUser(user);
+
+                if (accessToken == null || jwtService.isTokenExpired(accessToken.getToken())) {
+                    var jwtToken = jwtService.generateToken(user);
+                    revokeAllUserTokens(user);
+                    accessToken = saveUserToken(user, jwtToken);
+                }
+
+                var newRefreshToken = jwtService.generateRefreshToken(user);
+
+                return AuthenticationResponse.builder()
+                        .id(accessToken.getId())
+                        .accessToken(accessToken.getToken()).expirationTime(accessToken.getExpirationTime()).tokenType(TokenType.BEARER)
+                        .refreshToken(newRefreshToken.token())
                         .build();
-                new ObjectMapper().writeValue(response.getOutputStream(), authResponse);
             }
         }
+        throw new JwtException("Token inválido");
     }
 
     public void sendResetPasswordEmail(String email)  {
@@ -163,15 +166,15 @@ public class ArchbaseAuthenticationService {
     private String createPasswordResetToken(UserEntity user) {
         String passwordResetToken = TokenGeneratorUtil.generateAlphaNumericToken();
         PasswordResetToken token = new PasswordResetToken(passwordResetToken, user.toDomain());
-        passwordResetTokenAdapter.save(token);
+        passwordResetTokenPersistenceAdapter.save(token);
         return passwordResetToken;
     }
 
     private void revokeExistingTokens(UserEntity user) {
-        List<PasswordResetToken> passwordResetTokenList = passwordResetTokenAdapter.findAllNonExpiredAndNonRevokedTokens(user);
+        List<PasswordResetToken> passwordResetTokenList = passwordResetTokenPersistenceAdapter.findAllNonExpiredAndNonRevokedTokens(user);
         if (!passwordResetTokenList.isEmpty()) {
             passwordResetTokenList.forEach(PasswordResetToken::revokeToken);
-            passwordResetTokenAdapter.saveAll(passwordResetTokenList);
+            passwordResetTokenPersistenceAdapter.saveAll(passwordResetTokenList);
         }
     }
 
@@ -184,13 +187,13 @@ public class ArchbaseAuthenticationService {
         }
         UserEntity user = usuarioOptional.get();
 
-        PasswordResetToken token = passwordResetTokenAdapter.findToken(user, request.getPasswordResetToken());
+        PasswordResetToken token = passwordResetTokenPersistenceAdapter.findToken(user, request.getPasswordResetToken());
 
         if (token == null) {
             throw new ArchbaseValidationException("Token de redefinição de senha inválido.");
         }
         token.updateExpired();
-        passwordResetTokenAdapter.save(token);
+        passwordResetTokenPersistenceAdapter.save(token);
 
         if (token.isExpired()) {
             throw new ArchbaseValidationException("Token de redefinição de senha expirado, favor gerar novamente.");
@@ -204,6 +207,6 @@ public class ArchbaseAuthenticationService {
 
         repository.save(user);
         token.revokeToken();
-        passwordResetTokenAdapter.save(token);
+        passwordResetTokenPersistenceAdapter.save(token);
     }
 }
