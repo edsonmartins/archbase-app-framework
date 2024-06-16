@@ -16,7 +16,7 @@ import java.util.List;
 
 @Component
 @RequiredArgsConstructor
-public class PasswordResetTokenAdapter implements PasswordResetTokenUseCase {
+public class PasswordResetTokenPersistenceAdapter implements PasswordResetTokenUseCase {
 
     private final EntityManager entityManager;
 
