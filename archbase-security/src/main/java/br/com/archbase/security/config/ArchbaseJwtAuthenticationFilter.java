@@ -1,7 +1,10 @@
 package br.com.archbase.security.config;
 
 import br.com.archbase.ddd.context.ArchbaseTenantContext;
+import br.com.archbase.security.domain.entity.ApiToken;
+import br.com.archbase.security.exception.ArchbaseSecurityException;
 import br.com.archbase.security.repository.AccessTokenJpaRepository;
+import br.com.archbase.security.service.ApiTokenService;
 import br.com.archbase.security.service.ArchbaseJwtService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -18,6 +21,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
@@ -26,6 +30,7 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
     private final ArchbaseJwtService jwtService;
     private final UserDetailsService userDetailsService;
     private final AccessTokenJpaRepository tokenRepository;
+    private final ApiTokenService apiTokenService;
 
     @Override
     protected void doFilterInternal(
@@ -44,18 +49,41 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
         final String authHeader = request.getHeader("Authorization");
         final String jwt;
         final String userEmail;
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+
+        if (authHeader == null) {
             filterChain.doFilter(request, response);
             return;
         }
-        jwt = authHeader.substring(7);
-        userEmail = jwtService.extractUsername(jwt);
-        if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
-            var isTokenValid = tokenRepository.findByToken(jwt)
-                    .map(t -> !t.isExpired() && !t.isRevoked())
-                    .orElse(false);
-            if (jwtService.isTokenValid(jwt, userDetails) && isTokenValid) {
+
+        if (authHeader.startsWith("Bearer ")) {
+            jwt = authHeader.substring(7);
+            userEmail = jwtService.extractUsername(jwt);
+            if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
+                var isTokenValid = tokenRepository.findByToken(jwt)
+                        .map(t -> !t.isExpired() && !t.isRevoked())
+                        .orElse(false);
+                if (jwtService.isTokenValid(jwt, userDetails) && isTokenValid) {
+                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                            userDetails,
+                            null,
+                            userDetails.getAuthorities()
+                    );
+                    authToken.setDetails(
+                            new WebAuthenticationDetailsSource().buildDetails(request)
+                    );
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
+                }
+            }
+        } else if (authHeader.startsWith("ApiToken ")) {
+            String apiToken = authHeader.substring(9);
+            if (apiTokenService.validateToken(apiToken)) {
+                Optional<ApiToken> token = apiTokenService.getApiToken(apiToken);
+                if (token.isEmpty()){
+                    throw new ArchbaseSecurityException("Token de API Inválido.");
+                }
+                UserDetails userDetails = this.userDetailsService.loadUserByUsername(token.get().getUser().getEmail());
+
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                         userDetails,
                         null,
@@ -67,6 +95,7 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(authToken);
             }
         }
+
         filterChain.doFilter(request, response);
     }
 }
