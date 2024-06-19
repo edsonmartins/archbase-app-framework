@@ -2,6 +2,7 @@ package br.com.archbase.security.controller;
 
 import br.com.archbase.query.rsql.jpa.SortUtils;
 import br.com.archbase.security.domain.dto.GroupDto;
+import br.com.archbase.security.domain.dto.ResoucePermissionsWithTypeDto;
 import br.com.archbase.security.domain.dto.ResourceDto;
 import br.com.archbase.security.domain.dto.SecurityType;
 import br.com.archbase.security.service.GroupService;
@@ -57,9 +58,19 @@ public class ResourceController {
             value = {"/permissions/security/{id}"},
             params = {"type"}
     )
-    public ResponseEntity<?> findResourcesPermissions(@PathVariable String id, @RequestParam("type") SecurityType type) {
+    public ResponseEntity<List<ResoucePermissionsWithTypeDto>> findResourcesPermissions(@PathVariable String id, @RequestParam("type") SecurityType type) {
         try {
-            List<?> resourcesPermissions = resourceService.findResourcesPermissions(id, type);
+            List<ResoucePermissionsWithTypeDto> resourcesPermissions = resourceService.findResourcesPermissions(id, type);
+            return ResponseEntity.ok(resourcesPermissions);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/permissions")
+    public ResponseEntity<List<ResoucePermissionsWithTypeDto>> findAllResourcesPermissions() {
+        try {
+            List<ResoucePermissionsWithTypeDto> resourcesPermissions = resourceService.findAllResourcesPermissions();
             return ResponseEntity.ok(resourcesPermissions);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();

@@ -63,6 +63,10 @@ public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery
         return Lists.newArrayList();
     }
 
+    public List<ResoucePermissionsWithTypeDto> findAllResourcesPermissions() {
+        return adapter.findAllResourcesPermissions();
+    }
+
     @Override
     public ResourceDto findById(String s) {
         return adapter.findById(s);

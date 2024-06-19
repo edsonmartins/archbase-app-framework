@@ -142,6 +142,42 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
         return groupTuplesToResourcePermissions(groupPermissions, permission);
     }
 
+    public List<ResoucePermissionsWithTypeDto> findAllResourcesPermissions() {
+        QActionEntity action = QActionEntity.actionEntity;
+
+        JPAQueryFactory queryFactory = new JPAQueryFactory(entityManager);
+
+        List<Tuple> permissionsTuple = queryFactory
+                .select(action.resource.id, action.resource.description, action.id, action.description)
+                .from(action)
+                .fetch();
+
+        Map<String, Map<String, List<Tuple>>> groupedByResource = permissionsTuple.stream()
+                .collect(Collectors.groupingBy(t -> t.get(action.resource.id) + ":" + t.get(action.resource.description),
+                        Collectors.groupingBy(t -> t.get(action.id))));
+
+        return groupedByResource.entrySet().stream()
+                .map(entry -> {
+                    List<String> resourceIdName = Arrays.stream(entry.getKey().split(":")).toList();
+                    List<PermissionWithTypesDto> permissions = entry.getValue().entrySet().stream()
+                            .map(actionEntry -> {
+                                String actionId = actionEntry.getKey();
+                                String actionName = actionEntry.getValue().get(0).get(action.description);
+                                return PermissionWithTypesDto.builder()
+                                        .actionName(actionName)
+                                        .actionId(actionId)
+                                        .build();
+                            })
+                            .collect(Collectors.toList());
+                    return ResoucePermissionsWithTypeDto.builder()
+                            .resourceId(resourceIdName.get(0))
+                            .resourceName(resourceIdName.get(1))
+                            .permissions(permissions)
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
+
     private static List<ResoucePermissionsWithTypeDto> groupTuplesToResourcePermissions(List<Tuple> permissionsTuple, QPermissionEntity permission) {
         Map<String, Map<String, List<Tuple>>> groupedByResource = permissionsTuple.stream()
                 .collect(Collectors.groupingBy(t -> t.get(permission.action.resource.id) + ":" + t.get(permission.action.resource.description),
