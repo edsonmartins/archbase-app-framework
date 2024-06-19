@@ -3,6 +3,7 @@ package br.com.archbase.security.controller;
 import br.com.archbase.query.rsql.jpa.SortUtils;
 import br.com.archbase.security.domain.dto.GroupDto;
 import br.com.archbase.security.domain.dto.ResourceDto;
+import br.com.archbase.security.domain.dto.SecurityType;
 import br.com.archbase.security.service.GroupService;
 import br.com.archbase.security.service.ResourceService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,6 +53,18 @@ public class ResourceController {
         }
     }
 
+    @GetMapping(
+            value = {"/permissions/security/{id}"},
+            params = {"type"}
+    )
+    public ResponseEntity<?> findResourcesPermissions(@PathVariable String id, @RequestParam("type") SecurityType type) {
+        try {
+            List<?> resourcesPermissions = resourceService.findResourcesPermissions(id, type);
+            return ResponseEntity.ok(resourcesPermissions);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
 
     @GetMapping(
             value = {"/findAll"},

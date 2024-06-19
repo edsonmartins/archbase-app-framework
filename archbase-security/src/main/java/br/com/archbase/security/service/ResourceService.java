@@ -1,6 +1,9 @@
 package br.com.archbase.security.service;
 
 import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
+import br.com.archbase.security.domain.dto.ResoucePermissionsWithTypeDto;
+import br.com.archbase.security.domain.dto.SecurityType;
+import com.google.common.collect.Lists;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
@@ -45,6 +48,19 @@ public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery
     @Override
     public void deleteResource(String id) {
         adapter.deleteResource(id);
+    }
+
+    public List<ResoucePermissionsWithTypeDto> findResourcesPermissions(String securityId, SecurityType securityType) {
+        if (SecurityType.USER.equals(securityType)) {
+            return adapter.findUserResourcesPermissions(securityId);
+        }
+        if (SecurityType.PROFILE.equals(securityType)) {
+            return adapter.findProfileResourcesPermissions(securityId);
+        }
+        if (SecurityType.GROUP.equals(securityType)) {
+            return adapter.findGroupResourcesPermissions(securityId);
+        }
+        return Lists.newArrayList();
     }
 
     @Override
