@@ -3,20 +3,15 @@ package br.com.archbase.security.adapter;
 import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
 import br.com.archbase.query.rsql.jpa.SortUtils;
 import br.com.archbase.security.adapter.port.ResourcePersistencePort;
-import br.com.archbase.security.domain.dto.PermissionWithTypesDto;
-import br.com.archbase.security.domain.dto.ResoucePermissionsWithTypeDto;
-import br.com.archbase.security.domain.dto.ResourceDto;
-import br.com.archbase.security.domain.dto.SecurityType;
+import br.com.archbase.security.domain.dto.*;
 import br.com.archbase.security.persistence.*;
+import br.com.archbase.security.repository.PermissionJpaRepository;
 import br.com.archbase.security.repository.ResourceJpaRepository;
 import com.querydsl.core.Tuple;
-import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.core.types.dsl.Expressions;
-import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
-import com.querydsl.sql.SQLQuery;
 import jakarta.persistence.EntityManager;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Component;
 
@@ -24,11 +19,18 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Component
-@RequiredArgsConstructor
 public class ResourcePersistenceAdapter implements ResourcePersistencePort, FindDataWithFilterQuery<String, ResourceDto> {
 
     private final ResourceJpaRepository repository;
-    private final EntityManager entityManager;
+    private final PermissionJpaRepository permissionRepository;
+    private final JPAQueryFactory queryFactory;
+
+    @Autowired
+    public ResourcePersistenceAdapter(ResourceJpaRepository repository, PermissionJpaRepository permissionRepository, EntityManager entityManager) {
+        this.repository = repository;
+        this.permissionRepository = permissionRepository;
+        this.queryFactory = new JPAQueryFactory(entityManager);
+    }
 
     @Override
     public List<ResourceDto> findAllResources() {
@@ -71,10 +73,8 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
         QGroupEntity group = QGroupEntity.groupEntity;
         QProfileEntity profile = QProfileEntity.profileEntity;
 
-        JPAQueryFactory queryFactory = new JPAQueryFactory(entityManager);
-
         List<Tuple> userPermissions = queryFactory
-                .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.USER))
+                .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.USER), permission.id)
                 .from(permission)
                 .where(permission.security.id.eq(userId))
                 .fetch();
@@ -109,10 +109,8 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
         QUserEntity user = QUserEntity.userEntity;
         QProfileEntity profile = QProfileEntity.profileEntity;
 
-        JPAQueryFactory queryFactory = new JPAQueryFactory(entityManager);
-
         List<Tuple> profilePermissions = queryFactory
-                .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.PROFILE))
+                .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.PROFILE), permission.id)
                 .from(permission)
                 .join(permission.security, profile._super)
                 .join(user).on(user.profile.eq(profile))
@@ -128,10 +126,8 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
         QUserGroupEntity userGroup = QUserGroupEntity.userGroupEntity;
         QGroupEntity group = QGroupEntity.groupEntity;
 
-        JPAQueryFactory queryFactory = new JPAQueryFactory(entityManager);
-
         List<Tuple> groupPermissions = queryFactory
-                .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.GROUP))
+                .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.GROUP), permission.id)
                 .from(permission)
                 .join(permission.security, group._super)
                 .join(userGroup).on(userGroup.group.eq(group))
@@ -144,8 +140,6 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
 
     public List<ResoucePermissionsWithTypeDto> findAllResourcesPermissions() {
         QActionEntity action = QActionEntity.actionEntity;
-
-        JPAQueryFactory queryFactory = new JPAQueryFactory(entityManager);
 
         List<Tuple> permissionsTuple = queryFactory
                 .select(action.resource.id, action.resource.description, action.id, action.description)
@@ -193,11 +187,18 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                                         .map(t -> t.get(4, SecurityType.class))
                                         .collect(Collectors.toSet());
                                 String actionName = actionEntry.getValue().get(0).get(permission.action.description);
-                                return PermissionWithTypesDto.builder()
+                                String permissionId = actionEntry.getValue().get(0).get(permission.id);
+                                PermissionWithTypesDto permissionWithTypesDto = PermissionWithTypesDto.builder()
                                         .actionName(actionName)
                                         .actionId(actionId)
                                         .types(types)
                                         .build();
+
+                                if (permissionId != null) {
+                                    permissionWithTypesDto.setPermissionId(permissionId);
+                                }
+
+                                return permissionWithTypesDto;
                             })
                             .collect(Collectors.toList());
                     return ResoucePermissionsWithTypeDto.builder()
@@ -207,6 +208,26 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                             .build();
                 })
                 .collect(Collectors.toList());
+    }
+
+    public void deletePermission(String id) {
+        permissionRepository.deleteById(id);
+    }
+
+    public PermissionDto grantPermission(PermissionDto permissionDto) {
+        return permissionRepository.save(PermissionEntity.fromDomain(permissionDto.toDomain())).toDto();
+    }
+
+    public PermissionDto findPermission(String securityId, String actionId) {
+        QPermissionEntity permission = QPermissionEntity.permissionEntity;
+
+        PermissionEntity permissionEntity = queryFactory.selectFrom(permission)
+                .where(permission.action.id.eq(actionId).and(permission.security.id.eq(securityId)))
+                .fetchFirst();
+        if (permissionEntity == null) {
+            return null;
+        }
+        return permissionEntity.toDto();
     }
 
     @Override

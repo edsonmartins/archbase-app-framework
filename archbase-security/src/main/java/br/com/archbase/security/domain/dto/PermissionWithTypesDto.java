@@ -15,7 +15,8 @@ import java.util.Set;
 @Builder
 @JsonIdentityInfo(generator = ObjectIdGenerators.UUIDGenerator.class, property = "@id")
 public class PermissionWithTypesDto {
-
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	private String permissionId;
 	private String actionId;
 	private String actionName;
 	@JsonInclude(JsonInclude.Include.NON_NULL)

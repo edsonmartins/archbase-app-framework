@@ -1,12 +1,9 @@
 package br.com.archbase.security.controller;
 
 import br.com.archbase.query.rsql.jpa.SortUtils;
-import br.com.archbase.security.domain.dto.GroupDto;
-import br.com.archbase.security.domain.dto.ResoucePermissionsWithTypeDto;
-import br.com.archbase.security.domain.dto.ResourceDto;
-import br.com.archbase.security.domain.dto.SecurityType;
-import br.com.archbase.security.service.GroupService;
-import br.com.archbase.security.service.ResourceService;
+import br.com.archbase.security.domain.dto.*;
+import br.com.archbase.security.service.*;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -16,18 +13,20 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @RestController
+@RequiredArgsConstructor
 @RequestMapping("/api/v1/resource")
 public class ResourceController {
 
     private final ResourceService resourceService;
-
-    @Autowired
-    public ResourceController(ResourceService resourceService) {
-        this.resourceService = resourceService;
-    }
+    private final ActionService actionService;
+    private final UserService userService;
+    private final GroupService groupService;
+    private final UserProfileService userProfileService;
 
     @PostMapping
     public ResponseEntity<ResourceDto> createResource(@RequestBody ResourceDto resource)  {
@@ -75,6 +74,50 @@ public class ResourceController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
+    }
+
+    @PostMapping("/permissions")
+    public ResponseEntity<?> grantPermission(@RequestBody GrantPermissionDto grantPermission) {
+        try {
+            Optional<ActionDto> action = actionService.findActionById(grantPermission.getActionId());
+            if (action.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Ação não encontrada");
+            }
+            SecurityDto security = null;
+            if (grantPermission.getType().equals(SecurityType.USER)) {
+                security = userService.findById(grantPermission.getSecurityId());
+            }
+            if (grantPermission.getType().equals(SecurityType.PROFILE)) {
+                security = userProfileService.findById(grantPermission.getSecurityId());
+            }
+            if (grantPermission.getType().equals(SecurityType.GROUP)) {
+                security = groupService.findById(grantPermission.getSecurityId());
+            }
+
+            if (security == null) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Entidade de segurança não encontrada");
+            }
+
+            PermissionDto existingPermission = resourceService.findPermission(security.getId(), action.get().getId());
+
+            if (existingPermission != null) {
+                return ResponseEntity.ok(existingPermission.getId());
+            }
+
+            PermissionDto permission = PermissionDto.builder()
+                    .action(action.get())
+                    .security(security)
+                    .build();
+            PermissionDto savedPermission = resourceService.grantPermission(permission);
+            return ResponseEntity.ok(savedPermission.getId());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @DeleteMapping("/permissions/{id}")
+    public void deletePermission(@PathVariable String id) {
+        resourceService.deletePermission(id);
     }
 
     @GetMapping(
