@@ -7,6 +7,5 @@ import br.com.archbase.security.persistence.UserEntity;
 import java.util.List;
 
 public interface AccessTokenUseCase {
-    List<AccessTokenEntity> findAllValidTokenByUser(UserEntity user);
-    AccessTokenEntity findValidTokenByUser(UserEntity user);
+    public void revokeToken (String token);
 }

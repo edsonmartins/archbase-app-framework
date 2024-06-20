@@ -63,26 +63,26 @@ public class ActionService implements ActionUseCase, FindDataWithFilterQuery<Str
 
     @Override
     public Page<ActionDto> findAll(int page, int size) {
-        return null;
+        return actionPersistenceAdapter.findAll(page, size);
     }
 
     @Override
     public Page<ActionDto> findAll(int page, int size, String[] sort) {
-        return null;
+        return actionPersistenceAdapter.findAll(page,size,sort);
     }
 
     @Override
     public List<ActionDto> findAll(List<String> strings) {
-        return List.of();
+        return actionPersistenceAdapter.findAll(strings);
     }
 
     @Override
     public Page<ActionDto> findWithFilter(String filter, int page, int size) {
-        return null;
+        return actionPersistenceAdapter.findWithFilter(filter,page,size);
     }
 
     @Override
     public Page<ActionDto> findWithFilter(String filter, int page, int size, String[] sort) {
-        return null;
+        return actionPersistenceAdapter.findWithFilter(filter,page,size,sort);
     }
 }

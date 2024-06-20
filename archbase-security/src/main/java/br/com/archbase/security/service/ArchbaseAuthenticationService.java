@@ -21,7 +21,10 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -100,14 +103,22 @@ public class ArchbaseAuthenticationService {
 
     private AccessTokenEntity saveUserToken(UserEntity usuario, ArchbaseJwtService.TokenResult jwtToken) {
         var token = AccessTokenEntity.builder()
+                .id(UUID.randomUUID().toString())
                 .user(usuario)
                 .token(jwtToken.token())
                 .expirationTime(jwtToken.expiresIn())
+                .expirationDate(convertToLocalDateTimeViaMilisecond(jwtService.extractExpiration(jwtToken.token())))
                 .tokenType(TokenType.BEARER)
                 .expired(false)
                 .revoked(false)
                 .build();
         return tokenRepository.save(token);
+    }
+
+    public LocalDateTime convertToLocalDateTimeViaMilisecond(Date dateToConvert) {
+        return Instant.ofEpochMilli(dateToConvert.getTime())
+                .atZone(ZoneId.systemDefault())
+                .toLocalDateTime();
     }
 
     private void revokeAllUserTokens(UserEntity user) {
