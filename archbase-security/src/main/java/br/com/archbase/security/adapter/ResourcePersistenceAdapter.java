@@ -158,14 +158,14 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                                 String actionId = actionEntry.getKey();
                                 String actionName = actionEntry.getValue().get(0).get(action.description);
                                 return PermissionWithTypesDto.builder()
-                                        .actionName(actionName)
+                                        .actionDescription(actionName)
                                         .actionId(actionId)
                                         .build();
                             })
                             .collect(Collectors.toList());
                     return ResoucePermissionsWithTypeDto.builder()
                             .resourceId(resourceIdName.get(0))
-                            .resourceName(resourceIdName.get(1))
+                            .resourceDescription(resourceIdName.get(1))
                             .permissions(permissions)
                             .build();
                 })
@@ -179,17 +179,17 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
 
         return groupedByResource.entrySet().stream()
                 .map(entry -> {
-                    List<String> resourceIdName = Arrays.stream(entry.getKey().split(":")).toList();
+                    List<String> resourceIdDescription = Arrays.stream(entry.getKey().split(":")).toList();
                     List<PermissionWithTypesDto> permissions = entry.getValue().entrySet().stream()
                             .map(actionEntry -> {
                                 String actionId = actionEntry.getKey();
                                 Set<SecurityType> types = actionEntry.getValue().stream()
                                         .map(t -> t.get(4, SecurityType.class))
                                         .collect(Collectors.toSet());
-                                String actionName = actionEntry.getValue().get(0).get(permission.action.description);
+                                String actionDescription = actionEntry.getValue().get(0).get(permission.action.description);
                                 String permissionId = actionEntry.getValue().get(0).get(permission.id);
                                 PermissionWithTypesDto permissionWithTypesDto = PermissionWithTypesDto.builder()
-                                        .actionName(actionName)
+                                        .actionDescription(actionDescription)
                                         .actionId(actionId)
                                         .types(types)
                                         .build();
@@ -202,8 +202,8 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                             })
                             .collect(Collectors.toList());
                     return ResoucePermissionsWithTypeDto.builder()
-                            .resourceId(resourceIdName.get(0))
-                            .resourceName(resourceIdName.get(1))
+                            .resourceId(resourceIdDescription.get(0))
+                            .resourceDescription(resourceIdDescription.get(1))
                             .permissions(permissions)
                             .build();
                 })

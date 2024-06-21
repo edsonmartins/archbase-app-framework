@@ -18,7 +18,7 @@ public class PermissionWithTypesDto {
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	private String permissionId;
 	private String actionId;
-	private String actionName;
+	private String actionDescription;
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	private Set<SecurityType> types;
 }

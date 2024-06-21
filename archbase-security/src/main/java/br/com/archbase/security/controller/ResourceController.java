@@ -4,7 +4,6 @@ import br.com.archbase.query.rsql.jpa.SortUtils;
 import br.com.archbase.security.domain.dto.*;
 import br.com.archbase.security.service.*;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -13,7 +12,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -101,7 +99,7 @@ public class ResourceController {
             PermissionDto existingPermission = resourceService.findPermission(security.getId(), action.get().getId());
 
             if (existingPermission != null) {
-                return ResponseEntity.ok(existingPermission.getId());
+                return ResponseEntity.ok(ResouceActionPermissionDto.fromPermissionDto(existingPermission));
             }
 
             PermissionDto permission = PermissionDto.builder()
@@ -109,7 +107,7 @@ public class ResourceController {
                     .security(security)
                     .build();
             PermissionDto savedPermission = resourceService.grantPermission(permission);
-            return ResponseEntity.ok(savedPermission.getId());
+            return ResponseEntity.ok(ResouceActionPermissionDto.fromPermissionDto(savedPermission));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }

@@ -15,6 +15,6 @@ import java.util.List;
 public class ResoucePermissionsWithTypeDto {
 
 	private String resourceId;
-	private String resourceName;
+	private String resourceDescription;
 	private List<PermissionWithTypesDto> permissions;
 }
