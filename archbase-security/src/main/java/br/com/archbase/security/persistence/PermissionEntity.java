@@ -1,6 +1,9 @@
 package br.com.archbase.security.persistence;
 
 import br.com.archbase.ddd.domain.base.TenantPersistenceEntityBase;
+import br.com.archbase.security.domain.dto.PermissionDto;
+import br.com.archbase.security.domain.dto.ProfileDto;
+import br.com.archbase.security.domain.dto.SecurityDto;
 import br.com.archbase.security.domain.entity.*;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
@@ -97,6 +100,31 @@ public class PermissionEntity extends TenantPersistenceEntityBase {
                 .lastModifiedByUser(this.getLastModifiedByUser())
                 .security(security)
                 .action(this.action.toDomain())
+                .build();
+    }
+
+    public PermissionDto toDto() {
+        SecurityDto security = null;
+        if (this.security != null) {
+            if (this.security instanceof UserEntity) {
+                security = ((UserEntity) this.security).toDto();
+            } else if (this.security instanceof GroupEntity){
+                security = ((GroupEntity) this.security).toDto();
+            } else if (this.security instanceof ProfileEntity) {
+                security = ((ProfileEntity) this.security).toDto();
+            }
+        }
+
+        return PermissionDto.builder()
+                .id(this.getId())
+                .code(this.getCode())
+                .version(this.getVersion())
+                .updateEntityDate(this.getUpdateEntityDate())
+                .createEntityDate(this.getCreateEntityDate())
+                .createdByUser(this.getCreatedByUser())
+                .lastModifiedByUser(this.getLastModifiedByUser())
+                .security(security)
+                .action(this.action.toDto())
                 .build();
     }
 
