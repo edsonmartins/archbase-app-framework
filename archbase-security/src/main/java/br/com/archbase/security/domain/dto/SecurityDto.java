@@ -32,12 +32,11 @@ public abstract class SecurityDto {
 	protected String name;
 	protected String description;
 	protected Set<ActionDto> actions = new HashSet<>();
-	protected String email;
 
 	public SecurityDto() {
 	}
 
-	public SecurityDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Set<ActionDto> actions, String email) {
+	public SecurityDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Set<ActionDto> actions) {
 		this.id = id;
 		this.code = code;
 		this.version = version;
@@ -48,6 +47,5 @@ public abstract class SecurityDto {
 		this.name = name;
 		this.description = description;
 		this.actions = actions;
-		this.email = email;
 	}
 }

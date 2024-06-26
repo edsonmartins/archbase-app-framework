@@ -20,8 +20,8 @@ public class ProfileDto extends SecurityDto {
     }
 
     @Builder
-    public ProfileDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Set<ActionDto> actions, String email) {
-        super(id, code, version, createEntityDate, updateEntityDate, createdByUser, lastModifiedByUser, name, description, actions, email);
+    public ProfileDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Set<ActionDto> actions) {
+        super(id, code, version, createEntityDate, updateEntityDate, createdByUser, lastModifiedByUser, name, description, actions);
     }
 
 
@@ -40,7 +40,6 @@ public class ProfileDto extends SecurityDto {
                 .lastModifiedByUser(profile.getLastModifiedByUser())
                 .name(profile.getName())
                 .description(profile.getDescription())
-                .email(profile.getEmail())
                 .build();
     }
 
@@ -55,7 +54,6 @@ public class ProfileDto extends SecurityDto {
                 .lastModifiedByUser(this.lastModifiedByUser)
                 .name(this.name)
                 .description(this.description)
-                .email(this.email)
                 .build();
     }
 }

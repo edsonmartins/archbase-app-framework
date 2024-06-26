@@ -17,8 +17,8 @@ import java.util.stream.Collectors;
 @JsonIdentityInfo(generator = ObjectIdGenerators.UUIDGenerator.class, property = "@id")
 public class GroupDto extends SecurityDto {
     @Builder
-	public GroupDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Set<ActionDto> actions, String email) {
-		super(id, code, version, createEntityDate, updateEntityDate, createdByUser, lastModifiedByUser, name, description, actions, email);
+	public GroupDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Set<ActionDto> actions) {
+		super(id, code, version, createEntityDate, updateEntityDate, createdByUser, lastModifiedByUser, name, description, actions);
 	}
 
 	public static GroupDto fromDomain(Group group) {
@@ -36,7 +36,6 @@ public class GroupDto extends SecurityDto {
 				.lastModifiedByUser(group.getLastModifiedByUser())
 				.name(group.getName())
 				.description(group.getDescription())
-				.email(group.getEmail())
 				.build();
 	}
 
@@ -51,7 +50,6 @@ public class GroupDto extends SecurityDto {
 				.lastModifiedByUser(this.lastModifiedByUser)
 				.name(this.name)
 				.description(this.description)
-				.email(this.email)
 				.build();
 	}
 }

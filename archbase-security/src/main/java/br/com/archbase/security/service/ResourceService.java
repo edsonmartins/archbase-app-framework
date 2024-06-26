@@ -1,15 +1,19 @@
 package br.com.archbase.security.service;
 
 import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
+import br.com.archbase.security.adapter.SecurityAdapter;
+import br.com.archbase.security.domain.dto.*;
+import br.com.archbase.security.domain.entity.User;
+import com.google.common.collect.Lists;
 import br.com.archbase.security.domain.dto.ResourcePermissionsDto;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 
 import br.com.archbase.security.adapter.ResourcePersistenceAdapter;
-import br.com.archbase.security.domain.dto.ResourceDto;
 import br.com.archbase.security.usecase.ResourceUseCase;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -17,10 +21,12 @@ import java.util.Optional;
 public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery<String, ResourceDto> {
 
     private final ResourcePersistenceAdapter adapter;
+    private final SecurityAdapter securityAdapter;
 
     @Autowired
-    public ResourceService(ResourcePersistenceAdapter adapter) {
+    public ResourceService(ResourcePersistenceAdapter adapter, SecurityAdapter securityAdapter) {
         this.adapter = adapter;
+        this.securityAdapter = securityAdapter;
     }
 
     @Override
@@ -51,6 +57,40 @@ public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery
     @Override
     public ResourcePermissionsDto findLoggedUserResourcePermissions(String resourceName) {
         return adapter.findLoggedUserResourcePermissions(resourceName);
+    }
+
+    public List<ResoucePermissionsWithTypeDto> findResourcesPermissions(String securityId, SecurityType securityType) {
+        if (SecurityType.USER.equals(securityType)) {
+            return adapter.findUserResourcesPermissions(securityId);
+        }
+        if (SecurityType.PROFILE.equals(securityType)) {
+            return adapter.findProfileResourcesPermissions(securityId);
+        }
+        if (SecurityType.GROUP.equals(securityType)) {
+            return adapter.findGroupResourcesPermissions(securityId);
+        }
+        return Lists.newArrayList();
+    }
+
+    public List<ResoucePermissionsWithTypeDto> findAllResourcesPermissions() {
+        return adapter.findAllResourcesPermissions();
+    }
+
+    public PermissionDto findPermission(String securityId, String actionId) {
+        return adapter.findPermission(securityId, actionId);
+    }
+
+    public PermissionDto grantPermission(PermissionDto permissionDto) {
+        User user = securityAdapter.getLoggedUser();
+        permissionDto.setCreatedByUser(user.getUserName());
+        permissionDto.setLastModifiedByUser(user.getUserName());
+        permissionDto.setUpdateEntityDate(LocalDateTime.now());
+        permissionDto.setCreateEntityDate(LocalDateTime.now());
+        return adapter.grantPermission(permissionDto);
+    }
+
+    public void deletePermission(String id) {
+        adapter.deletePermission(id);
     }
 
     @Override
