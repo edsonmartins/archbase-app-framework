@@ -71,6 +71,16 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
     }
 
     @Override
+    public ResourceDto findResource(String resourceName) {
+        QResourceEntity resource = QResourceEntity.resourceEntity;
+        ResourceEntity resourceEntity = queryFactory.selectFrom(resource).where(resource.name.eq(resourceName)).fetchOne();
+        if (resourceEntity == null) {
+            return null;
+        }
+        return resourceEntity.toDto();
+    }
+
+    @Override
     public ResourcePermissionsDto findLoggedUserResourcePermissions(String resourceName) {
         User user = securityAdapter.getLoggedUser();
 
@@ -82,12 +92,15 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
 
         // Construção das condições individuais
         BooleanExpression resourceCondition = permissionEntity.action.resource.name.eq(resourceName);
-        BooleanExpression userCondition = permissionEntity.security.id.eq(user.getId().toString());
+        BooleanExpression userCondition = permissionEntity.security.id.eq(user.getId().toString())
+                .and(permissionEntity.action.active.isTrue());
         BooleanExpression groupCondition = permissionEntity.security.eq(groupEntity._super)
                 .and(userGroupEntity.group.eq(groupEntity))
-                .and(userGroupEntity.user.id.eq(user.getId().toString()));
+                .and(userGroupEntity.user.id.eq(user.getId().toString()))
+                .and(permissionEntity.action.active.isTrue());
         BooleanExpression profileCondition = permissionEntity.security.eq(profileEntity._super)
-                .and(profileEntity.id.eq(user.getProfile().getId().toString()));
+                .and(profileEntity.id.eq(user.getProfile().getId().toString()))
+                .and(permissionEntity.action.active.isTrue());
 
         // Combinação das condições com AND e OR
         BooleanExpression predicate = resourceCondition.and(userCondition.or(groupCondition).or(profileCondition));
@@ -109,7 +122,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                 .build();
     }
 
-
+    @Override
     public List<ResoucePermissionsWithTypeDto> findUserResourcesPermissions(String userId) {
 
         QPermissionEntity permission = QPermissionEntity.permissionEntity;
@@ -148,6 +161,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
         return groupTuplesToResourcePermissions(permissionsTuple, permission);
     }
 
+    @Override
     public List<ResoucePermissionsWithTypeDto> findProfileResourcesPermissions(String profileId) {
 
         QPermissionEntity permission = QPermissionEntity.permissionEntity;
@@ -165,6 +179,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
         return groupTuplesToResourcePermissions(profilePermissions, permission);
     }
 
+    @Override
     public List<ResoucePermissionsWithTypeDto> findGroupResourcesPermissions(String groupId) {
 
         QPermissionEntity permission = QPermissionEntity.permissionEntity;
@@ -183,6 +198,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
         return groupTuplesToResourcePermissions(groupPermissions, permission);
     }
 
+    @Override
     public List<ResoucePermissionsWithTypeDto> findAllResourcesPermissions() {
         QActionEntity action = QActionEntity.actionEntity;
 
@@ -255,14 +271,17 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                 .collect(Collectors.toList());
     }
 
+    @Override
     public void deletePermission(String id) {
         permissionRepository.deleteById(id);
     }
 
+    @Override
     public PermissionDto grantPermission(PermissionDto permissionDto) {
         return permissionRepository.save(PermissionEntity.fromDomain(permissionDto.toDomain())).toDto();
     }
 
+    @Override
     public PermissionDto findPermission(String securityId, String actionId) {
         QPermissionEntity permission = QPermissionEntity.permissionEntity;
 

@@ -1,6 +1,7 @@
 package br.com.archbase.security.service;
 
 import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
+import br.com.archbase.security.adapter.ActionPersistenceAdapter;
 import br.com.archbase.security.adapter.SecurityAdapter;
 import br.com.archbase.security.domain.dto.*;
 import br.com.archbase.security.domain.entity.User;
@@ -22,11 +23,13 @@ public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery
 
     private final ResourcePersistenceAdapter adapter;
     private final SecurityAdapter securityAdapter;
+    private final ActionPersistenceAdapter actionPersistenceAdapter;
 
     @Autowired
-    public ResourceService(ResourcePersistenceAdapter adapter, SecurityAdapter securityAdapter) {
+    public ResourceService(ResourcePersistenceAdapter adapter, SecurityAdapter securityAdapter, ActionPersistenceAdapter actionPersistenceAdapter) {
         this.adapter = adapter;
         this.securityAdapter = securityAdapter;
+        this.actionPersistenceAdapter = actionPersistenceAdapter;
     }
 
     @Override
@@ -52,6 +55,52 @@ public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery
     @Override
     public void deleteResource(String id) {
         adapter.deleteResource(id);
+    }
+
+    @Override
+    public ResourcePermissionsDto registerResource(ResourceRegisterDto resourceRegister) {
+        ResourceDto resourceDto;
+        resourceDto = adapter.findResource(resourceRegister.getResource().getResourceName());
+        if (resourceDto == null) {
+            ResourceDto resource = ResourceDto.builder()
+                    .name(resourceRegister.getResource().getResourceName())
+                    .description(resourceRegister.getResource().getResourceDescription())
+                    .createEntityDate(LocalDateTime.now())
+                    .createdByUser("archbase")
+                    .version(0L)
+                    .actions(Lists.newArrayList())
+                    .build();
+            resourceDto = adapter.createResource(resource);
+        }
+        ResourceDto finalResourceDto = resourceDto;
+        List<String> actionNames = resourceRegister.getActions().stream().map(SimpleActionDto::getActionName).toList();
+        List<ActionDto> missingActions = actionPersistenceAdapter.findMissingActionsByNames(actionNames, finalResourceDto.getId());
+        missingActions.forEach(missingAction -> {
+            missingAction.setActive(false);
+            actionPersistenceAdapter.updateAction(missingAction.getId(), missingAction);
+        });
+        resourceRegister.getActions().forEach(simpleActionDto -> {
+            Optional<ActionDto> actionOptional = actionPersistenceAdapter
+                    .findActionByName(simpleActionDto.getActionName(), finalResourceDto.getId());
+            if (actionOptional.isEmpty()) {
+                ActionDto action = ActionDto.builder()
+                        .name(simpleActionDto.getActionName())
+                        .description(simpleActionDto.getActionDescription())
+                        .resource(finalResourceDto)
+                        .createEntityDate(LocalDateTime.now())
+                        .createdByUser("archbase")
+                        .version(0L)
+                        .build();
+                actionPersistenceAdapter.createAction(action);
+            } else {
+                ActionDto foundAction = actionOptional.get();
+                if (!foundAction.getActive()) {
+                    foundAction.setActive(true);
+                    actionPersistenceAdapter.updateAction(foundAction.getId(), foundAction);
+                }
+            }
+        });
+        return adapter.findLoggedUserResourcePermissions(finalResourceDto.getName());
     }
 
     @Override

@@ -42,6 +42,11 @@ public class ResourceController {
         resourceService.deleteResource(id);
     }
 
+    @PostMapping("/register")
+    public ResponseEntity<ResourcePermissionsDto> registerResource(@RequestBody ResourceRegisterDto resourceRegister)  {
+        return ResponseEntity.ok(resourceService.registerResource(resourceRegister));
+    }
+
     @GetMapping("/permissions/{resourceName}")
     public ResponseEntity<ResourcePermissionsDto> findLoggedUserResourcePermissions(@PathVariable String resourceName) {
         return ResponseEntity.ok(resourceService.findLoggedUserResourcePermissions(resourceName));

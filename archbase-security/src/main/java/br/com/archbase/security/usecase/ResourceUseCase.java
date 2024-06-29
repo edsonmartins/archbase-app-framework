@@ -2,6 +2,7 @@ package br.com.archbase.security.usecase;
 
 import br.com.archbase.security.domain.dto.ResourceDto;
 import br.com.archbase.security.domain.dto.ResourcePermissionsDto;
+import br.com.archbase.security.domain.dto.ResourceRegisterDto;
 
 import java.util.List;
 import java.util.Optional;
@@ -18,4 +19,6 @@ public interface ResourceUseCase {
     public void deleteResource(String id);
 
     public ResourcePermissionsDto findLoggedUserResourcePermissions(String resourceName);
+
+    public ResourcePermissionsDto registerResource(ResourceRegisterDto resourceRegister);
 }

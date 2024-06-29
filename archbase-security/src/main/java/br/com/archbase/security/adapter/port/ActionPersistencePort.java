@@ -21,4 +21,6 @@ public interface ActionPersistencePort {
 
     public void deleteAction(String id) ;
 
+    public List<ActionDto> findMissingActionsByNames(List<String> name, String resourceId);
+
 }
