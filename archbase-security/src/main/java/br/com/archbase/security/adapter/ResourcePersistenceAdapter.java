@@ -94,16 +94,24 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
         BooleanExpression resourceCondition = permissionEntity.action.resource.name.eq(resourceName);
         BooleanExpression userCondition = permissionEntity.security.id.eq(user.getId().toString())
                 .and(permissionEntity.action.active.isTrue());
+
         BooleanExpression groupCondition = permissionEntity.security.eq(groupEntity._super)
                 .and(userGroupEntity.group.eq(groupEntity))
                 .and(userGroupEntity.user.id.eq(user.getId().toString()))
                 .and(permissionEntity.action.active.isTrue());
-        BooleanExpression profileCondition = permissionEntity.security.eq(profileEntity._super)
-                .and(profileEntity.id.eq(user.getProfile().getId().toString()))
-                .and(permissionEntity.action.active.isTrue());
 
-        // Combinação das condições com AND e OR
-        BooleanExpression predicate = resourceCondition.and(userCondition.or(groupCondition).or(profileCondition));
+        BooleanExpression securityCondition = userCondition.or(groupCondition);
+
+        if (user.getProfile() != null) {
+            BooleanExpression profileCondition = permissionEntity.security.eq(profileEntity._super)
+                    .and(profileEntity.id.eq(user.getProfile().getId().toString()))
+                    .and(permissionEntity.action.active.isTrue());
+
+            securityCondition = securityCondition.or(profileCondition);
+        }
+
+        BooleanExpression predicate = resourceCondition
+                .and(securityCondition);
 
         // Execução da consulta com junções apropriadas
         List<PermissionEntity> permissionEntities = queryFactory
