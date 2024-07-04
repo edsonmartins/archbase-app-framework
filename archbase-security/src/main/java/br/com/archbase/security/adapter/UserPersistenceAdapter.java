@@ -17,10 +17,7 @@ import org.springframework.data.domain.*;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Component
@@ -114,6 +111,12 @@ public class UserPersistenceAdapter implements UserPersistencePort, FindDataWith
                     existingEntity.setUpdateEntityDate(LocalDateTime.now());
                     existingEntity.setLastModifiedByUser(loggedUser.getUserName());
                     existingEntity.setProfile(userDto.getProfile() != null ? ProfileEntity.fromDomain(userDto.getProfile().toDomain()):null);
+                    Set<UserGroupEntity> currentGroups = existingEntity.getGroups();
+                    if (userDto.getGroups() != null) {
+                        currentGroups.clear();
+                        userDto.getGroups()
+                                .forEach(group -> currentGroups.add(UserGroupEntity.fromDomain(group.toDomain(), existingEntity)));
+                    }
                     existingEntity.setAccessSchedule(userDto.getAccessSchedule() != null ? AccessScheduleEntity.fromDomain(userDto.getAccessSchedule().toDomain()):null);
                     return repository.save(existingEntity).toDto();
                 });
