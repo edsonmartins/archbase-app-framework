@@ -22,6 +22,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.Optional;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
@@ -75,10 +76,9 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
             }
-        } else if (authHeader.startsWith("ApiToken ")) {
-            String apiToken = authHeader.substring(9);
-            if (apiTokenService.validateToken(apiToken)) {
-                Optional<ApiToken> token = apiTokenService.getApiToken(apiToken);
+        } else if (isValidUUID(authHeader)) {
+            if (apiTokenService.validateToken(authHeader)) {
+                Optional<ApiToken> token = apiTokenService.getApiToken(authHeader);
                 if (token.isEmpty()){
                     throw new ArchbaseSecurityException("Token de API Inválido.");
                 }
@@ -97,5 +97,14 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private boolean isValidUUID(String token) {
+        try {
+            UUID.fromString(token);
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 }

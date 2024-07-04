@@ -2,6 +2,7 @@ package br.com.archbase.ddd.domain.base;
 
 
 import br.com.archbase.ddd.domain.contracts.*;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
@@ -10,18 +11,25 @@ import java.util.Objects;
 @Getter
 public abstract class DomainEntityBase<T extends AggregateRoot<T, Identifier>> implements Entity<T, Identifier> {
 
+    @Schema(description = "Identificador único da entidade")
     protected ArchbaseIdentifier id;
 
+    @Schema(description = "Código da entidade")
     protected String code;
 
+    @Schema(description = "Versão da entidade")
     protected Long version;
 
+    @Schema(description = "Data de criação da entidade")
     protected LocalDateTime createEntityDate;
 
+    @Schema(description = "Data de atualização da entidade")
     protected LocalDateTime updateEntityDate;
 
+    @Schema(description = "Usuário que criou a entidade")
     protected String createdByUser;
 
+    @Schema(description = "Usuário que modificou a entidade pela última vez")
     protected String lastModifiedByUser;
 
     public abstract ValidationResult validate();
