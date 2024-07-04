@@ -8,6 +8,8 @@ import br.com.archbase.security.persistence.ActionEntity;
 import br.com.archbase.security.persistence.GroupEntity;
 import br.com.archbase.security.repository.ActionJpaRepository;
 import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.jpa.impl.JPAQueryFactory;
+import jakarta.persistence.EntityManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Component;
@@ -26,10 +28,12 @@ import java.util.stream.Collectors;
 public class ActionPersistenceAdapter implements ActionPersistencePort, FindDataWithFilterQuery<String, ActionDto> {
 
     private final ActionJpaRepository repository;
+    private final JPAQueryFactory queryFactory;
 
     @Autowired
-    public ActionPersistenceAdapter(ActionJpaRepository repository) {
+    public ActionPersistenceAdapter(ActionJpaRepository repository, EntityManager entityManager) {
         this.repository = repository;
+        this.queryFactory = new JPAQueryFactory(entityManager);
     }
 
     @Override
@@ -58,6 +62,14 @@ public class ActionPersistenceAdapter implements ActionPersistencePort, FindData
 
         return repository.findOne(predicate)
                 .map(ActionEntity::toDto);
+    }
+
+    @Override
+    public List<ActionDto> findMissingActionsByNames(List<String> names, String resourceId) {
+        QActionEntity action = QActionEntity.actionEntity;
+
+        List<ActionEntity> actionEntities = queryFactory.selectFrom(action).where(action.name.notIn(names).and(action.resource.id.eq(resourceId))).fetch();
+        return actionEntities.stream().map(ActionEntity::toDto).toList();
     }
 
     @Override
