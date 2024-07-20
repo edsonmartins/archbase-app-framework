@@ -35,9 +35,10 @@ public class UserDto extends SecurityDto {
 	protected ProfileDto profile;
 	protected byte[] avatar;
 	protected String email;
+	protected String nickname;
 
 	@Builder
-	public UserDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Set<ActionDto> actions, String email, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleDto accessSchedule, List<UserGroupDto> groups, ProfileDto profile, byte[] avatar) {
+	public UserDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Set<ActionDto> actions, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleDto accessSchedule, List<UserGroupDto> groups, ProfileDto profile, byte[] avatar, String email, String nickname) {
 		super(id, code, version, createEntityDate, updateEntityDate, createdByUser, lastModifiedByUser, name, description, actions);
 		this.userName = userName;
 		this.password = password;
@@ -54,6 +55,7 @@ public class UserDto extends SecurityDto {
 		this.profile = profile;
 		this.avatar = avatar;
 		this.email = email;
+		this.nickname = nickname;
 	}
 
 	public static UserDto fromDomain(User user) {
@@ -88,6 +90,7 @@ public class UserDto extends SecurityDto {
 						.collect(Collectors.toList()):null)
 				.profile(ProfileDto.fromDomain(user.getProfile()))
 				.avatar(user.getAvatar())
+				.nickname(user.getNickname())
 				.build();
 	}
 
@@ -119,6 +122,7 @@ public class UserDto extends SecurityDto {
 						.collect(Collectors.toList()):null)
 				.profile(this.profile != null ? this.profile.toDomain() : null)
 				.avatar(this.avatar)
+				.nickname(this.nickname)
 				.build();
 	}
 }

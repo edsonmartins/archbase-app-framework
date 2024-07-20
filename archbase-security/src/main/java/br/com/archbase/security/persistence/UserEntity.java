@@ -78,15 +78,18 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     @Column(name = "EMAIL", nullable = true)
     private String email;
 
+    @Column(name = "APELIDO", nullable = true)
+    private String nickname;
+
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<AccessTokenEntity> tokens = new ArrayList<>();
 
     public UserEntity() {
-
+        super();
     }
 
     @Builder
-    public UserEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, String email, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleEntity accessSchedule, Set<UserGroupEntity> groups, ProfileEntity profile, byte[] avatar, List<AccessTokenEntity> tokens) {
+    public UserEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleEntity accessSchedule, Set<UserGroupEntity> groups, ProfileEntity profile, byte[] avatar, String email, String nickname, List<AccessTokenEntity> tokens) {
         super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId, name, description);
         this.userName = userName;
         this.password = password;
@@ -102,10 +105,10 @@ public class UserEntity extends SecurityEntity implements UserDetails {
         this.groups = groups;
         this.profile = profile;
         this.avatar = avatar;
-        this.tokens = tokens;
         this.email = email;
+        this.nickname = nickname;
+        this.tokens = tokens;
     }
-
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
@@ -172,6 +175,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
                 .groups(groupsDomain)
                 .profile(this.profile != null ? this.profile.toDomain():null)
                 .avatar(this.getAvatar())
+                .nickname(this.getNickname())
                 .build();
     }
 
@@ -203,6 +207,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
                 .isAdministrator(user.getIsAdministrator())
                 .profile(ProfileEntity.fromDomain(user.getProfile()))
                 .avatar(user.getAvatar())
+                .nickname(user.getNickname())
                 .build();
 
         Set<UserGroupEntity> groups = user.getGroups() != null ? user.getGroups()
@@ -245,6 +250,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
                 .groups(groupsDto)
                 .profile(this.profile != null ? this.profile.toDto(): null)
                 .avatar(this.getAvatar())
+                .nickname(this.getNickname())
                 .build();
     }
 

@@ -35,10 +35,10 @@ public class User extends Security<User, User> implements AggregateRoot<User, Id
     protected Profile profile;
     protected byte[] avatar;
     protected String email;
-
+    protected String nickname;
 
     @Builder
-    public User(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, AccessSchedule accessSchedule, String email, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessSchedule accessSchedule1, List<UserGroup> groups, Profile profile, byte[] avatar) {
+    public User(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, AccessSchedule accessSchedule, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessSchedule accessSchedule1, List<UserGroup> groups, Profile profile, byte[] avatar, String email, String nickname) {
         super(id, code, version, updateEntityDate, createEntityDate, createdByUser, lastModifiedByUser, name, description, accessSchedule);
         this.userName = userName;
         this.password = password;
@@ -55,6 +55,7 @@ public class User extends Security<User, User> implements AggregateRoot<User, Id
         this.profile = profile;
         this.avatar = avatar;
         this.email = email;
+        this.nickname = nickname;
     }
 
     static class Validator extends AbstractArchbaseValidator<User> {
