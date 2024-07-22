@@ -79,8 +79,8 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
         } else if (isValidUUID(authHeader)) {
             if (apiTokenService.validateToken(authHeader)) {
                 Optional<ApiToken> token = apiTokenService.getApiToken(authHeader);
-                if (token.isEmpty()){
-                    throw new ArchbaseSecurityException("Token de API Inválido.");
+                if (token.isEmpty() || !token.get().isActivated()) { // Verifica se o token foi ativado
+                    throw new ArchbaseSecurityException("Token de API inválido ou não ativado.");
                 }
                 UserDetails userDetails = this.userDetailsService.loadUserByUsername(token.get().getUser().getEmail());
 

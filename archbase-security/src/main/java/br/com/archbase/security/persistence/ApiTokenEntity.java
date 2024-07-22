@@ -49,11 +49,15 @@ public class ApiTokenEntity extends TenantPersistenceEntityBase {
     @Column(name = "DH_EXPIRACAO", nullable = false)
     private LocalDateTime expirationDate;
 
+    @Column(name = "BO_ATIVADO", nullable = false, length = 1)
+    @Convert(converter = BooleanToSNConverter.class)
+    private Boolean activated;
+
     public ApiTokenEntity() {
     }
 
     @Builder
-    public ApiTokenEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, UserEntity user, String token, Boolean revoked, LocalDateTime expirationDate) {
+    public ApiTokenEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, UserEntity user, String token, Boolean revoked, LocalDateTime expirationDate, Boolean activated) {
         super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId);
         this.name = name;
         this.description = description;
@@ -61,6 +65,7 @@ public class ApiTokenEntity extends TenantPersistenceEntityBase {
         this.token = token;
         this.revoked = revoked;
         this.expirationDate = expirationDate;
+        this.activated = activated;
     }
 
     public static ApiTokenEntity fromDomain(ApiToken apiToken) {
@@ -78,6 +83,7 @@ public class ApiTokenEntity extends TenantPersistenceEntityBase {
         actionEntity.setToken(apiToken.getToken());
         actionEntity.setRevoked(apiToken.isRevoked());
         actionEntity.setExpirationDate(apiToken.getExpirationDate());
+        actionEntity.setActivated(apiToken.isActivated());
         return actionEntity;
     }
 
@@ -98,6 +104,7 @@ public class ApiTokenEntity extends TenantPersistenceEntityBase {
                 .token(this.getToken())
                 .revoked(this.getRevoked())
                 .expirationDate(this.getExpirationDate())
+                .activated(this.getActivated())
                 .build();
     }
 
@@ -118,6 +125,7 @@ public class ApiTokenEntity extends TenantPersistenceEntityBase {
                 .token(this.getToken())
                 .revoked(this.getRevoked())
                 .expirationDate(this.getExpirationDate())
+                .activated(this.getActivated())
                 .build();
     }
 }

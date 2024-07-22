@@ -35,6 +35,36 @@ public class ApiTokenController {
         return ResponseEntity.ok().build();
     }
 
+    @GetMapping("/activate")
+    public ResponseEntity<String> activateToken(@RequestParam String token) {
+        boolean activated = apiTokenService.activateToken(token);
+        if (activated) {
+            return ResponseEntity.ok(generateHtmlResponse("Token ativado com sucesso.", true));
+        } else {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(generateHtmlResponse("Token inválido ou já ativado.", false));
+        }
+    }
+
+    private String generateHtmlResponse(String message, boolean success) {
+        return "<html>" +
+                "<head>" +
+                "<title>Ativação de Token</title>" +
+                "<style>" +
+                "body { font-family: Arial, sans-serif; background-color: " + (success ? "#e0ffe0" : "#ffe0e0") + "; }" +
+                ".container { max-width: 600px; margin: 50px auto; padding: 20px; border-radius: 10px; background-color: #fff; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }" +
+                "h1 { color: " + (success ? "#4CAF50" : "#F44336") + "; }" +
+                "p { font-size: 18px; }" +
+                "</style>" +
+                "</head>" +
+                "<body>" +
+                "<div class=\"container\">" +
+                "<h1>" + (success ? "Sucesso!" : "Erro!") + "</h1>" +
+                "<p>" + message + "</p>" +
+                "</div>" +
+                "</body>" +
+                "</html>";
+    }
+
     @GetMapping(
             value = {"/findAll"},
             params = {"page", "size"}

@@ -21,17 +21,19 @@ public class AccessToken extends DomainAggregatorBase<AccessToken> {
     protected TokenType tokenType = TokenType.BEARER;
     protected boolean revoked;
     protected boolean expired;
+    protected boolean activated; // Novo campo para verificar se o token foi ativado
     protected Long expirationTime;
     protected LocalDateTime expirationDate;
     protected User user;
 
     @Builder
-    public AccessToken(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String token, TokenType tokenType, boolean revoked, boolean expired, Long expirationTime, LocalDateTime expirationDate, User user) {
+    public AccessToken(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String token, TokenType tokenType, boolean revoked, boolean expired, boolean activated, Long expirationTime, LocalDateTime expirationDate, User user) {
         super(id, code, version, updateEntityDate, createEntityDate, createdByUser, lastModifiedByUser);
         this.token = token;
         this.tokenType = tokenType;
         this.revoked = revoked;
         this.expired = expired;
+        this.activated = activated; // Inicializar o campo
         this.expirationTime = expirationTime;
         this.expirationDate = expirationDate;
         this.user = user;

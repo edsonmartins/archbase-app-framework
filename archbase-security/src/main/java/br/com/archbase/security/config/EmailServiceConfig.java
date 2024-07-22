@@ -16,6 +16,11 @@ public class EmailServiceConfig {
             public void sendResetPasswordEmail(String email, String resetPasswordToken, String userName, String name) {
                 throw new UnsupportedOperationException("Por favor, forneça uma implementação de ArchbaseEmailService");
             }
+
+            @Override
+            public void sendActivationTokenApiEmail(String email, String activationLink, String userName, String name) {
+                throw new UnsupportedOperationException("Por favor, forneça uma implementação de ArchbaseEmailService");
+            }
         };
     }
 }

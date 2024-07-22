@@ -29,6 +29,7 @@ public class ApiTokenDto {
     protected UserDto user;
     protected LocalDateTime expirationDate;
     protected boolean revoked;
+    protected boolean activated;
 
     public static ApiTokenDto fromDomain(ApiToken apiToken) {
         if (apiToken == null) {
@@ -49,6 +50,7 @@ public class ApiTokenDto {
                 .user(apiToken.getUser() != null ? UserDto.fromDomain(apiToken.getUser()):null)
                 .expirationDate(apiToken.getExpirationDate())
                 .revoked(apiToken.isRevoked())
+                .activated(apiToken.isActivated())
                 .build();
     }
 
@@ -66,6 +68,7 @@ public class ApiTokenDto {
                 .user(this.user != null ? this.user.toDomain():null)
                 .expirationDate(this.expirationDate)
                 .revoked(this.revoked)
+                .activated(this.activated)
                 .build();
     }
 
