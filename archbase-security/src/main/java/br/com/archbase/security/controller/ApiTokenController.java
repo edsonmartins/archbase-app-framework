@@ -1,9 +1,12 @@
 package br.com.archbase.security.controller;
 
+import br.com.archbase.ddd.context.ArchbaseTenantContext;
 import br.com.archbase.query.rsql.jpa.SortUtils;
 import br.com.archbase.security.domain.dto.ActionDto;
 import br.com.archbase.security.domain.dto.ApiTokenDto;
 import br.com.archbase.security.service.ApiTokenService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -19,6 +22,9 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/apiToken")
 public class ApiTokenController {
+
+    private static final Logger logger = LoggerFactory.getLogger(ApiTokenController.class);
+
 
     @Autowired
     private ApiTokenService apiTokenService;
@@ -36,11 +42,17 @@ public class ApiTokenController {
     }
 
     @GetMapping("/activate")
-    public ResponseEntity<String> activateToken(@RequestParam String token) {
-        boolean activated = apiTokenService.activateToken(token);
+    public ResponseEntity<String> activateToken(@RequestParam String token, @RequestParam String tenantId) {
+        logger.info("Recebida solicitação para ativar token: {} com tenantId: {}", token, tenantId);
+        // Set tenantId in context
+        ArchbaseTenantContext.setTenantId(tenantId);
+
+        boolean activated = apiTokenService.activateToken(token, tenantId);
         if (activated) {
+            logger.info("Token ativado com sucesso: {}", token);
             return ResponseEntity.ok(generateHtmlResponse("Token ativado com sucesso.", true));
         } else {
+            logger.warn("Falha ao ativar token: {}. Token inválido ou já ativado.", token);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(generateHtmlResponse("Token inválido ou já ativado.", false));
         }
     }

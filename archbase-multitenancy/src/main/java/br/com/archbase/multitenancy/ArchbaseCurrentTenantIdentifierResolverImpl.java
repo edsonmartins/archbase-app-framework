@@ -30,7 +30,13 @@ public class ArchbaseCurrentTenantIdentifierResolverImpl implements CurrentTenan
     @Override
     public String resolveCurrentTenantIdentifier() {
         String contextTenantId = ArchbaseTenantContext.getTenantId();
-        return !ObjectUtils.isEmpty(contextTenantId) ? contextTenantId : this.getTenantId();
+        if (!ObjectUtils.isEmpty(contextTenantId)) {
+            logger.info("Returning tenant ID from context: {}", contextTenantId);
+            return contextTenantId;
+        } else {
+            logger.info("Returning default tenant ID: {}", this.getTenantId());
+            return this.getTenantId();
+        }
     }
 
     private String getTenantId() {

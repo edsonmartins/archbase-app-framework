@@ -8,4 +8,6 @@ import java.util.Optional;
 public interface ApiTokenRepository extends ArchbaseCommonJpaRepository<ApiTokenEntity, String, Long> {
 
     Optional<ApiTokenEntity> findByToken(String token);
+
+    Optional<ApiTokenEntity> findByTokenAndTenantId(String token, String tenantId);
 }

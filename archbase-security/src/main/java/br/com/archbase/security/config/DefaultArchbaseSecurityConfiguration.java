@@ -30,7 +30,7 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
     @PostConstruct
     public void init() {
         finalWhitelist = Lists.newArrayList(
-                "/api/v1/auth/**",
+                "/api/v1/auth/**","/api/v1/apiToken/activate",
                 "/v2/externalapi-docs",
                 "/v3/externalapi-docs",
                 "/v3/api-docs",

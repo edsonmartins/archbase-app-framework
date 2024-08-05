@@ -1,5 +1,6 @@
     package br.com.archbase.security.service;
 
+    import br.com.archbase.ddd.context.ArchbaseTenantContext;
     import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
     import br.com.archbase.security.adapter.ApiTokenPersistenceAdapter;
     import br.com.archbase.security.adapter.SecurityAdapter;
@@ -7,12 +8,16 @@
     import br.com.archbase.security.domain.entity.ApiToken;
     import br.com.archbase.security.persistence.ApiTokenEntity;
     import br.com.archbase.security.persistence.UserEntity;
+    import br.com.archbase.security.repository.ApiTokenNativeRepository;
     import br.com.archbase.security.repository.ApiTokenRepository;
     import br.com.archbase.security.repository.UserJpaRepository;
     import br.com.archbase.security.usecase.ApiTokenUseCase;
     import org.springframework.beans.factory.annotation.Autowired;
     import org.springframework.data.domain.Page;
     import org.springframework.stereotype.Service;
+
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
 
     import java.time.LocalDateTime;
     import java.util.List;
@@ -21,6 +26,9 @@
 
     @Service
     public class ApiTokenService implements ApiTokenUseCase, FindDataWithFilterQuery<String, ApiTokenDto> {
+
+        private static final Logger logger = LoggerFactory.getLogger(ApiTokenService.class);
+
 
         @Autowired
         private ApiTokenRepository apiTokenRepository;
@@ -36,12 +44,26 @@
         @Autowired
         private ArchbaseEmailService emailService;
 
-        public boolean activateToken(String token) {
-            Optional<ApiTokenEntity> apiToken = apiTokenRepository.findByToken(token);
-            if (apiToken.isPresent() && !apiToken.get().getActivated()) {
-                apiToken.get().setActivated(true);
-                apiTokenRepository.save(apiToken.get());
-                return true;
+        @Autowired
+        private ApiTokenNativeRepository apiTokenNativeRepository;
+
+        public boolean activateToken(String token, String tenantId) {
+            logger.info("Tentando ativar o token: {} para o tenantId: {}", token, tenantId);
+
+            // Use a consulta nativa
+            Optional<ApiTokenEntity> apiToken = apiTokenNativeRepository.findByTokenAndTenantId(token, tenantId);
+            if (apiToken.isPresent()) {
+                logger.info("Token encontrado: {}", token);
+                if (!apiToken.get().getActivated()) {
+                    apiToken.get().setActivated(true);
+                    apiTokenRepository.save(apiToken.get());
+                    logger.info("Token ativado com sucesso: {}", token);
+                    return true;
+                } else {
+                    logger.warn("Token já está ativado: {}", token);
+                }
+            } else {
+                logger.warn("Token não encontrado: {}", token);
             }
             return false;
         }
