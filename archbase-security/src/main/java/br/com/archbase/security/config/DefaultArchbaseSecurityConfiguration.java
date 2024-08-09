@@ -17,7 +17,7 @@ import java.util.List;
 @EnableMethodSecurity
 public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityConfiguration {
 
-    @Value("${archbase.security.whitelist:}")
+    @Value("${archbase.security.whitelist}")
     private String whitelist;
 
     private final ArchbaseJwtAuthenticationFilter jwtAuthenticationFilter;
@@ -31,6 +31,7 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
     public void init() {
         finalWhitelist = Lists.newArrayList(
                 "/api/v1/auth/**","/api/v1/apiToken/activate",
+                "/api/v1/assistente-virtual/webhook",
                 "/v2/externalapi-docs",
                 "/v3/externalapi-docs",
                 "/v3/api-docs",
