@@ -14,9 +14,22 @@ public class ArchbaseTenantRequestInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         String tenantId = request.getHeader(X_TENANT_ID);
+        if (tenantId == null || tenantId.isEmpty()) {
+            tenantId = request.getParameter(X_TENANT_ID);
+        }
+
         String companyId = request.getHeader(X_COMPANY_ID);
-        ArchbaseTenantContext.setTenantId(tenantId);
-        ArchbaseTenantContext.setCompanyId(companyId);
+        if (companyId == null || companyId.isEmpty()) {
+            companyId = request.getParameter(X_COMPANY_ID);
+        }
+
+        if (tenantId != null && !tenantId.isEmpty()) {
+            ArchbaseTenantContext.setTenantId(tenantId);
+        }
+
+        if (companyId != null && !companyId.isEmpty()) {
+            ArchbaseTenantContext.setCompanyId(companyId);
+        }
 
         return true;
     }
