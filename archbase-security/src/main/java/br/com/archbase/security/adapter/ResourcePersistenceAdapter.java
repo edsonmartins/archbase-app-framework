@@ -173,14 +173,12 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
     public List<ResoucePermissionsWithTypeDto> findProfileResourcesPermissions(String profileId) {
 
         QPermissionEntity permission = QPermissionEntity.permissionEntity;
-        QUserEntity user = QUserEntity.userEntity;
         QProfileEntity profile = QProfileEntity.profileEntity;
 
         List<Tuple> profilePermissions = queryFactory
                 .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.PROFILE), permission.id)
                 .from(permission)
                 .join(permission.security, profile._super)
-                .join(user).on(user.profile.eq(profile))
                 .where(profile.id.eq(profileId))
                 .fetch();
 
@@ -191,14 +189,12 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
     public List<ResoucePermissionsWithTypeDto> findGroupResourcesPermissions(String groupId) {
 
         QPermissionEntity permission = QPermissionEntity.permissionEntity;
-        QUserGroupEntity userGroup = QUserGroupEntity.userGroupEntity;
         QGroupEntity group = QGroupEntity.groupEntity;
 
         List<Tuple> groupPermissions = queryFactory
                 .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.GROUP), permission.id)
                 .from(permission)
                 .join(permission.security, group._super)
-                .join(userGroup).on(userGroup.group.eq(group))
                 .where(group.id.eq(groupId))
                 .fetch();
 
