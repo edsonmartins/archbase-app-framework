@@ -10,7 +10,7 @@
     </parent>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-app-framework</artifactId>
-    <version>1.0.16</version>
+    <version>1.0.17</version>
     <name>archbase-app-framework</name>
     <description>Archbase Application Framework</description>
 
@@ -20,6 +20,7 @@
         <url>https://relevantsolutions.com.br</url>
     </organization>
     <url>https://relevantsolutions.com.br</url>
+
     <licenses>
         <license>
             <name>Apache License, Version 2.0</name>
