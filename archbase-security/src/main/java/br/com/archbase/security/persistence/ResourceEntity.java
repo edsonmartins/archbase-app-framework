@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Entity
-@Table(name="SEGURANCA_RECURSO")
+@Table(name="SEGURANCA_RECURSO", uniqueConstraints = @UniqueConstraint(columnNames = {"TENANT_ID", "NOME"}))
 @Getter
 @Setter
 @AttributeOverrides({

@@ -14,10 +14,12 @@ import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.EntityManager;
 import com.querydsl.core.types.dsl.BooleanExpression;
+import jakarta.persistence.PersistenceException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Component;
 
+import javax.validation.ConstraintViolationException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -49,7 +51,27 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
 
     @Override
     public ResourceDto createResource(ResourceDto resourceDto) {
-        return repository.save(ResourceEntity.fromDomain(resourceDto.toDomain())).toDto();
+        try {
+            return repository.save(ResourceEntity.fromDomain(resourceDto.toDomain())).toDto();
+        } catch (PersistenceException e) {
+            if (e.getCause() instanceof ConstraintViolationException) {
+//                ConstraintViolationException constraintViolationException = (ConstraintViolationException) e.getCause();
+//                if (constraintViolationException.getSQLException() instanceof SQLIntegrityConstraintViolationException) {
+//                    // Lidando especificamente com uma violação de constraint unique
+//                    System.out.println("Violação de constraint unique: " + constraintViolationException.getSQLException().getMessage());
+//                } else {
+//                    // Lidando com outras violações de constraint
+//                    System.out.println("Outra violação de constraint: " + constraintViolationException.getSQLException().getMessage());
+//                }
+                return findResource(resourceDto.getName());
+            } else {
+                // Lidando com outras exceções de persistência
+                System.out.println("Outra exceção de persistência: " + e.getMessage());
+                return null;
+            }
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @Override

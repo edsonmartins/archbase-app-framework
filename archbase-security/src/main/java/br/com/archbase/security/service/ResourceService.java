@@ -7,6 +7,7 @@ import br.com.archbase.security.domain.dto.*;
 import br.com.archbase.security.domain.entity.User;
 import com.google.common.collect.Lists;
 import br.com.archbase.security.domain.dto.ResourcePermissionsDto;
+import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
@@ -58,6 +59,7 @@ public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery
     }
 
     @Override
+    @Transactional
     public ResourcePermissionsDto registerResource(ResourceRegisterDto resourceRegister) {
         ResourceDto resourceDto;
         resourceDto = adapter.findResource(resourceRegister.getResource().getResourceName());
@@ -66,9 +68,11 @@ public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery
                     .name(resourceRegister.getResource().getResourceName())
                     .description(resourceRegister.getResource().getResourceDescription())
                     .createEntityDate(LocalDateTime.now())
+                    .updateEntityDate(LocalDateTime.now())
                     .createdByUser("archbase")
                     .version(0L)
                     .actions(Lists.newArrayList())
+                    .active(true)
                     .build();
             resourceDto = adapter.createResource(resource);
         }
@@ -88,8 +92,10 @@ public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery
                         .description(simpleActionDto.getActionDescription())
                         .resource(finalResourceDto)
                         .createEntityDate(LocalDateTime.now())
+                        .updateEntityDate(LocalDateTime.now())
                         .createdByUser("archbase")
                         .version(0L)
+                        .active(true)
                         .build();
                 actionPersistenceAdapter.createAction(action);
             } else {
