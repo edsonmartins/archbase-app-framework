@@ -1,5 +1,6 @@
 package br.com.archbase.security.service;
 
+import br.com.archbase.ddd.domain.base.ArchbaseIdentifier;
 import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
 import br.com.archbase.security.adapter.ActionPersistenceAdapter;
 import br.com.archbase.security.adapter.SecurityAdapter;
@@ -61,28 +62,32 @@ public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery
     @Override
     @Transactional
     public ResourcePermissionsDto registerResource(ResourceRegisterDto resourceRegister) {
-        ResourceDto resourceDto;
-        resourceDto = adapter.findResource(resourceRegister.getResource().getResourceName());
+        boolean isNewResource = false;
+        ResourceDto resourceDto = adapter.findResource(resourceRegister.getResource().getResourceName());
         if (resourceDto == null) {
-            ResourceDto resource = ResourceDto.builder()
+            isNewResource = true;
+            resourceDto = ResourceDto.builder()
+                    .id(new ArchbaseIdentifier().toString())
                     .name(resourceRegister.getResource().getResourceName())
                     .description(resourceRegister.getResource().getResourceDescription())
                     .createEntityDate(LocalDateTime.now())
                     .updateEntityDate(LocalDateTime.now())
                     .createdByUser("archbase")
                     .version(0L)
-                    .actions(Lists.newArrayList())
                     .active(true)
                     .build();
-            resourceDto = adapter.createResource(resource);
+
+            resourceDto = adapter.createResource(resourceDto);
         }
-        ResourceDto finalResourceDto = resourceDto;
+        final var finalResourceDto = resourceDto;
         List<String> actionNames = resourceRegister.getActions().stream().map(SimpleActionDto::getActionName).toList();
-        List<ActionDto> missingActions = actionPersistenceAdapter.findMissingActionsByNames(actionNames, finalResourceDto.getId());
-        missingActions.forEach(missingAction -> {
-            missingAction.setActive(false);
-            actionPersistenceAdapter.updateAction(missingAction.getId(), missingAction);
-        });
+        if (!isNewResource) {
+            List<ActionDto> missingActions = actionPersistenceAdapter.findMissingActionsByNames(actionNames, finalResourceDto.getId());
+            missingActions.forEach(missingAction -> {
+                missingAction.setActive(false);
+                actionPersistenceAdapter.updateAction(missingAction.getId(), missingAction);
+            });
+        }
         resourceRegister.getActions().forEach(simpleActionDto -> {
             Optional<ActionDto> actionOptional = actionPersistenceAdapter
                     .findActionByName(simpleActionDto.getActionName(), finalResourceDto.getId());
