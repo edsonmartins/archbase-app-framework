@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Entity
-@Table(name="SEGURANCA_RECURSO")
+@Table(name="SEGURANCA_RECURSO", uniqueConstraints = @UniqueConstraint(columnNames = {"TENANT_ID", "NOME"}))
 @Getter
 @Setter
 @AttributeOverrides({
@@ -38,23 +38,15 @@ public class ResourceEntity extends TenantPersistenceEntityBase {
     @Convert(converter = BooleanToSNConverter.class)
     private Boolean active;
 
-    @ManyToMany
-    @JoinTable(name = "SEGURANCA_RECURSO_ACAO",
-            joinColumns = @JoinColumn(name = "ID_RECURSO"),
-            inverseJoinColumns = @JoinColumn(name = "ID_ACAO"))
-    private List<ActionEntity> actions;
-
-
     public ResourceEntity() {
         // Default empty constructor
     }
 
     @Builder
-    public ResourceEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, List<ActionEntity> actions) {
+    public ResourceEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description) {
         super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId);
         this.name = name;
         this.description = description;
-        this.actions = actions;
     }
 
 
@@ -73,15 +65,11 @@ public class ResourceEntity extends TenantPersistenceEntityBase {
         resourceEntity.setLastModifiedByUser(resource.getLastModifiedByUser());
         resourceEntity.setName(resource.getName());
         resourceEntity.setDescription(resource.getDescription());
-        resourceEntity.setActions(resource.getActions() != null ?
-                resource.getActions().stream().map(ActionEntity::fromDomain).collect(Collectors.toList()) : null);
+        resourceEntity.setActive(resource.getActive());
         return resourceEntity;
     }
 
     public Resource toDomain() {
-        List<Action> actionsDomain = this.actions != null
-                ? this.actions.stream().map(ActionEntity::toDomain).collect(Collectors.toList())
-                : Collections.emptyList();
 
         return Resource.builder()
                 .id(this.getId())
@@ -93,15 +81,11 @@ public class ResourceEntity extends TenantPersistenceEntityBase {
                 .lastModifiedByUser(this.getLastModifiedByUser())
                 .name(this.getName())
                 .description(this.getDescription())
-                .actions(actionsDomain)
+                .active(this.getActive())
                 .build();
     }
 
     public ResourceDto toDto() {
-        List<ActionDto> actionsDto = this.actions != null
-                ? this.actions.stream().map(ActionEntity::toDto).collect(Collectors.toList())
-                : Collections.emptyList();
-
 
         return ResourceDto.builder()
                 .id(this.getId())
@@ -113,7 +97,7 @@ public class ResourceEntity extends TenantPersistenceEntityBase {
                 .lastModifiedByUser(this.getLastModifiedByUser())
                 .name(this.getName())
                 .description(this.getDescription())
-                .actions(actionsDto)
+                .active(this.getActive())
                 .build();
     }
 }

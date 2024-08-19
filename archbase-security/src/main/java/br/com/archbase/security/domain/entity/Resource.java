@@ -18,20 +18,14 @@ public class Resource extends DomainAggregatorBase<Resource> {
 
     protected String name;
     protected String description;
-    protected List<Action> actions = new ArrayList<>();
     protected Boolean active;
 
     @Builder
-    public Resource(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, List<Action> actions, Boolean active) {
+    public Resource(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Boolean active) {
         super(id, code, version, updateEntityDate, createEntityDate, createdByUser, lastModifiedByUser);
         this.name = name;
         this.description = description;
-        this.actions = actions;
         this.active = active;
-    }
-
-    public List<Action> getActions() {
-        return Collections.unmodifiableList(actions);
     }
 
     static class Validator extends AbstractArchbaseValidator<Resource> {
