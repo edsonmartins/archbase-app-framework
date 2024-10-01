@@ -5,7 +5,7 @@
     <parent>
         <artifactId>archbase-app-framework</artifactId>
         <groupId>br.com.archbase</groupId>
-        <version>1.0.19</version>
+        <version>1.0.20</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -14,17 +14,17 @@
     <dependencies>
         <dependency>
             <groupId>br.com.archbase</groupId>
-            <version>1.0.19</version>
+            <version>1.0.20</version>
             <artifactId>archbase-domain-driven-design</artifactId>
         </dependency>
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-multitenancy</artifactId>
-            <version>1.0.19</version>
+            <version>1.0.20</version>
         </dependency>
         <dependency>
             <groupId>br.com.archbase</groupId>
-            <version>1.0.19</version>
+            <version>1.0.20</version>
             <artifactId>archbase-resource-logger</artifactId>
         </dependency>
         <dependency>
@@ -35,25 +35,25 @@
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-domain-driven-design-spec</artifactId>
-            <version>1.0.19</version>
+            <version>1.0.20</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-domain-driven-design</artifactId>
-            <version>1.0.19</version>
+            <version>1.0.20</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-validation</artifactId>
-            <version>1.0.19</version>
+            <version>1.0.20</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-resource-logger</artifactId>
-            <version>1.0.19</version>
+            <version>1.0.20</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
