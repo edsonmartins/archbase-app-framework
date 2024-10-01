@@ -10,7 +10,7 @@
     </parent>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-app-framework</artifactId>
-    <version>1.0.18</version>
+    <version>1.0.19</version>
     <name>archbase-app-framework</name>
     <description>Archbase Application Framework</description>
 
@@ -271,11 +271,12 @@
         <dependency>
             <groupId>com.querydsl</groupId>
             <artifactId>querydsl-core</artifactId>
+            <version>5.1.0</version>
         </dependency>
         <dependency>
             <groupId>com.querydsl</groupId>
             <artifactId>querydsl-jpa</artifactId>
-            <version>${querydsl.version}</version>
+            <version>5.1.0</version>
             <classifier>jakarta</classifier>
         </dependency>
         <dependency>
@@ -286,16 +287,18 @@
         <dependency>
             <groupId>com.querydsl</groupId>
             <artifactId>querydsl-apt</artifactId>
-            <version>${querydsl.version}</version>
+            <version>5.1.0</version>
             <classifier>jakarta</classifier>
         </dependency>
         <dependency>
             <groupId>com.querydsl</groupId>
             <artifactId>querydsl-sql</artifactId>
+            <version>5.1.0</version>
         </dependency>
         <dependency>
             <groupId>com.querydsl</groupId>
             <artifactId>querydsl-sql-codegen</artifactId>
+            <version>5.1.0</version>
         </dependency>
         <dependency>
             <groupId>net.javacrumbs.json-unit</groupId>

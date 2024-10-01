@@ -31,10 +31,8 @@ public class ArchbaseCurrentTenantIdentifierResolverImpl implements CurrentTenan
     public String resolveCurrentTenantIdentifier() {
         String contextTenantId = ArchbaseTenantContext.getTenantId();
         if (!ObjectUtils.isEmpty(contextTenantId)) {
-            logger.info("Returning tenant ID from context: {}", contextTenantId);
             return contextTenantId;
         } else {
-            logger.info("Returning default tenant ID: {}", this.getTenantId());
             return this.getTenantId();
         }
     }
@@ -43,7 +41,6 @@ public class ArchbaseCurrentTenantIdentifierResolverImpl implements CurrentTenan
         if (tenantId == null) {
             tenantId = "archbase"; // Fallback value if somehow tenantId is not set
         }
-        logger.info("Returning tenant ID: {}", tenantId);
         return tenantId;
     }
 
