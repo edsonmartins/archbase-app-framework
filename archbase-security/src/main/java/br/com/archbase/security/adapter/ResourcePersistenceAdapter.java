@@ -142,7 +142,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
         List<Tuple> userPermissions = queryFactory
                 .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.USER), permission.id)
                 .from(permission)
-                .where(permission.security.id.eq(userId))
+                .where(permission.security.id.eq(userId).and(permission.action.active.isTrue()))
                 .fetch();
 
         List<Tuple> profilePermissions = queryFactory
@@ -150,7 +150,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                 .from(permission)
                 .join(permission.security, profile._super)
                 .join(user).on(user.profile.eq(profile))
-                .where(user.id.eq(userId))
+                .where(user.id.eq(userId).and(permission.action.active.isTrue()))
                 .fetch();
 
         List<Tuple> groupPermissions = queryFactory
@@ -158,7 +158,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                 .from(permission)
                 .join(permission.security, group._super)
                 .join(userGroup).on(userGroup.group.eq(group))
-                .where(userGroup.user.id.eq(userId))
+                .where(userGroup.user.id.eq(userId).and(permission.action.active.isTrue()))
                 .fetch();
 
         List<Tuple> permissionsTuple = new ArrayList<>();
@@ -179,7 +179,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                 .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.PROFILE), permission.id)
                 .from(permission)
                 .join(permission.security, profile._super)
-                .where(profile.id.eq(profileId))
+                .where(profile.id.eq(profileId).and(permission.action.active.isTrue()))
                 .fetch();
 
         return groupTuplesToResourcePermissions(profilePermissions, permission);
@@ -195,7 +195,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                 .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.GROUP), permission.id)
                 .from(permission)
                 .join(permission.security, group._super)
-                .where(group.id.eq(groupId))
+                .where(group.id.eq(groupId).and(permission.action.active.isTrue()))
                 .fetch();
 
 
@@ -209,6 +209,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
         List<Tuple> permissionsTuple = queryFactory
                 .select(action.resource.id, action.resource.description, action.id, action.description)
                 .from(action)
+                .where(action.active.isTrue())
                 .fetch();
 
         Map<String, Map<String, List<Tuple>>> groupedByResource = permissionsTuple.stream()
