@@ -40,7 +40,8 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
                 "/swagger-resources/**",
                 "/swagger-ui.html",
                 "/swagger-ui/index.html",
-                "/webjars/**"
+                "/webjars/**",
+                "/actuator/**"
         );
         if (!whitelist.isEmpty()) {
             finalWhitelist.addAll(Arrays.stream(whitelist.split(",")).toList());
