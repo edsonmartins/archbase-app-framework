@@ -48,7 +48,7 @@ import java.util.Locale;
 @EnableWebMvc
 @EnableTransactionManagement
 @EnableJpaAuditing(auditorAwareRef = "auditorAware")
-@ComponentScan(basePackages = {"br.com.archbase.multitenancy","br.com.archbase.security","${archbase.app.component.scan}"})
+@ComponentScan(basePackages = {"br.com.archbase.ddd.infraestructure.aspect","br.com.archbase.multitenancy","br.com.archbase.security","${archbase.app.component.scan}"})
 @EntityScan(basePackages = {"br.com.archbase.security.persistence","${archbase.app.jpa.entities}" })
 @EnableJpaRepositories(
         basePackages = {"br.com.archbase.security.repository", "${archbase.app.jpa.repositories}"},
