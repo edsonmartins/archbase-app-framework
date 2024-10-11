@@ -1,5 +1,6 @@
 package br.com.archbase.security.persistence;
 
+import br.com.archbase.ddd.domain.aspect.annotations.StorageField;
 import br.com.archbase.security.domain.dto.UserDto;
 import br.com.archbase.security.domain.dto.UserGroupDto;
 import br.com.archbase.security.domain.entity.User;
@@ -72,6 +73,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     private ProfileEntity profile;
 
     @Lob
+    @StorageField
     @Column(name = "AVATAR")
     private byte[] avatar;
 
