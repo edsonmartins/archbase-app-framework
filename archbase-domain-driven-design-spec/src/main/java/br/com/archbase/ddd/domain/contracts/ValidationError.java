@@ -1,5 +1,8 @@
 package br.com.archbase.ddd.domain.contracts;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
+
 public class ValidationError {
 
   private final String message;
@@ -22,11 +25,20 @@ public class ValidationError {
     return new ValidationError(field, message, code, attemptedValue);
   }
 
+  /**
+   * Verifica se o valor é de um tipo simples (String, Integer, Double, etc.)
+   * ou um tipo primitivo.
+   */
+  private boolean isSimpleValue(Object value) {
+    return value == null || value instanceof String || value instanceof Number ||
+            value instanceof Boolean || value instanceof Character;
+  }
+
   protected ValidationError(final String field, final String message, final String code, final Object attemptedValue) {
     this.field = field;
     this.message = message;
     this.code = code;
-    this.attemptedValue = attemptedValue;
+    this.attemptedValue = isSimpleValue(attemptedValue)?attemptedValue:null;
   }
 
   /**

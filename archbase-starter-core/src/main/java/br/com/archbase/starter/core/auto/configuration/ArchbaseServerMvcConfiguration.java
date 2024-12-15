@@ -57,6 +57,7 @@ import java.util.Locale;
 public class ArchbaseServerMvcConfiguration implements WebMvcConfigurer, RepositoryRestConfigurer {
 
     @Autowired
+    @Lazy
     private EntityManager entityManager;
 
     @Autowired
