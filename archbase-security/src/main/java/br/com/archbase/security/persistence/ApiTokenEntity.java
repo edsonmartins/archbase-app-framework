@@ -115,6 +115,7 @@ public class ApiTokenEntity extends TenantPersistenceEntityBase {
                 .id(this.getId())
                 .code(this.getCode())
                 .version(this.getVersion())
+                .tenantId(this.getTenantId())
                 .updateEntityDate(this.getUpdateEntityDate())
                 .createEntityDate(this.getCreateEntityDate())
                 .createdByUser(this.getCreatedByUser())
