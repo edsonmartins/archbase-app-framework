@@ -5,7 +5,7 @@
     <parent>
         <artifactId>archbase-app-framework</artifactId>
         <groupId>br.com.archbase</groupId>
-        <version>1.0.23</version>
+        <version>1.0.24</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -26,7 +26,7 @@
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-semver-implementation</artifactId>
-            <version>1.0.23</version>
+            <version>1.0.24</version>
             <scope>compile</scope>
         </dependency>
         <dependency>

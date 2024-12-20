@@ -10,7 +10,7 @@
     </parent>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-app-framework</artifactId>
-    <version>1.0.23</version>
+    <version>1.0.24</version>
     <name>archbase-app-framework</name>
     <description>Archbase Application Framework</description>
 
