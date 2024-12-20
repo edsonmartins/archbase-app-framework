@@ -19,6 +19,7 @@ public class ApiTokenDto {
     protected String id;
     protected String code;
     protected Long version;
+    protected String tenantId;
     protected LocalDateTime createEntityDate;
     protected LocalDateTime updateEntityDate;
     protected String createdByUser;
