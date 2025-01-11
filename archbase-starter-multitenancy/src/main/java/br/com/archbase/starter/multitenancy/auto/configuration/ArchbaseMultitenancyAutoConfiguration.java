@@ -1,6 +1,5 @@
 package br.com.archbase.starter.multitenancy.auto.configuration;
 
-import br.com.archbase.multitenancy.ArchbaseCurrentTenantIdentifierResolverImpl;
 import br.com.archbase.multitenancy.async.ArchbaseTenantAwareTaskDecorator;
 import br.com.archbase.multitenancy.async.AsyncConfig;
 import br.com.archbase.multitenancy.interceptor.ArchbaseTenantRequestInterceptor;
@@ -21,13 +20,6 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @ConditionalOnClass(CurrentTenantIdentifierResolver.class)
 @ConditionalOnProperty(prefix = "archbase.multitenancy", name = "enabled", matchIfMissing = true)
 public class ArchbaseMultitenancyAutoConfiguration implements WebMvcConfigurer {
-
-
-    @Bean
-    @ConditionalOnMissingBean(CurrentTenantIdentifierResolver.class)
-    public CurrentTenantIdentifierResolver<?> currentTenantIdentifierResolver() {
-        return new ArchbaseCurrentTenantIdentifierResolverImpl();
-    }
 
     @Bean
     @ConditionalOnMissingBean(TaskDecorator.class)
