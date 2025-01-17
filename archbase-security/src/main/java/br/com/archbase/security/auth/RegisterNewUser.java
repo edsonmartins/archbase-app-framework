@@ -18,4 +18,5 @@ public class RegisterNewUser {
   private String email;
   private String password;
   private RoleUser role;
+  private byte[] avatar;
 }

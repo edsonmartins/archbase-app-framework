@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
 import java.security.Key;
+import java.time.Instant;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -79,15 +80,21 @@ public class ArchbaseJwtService {
             UserDetails userDetails,
             long expiration
     ) {
-        var token = Jwts
-                .builder()
+        // Usando UTC explicitamente
+        Instant now = Instant.now();
+        Date issuedAt = Date.from(now);
+        Date expiresAt = Date.from(now.plusMillis(expiration));
+
+        String token = Jwts.builder()
                 .setClaims(extraClaims)
                 .setSubject(userDetails.getUsername())
-                .setIssuedAt(new Date(System.currentTimeMillis()))
-                .setExpiration(new Date(System.currentTimeMillis() + expiration))
+                .setIssuedAt(issuedAt)
+                .setExpiration(expiresAt)
                 .signWith(getSignInKey(), SignatureAlgorithm.HS256)
                 .compact();
-        return new TokenResult(token, expiration);
+
+        // Retorna o timestamp UTC em milissegundos
+        return new TokenResult(token, expiresAt.toInstant().toEpochMilli());
     }
 
     public boolean isTokenValid(String token, UserDetails userDetails) {
@@ -97,8 +104,9 @@ public class ArchbaseJwtService {
 
     public boolean isTokenExpired(String token) {
         try {
-            return extractExpiration(token).before(new Date());
-        } catch (ExpiredJwtException expiredJwtException) {
+            Date expiration = extractExpiration(token);
+            return expiration.toInstant().isBefore(Instant.now());
+        } catch (ExpiredJwtException e) {
             return true;
         }
     }

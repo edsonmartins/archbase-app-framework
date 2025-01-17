@@ -1,6 +1,7 @@
 package br.com.archbase.security.auth;
 
 
+import br.com.archbase.security.domain.entity.User;
 import br.com.archbase.security.token.TokenType;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
@@ -24,5 +25,7 @@ public class AuthenticationResponse {
   private String id;
   @JsonProperty("token_type")
   private TokenType tokenType;
+  @JsonProperty("user")
+  private User user;
 
 }

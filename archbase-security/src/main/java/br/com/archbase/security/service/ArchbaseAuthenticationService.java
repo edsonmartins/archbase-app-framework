@@ -54,6 +54,7 @@ public class ArchbaseAuthenticationService {
                     .email(request.getEmail())
                     .userName(request.getUserName())
                     .passwordNeverExpires(true)
+                    .avatar(request.getAvatar())
                     .password(passwordEncoder.encode(request.getPassword()))
                     .build();
             user = repository.save(user);
@@ -65,6 +66,7 @@ public class ArchbaseAuthenticationService {
         AccessTokenEntity savedUserToken = saveUserToken(user, jwtToken);
         return AuthenticationResponse.builder()
                 .id(savedUserToken.getId())
+                .user(user.toDomain())
                 .accessToken(jwtToken.token()).expirationTime(jwtToken.expiresIn()).tokenType(TokenType.BEARER)
                 .refreshToken(refreshToken.token())
                 .build();
@@ -72,48 +74,59 @@ public class ArchbaseAuthenticationService {
 
     public AuthenticationResponse authenticate(AuthenticationRequest request) {
         try {
-        authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(
-                        request.getEmail(),
-                        request.getPassword()
-                )
-        );
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(
+                            request.getEmail(),
+                            request.getPassword()
+                    )
+            );
+
+            var user = repository.findByEmail(request.getEmail())
+                    .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
+
+            // Melhor verificação de token existente
+            AccessTokenEntity accessToken = accessTokenPersistenceAdapter.findValidTokenByUser(user);
+
+            // Verifica se o token existe e não está expirado
+            if (accessToken != null && !jwtService.isTokenExpired(accessToken.getToken())) {
+                // Token ainda válido, retorna o mesmo
+                var refreshToken = jwtService.generateRefreshToken(user);
+                return buildAuthenticationResponse(accessToken, refreshToken.token());
+            }
+
+            // Se chegou aqui, precisa gerar novo token
+            var jwtToken = jwtService.generateToken(user);
+            revokeAllUserTokens(user); // Revoga tokens antigos
+            accessToken = saveUserToken(user, jwtToken);
+            var refreshToken = jwtService.generateRefreshToken(user);
+
+            return buildAuthenticationResponse(accessToken, refreshToken.token());
         } catch (AuthenticationException e) {
             throw new BadCredentialsException("Login ou senha inválido", e);
         }
-        var user = repository.findByEmail(request.getEmail())
-                .orElseThrow();
-
-        AccessTokenEntity accessToken = accessTokenPersistenceAdapter.findValidTokenByUser(user);
-
-        if (accessToken == null || jwtService.isTokenExpired(accessToken.getToken())) {
-            var jwtToken = jwtService.generateToken(user);
-            revokeAllUserTokens(user);
-            accessToken = saveUserToken(user, jwtToken);
-        }
-
-        var refreshToken = jwtService.generateRefreshToken(user);
-
-        return AuthenticationResponse.builder()
-                .id(accessToken.getId())
-                .accessToken(accessToken.getToken()).expirationTime(accessToken.getExpirationTime()).tokenType(TokenType.BEARER)
-                .refreshToken(refreshToken.token())
-                .build();
     }
 
     private AccessTokenEntity saveUserToken(UserEntity usuario, ArchbaseJwtService.TokenResult jwtToken) {
+        // Usar UTC para datas de expiração
         var token = AccessTokenEntity.builder()
                 .id(UUID.randomUUID().toString())
                 .user(usuario)
                 .token(jwtToken.token())
                 .expirationTime(jwtToken.expiresIn())
-                .expirationDate(convertToLocalDateTimeViaMilisecond(jwtService.extractExpiration(jwtToken.token())))
+                .expirationDate(convertToLocalDateTimeViaInstant(jwtService.extractExpiration(jwtToken.token())))
                 .tokenType(TokenType.BEARER)
                 .expired(false)
                 .revoked(false)
                 .build();
         return tokenRepository.save(token);
     }
+
+    private LocalDateTime convertToLocalDateTimeViaInstant(Date dateToConvert) {
+        return dateToConvert.toInstant()
+                .atZone(ZoneId.of("UTC"))
+                .toLocalDateTime();
+    }
+
 
     public LocalDateTime convertToLocalDateTimeViaMilisecond(Date dateToConvert) {
         return Instant.ofEpochMilli(dateToConvert.getTime())
@@ -123,40 +136,55 @@ public class ArchbaseAuthenticationService {
 
     private void revokeAllUserTokens(UserEntity user) {
         var validUserTokens = accessTokenPersistenceAdapter.findAllValidTokenByUser(user);
-        if (validUserTokens.isEmpty())
-            return;
-        validUserTokens.forEach(token -> {
-            token.setExpired(true);
-            token.setRevoked(true);
-        });
-        tokenRepository.saveAll(validUserTokens);
+        if (!validUserTokens.isEmpty()) {
+            validUserTokens.forEach(token -> {
+                token.setExpired(true);
+                token.setRevoked(true);
+            });
+            tokenRepository.saveAll(validUserTokens);
+        }
     }
 
     public AuthenticationResponse refreshToken(RefreshTokenRequest refreshToken) {
-        String userEmail = jwtService.extractUsername(refreshToken.getToken());
-        if (userEmail != null) {
-            var user = this.repository.findByEmail(userEmail)
-                    .orElseThrow();
-            if (jwtService.isTokenValid(refreshToken.getToken(), user)) {
-
-                AccessTokenEntity accessToken = accessTokenPersistenceAdapter.findValidTokenByUser(user);
-
-                if (accessToken == null || jwtService.isTokenExpired(accessToken.getToken())) {
-                    var jwtToken = jwtService.generateToken(user);
-                    revokeAllUserTokens(user);
-                    accessToken = saveUserToken(user, jwtToken);
-                }
-
-                var newRefreshToken = jwtService.generateRefreshToken(user);
-
-                return AuthenticationResponse.builder()
-                        .id(accessToken.getId())
-                        .accessToken(accessToken.getToken()).expirationTime(accessToken.getExpirationTime()).tokenType(TokenType.BEARER)
-                        .refreshToken(newRefreshToken.token())
-                        .build();
+        try {
+            String userEmail = jwtService.extractUsername(refreshToken.getToken());
+            if (userEmail == null) {
+                throw new JwtException("Token inválido");
             }
+
+            var user = this.repository.findByEmail(userEmail)
+                    .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
+
+            if (!jwtService.isTokenValid(refreshToken.getToken(), user)) {
+                throw new JwtException("Token de refresh inválido");
+            }
+
+            AccessTokenEntity accessToken = accessTokenPersistenceAdapter.findValidTokenByUser(user);
+
+            // Se não tem token válido ou está expirado, gera novo
+            if (accessToken == null || jwtService.isTokenExpired(accessToken.getToken())) {
+                var jwtToken = jwtService.generateToken(user);
+                revokeAllUserTokens(user);
+                accessToken = saveUserToken(user, jwtToken);
+            }
+
+            var newRefreshToken = jwtService.generateRefreshToken(user);
+            return buildAuthenticationResponse(accessToken, newRefreshToken.token());
+
+        } catch (JwtException e) {
+            throw new JwtException("Erro ao processar token: " + e.getMessage());
         }
-        throw new JwtException("Token inválido");
+    }
+
+    // Método auxiliar para construir resposta de autenticação
+    private AuthenticationResponse buildAuthenticationResponse(AccessTokenEntity accessToken, String refreshToken) {
+        return AuthenticationResponse.builder()
+                .id(accessToken.getId())
+                .accessToken(accessToken.getToken())
+                .expirationTime(accessToken.getExpirationTime())
+                .tokenType(TokenType.BEARER)
+                .refreshToken(refreshToken)
+                .build();
     }
 
     public void sendResetPasswordEmail(String email)  {
