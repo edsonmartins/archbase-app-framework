@@ -4,6 +4,7 @@ import br.com.archbase.security.adapter.AccessTokenPersistenceAdapter;
 import br.com.archbase.security.adapter.PasswordResetTokenPersistenceAdapter;
 import br.com.archbase.security.auth.*;
 import br.com.archbase.security.domain.entity.PasswordResetToken;
+import br.com.archbase.security.domain.entity.User;
 import br.com.archbase.security.persistence.AccessTokenEntity;
 import br.com.archbase.security.persistence.UserEntity;
 import br.com.archbase.security.repository.AccessTokenJpaRepository;
@@ -195,16 +196,16 @@ public class ArchbaseAuthenticationService {
         UserEntity user = usuarioOptional.get();
         revokeExistingTokens(user);
         if (user.getAllowPasswordChange()) {
-            String passwordResetToken = createPasswordResetToken(user);
+            String passwordResetToken = createPasswordResetToken(user.toDomain());
             archbaseEmailService.sendResetPasswordEmail(email, passwordResetToken, user.getUsername(), user.getName());
         } else {
             throw new ArchbaseValidationException(String.format("Usuário com email %s  não possui autorização para alterar a senha.",email));
         }
     }
 
-    private String createPasswordResetToken(UserEntity user) {
+    public String createPasswordResetToken(User user) {
         String passwordResetToken = TokenGeneratorUtil.generateAlphaNumericToken();
-        PasswordResetToken token = new PasswordResetToken(passwordResetToken, user.toDomain());
+        PasswordResetToken token = new PasswordResetToken(passwordResetToken, user);
         passwordResetTokenPersistenceAdapter.save(token);
         return passwordResetToken;
     }

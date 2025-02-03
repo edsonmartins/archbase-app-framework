@@ -9,6 +9,7 @@ import br.com.archbase.validation.fluentvalidator.AbstractArchbaseValidator;
 import br.com.archbase.validation.fluentvalidator.context.ArchbaseValidationResult;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.Setter;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Set;
 
 @Getter
+@Setter
 @DomainAggregateRoot
 public class User extends Security<User, User> implements AggregateRoot<User, Identifier>, SecurityUser {
 
