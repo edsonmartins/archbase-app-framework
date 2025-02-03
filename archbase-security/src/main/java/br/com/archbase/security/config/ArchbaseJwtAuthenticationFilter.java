@@ -42,105 +42,72 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull HttpServletResponse response,
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
-        log.debug("Antes do processamento: Authentication no SecurityContextHolder: {}",
-                SecurityContextHolder.getContext().getAuthentication());
-        log.debug("SecurityContextHolder: {}",
-                SecurityContextHolder.getContextHolderStrategy().toString());
+        String token = null;
+        String authHeader = request.getHeader("Authorization");
 
-        String tenantId = request.getHeader(ArchbaseTenantContext.X_TENANT_ID);
-        String companyId = request.getHeader(ArchbaseTenantContext.X_COMPANY_ID);
-        if (StringUtils.isNotBlank(tenantId)) {
-            ArchbaseTenantContext.setTenantId(tenantId);
-        }
-        if (StringUtils.isNotBlank(companyId)) {
-            ArchbaseTenantContext.setCompanyId(companyId);
-        }
-
-        if (request.getServletPath().contains("/api/v1/auth")) {
-            log.debug("Request to /api/v1/auth detected, bypassing authentication filter.");
-            filterChain.doFilter(request, response);
-            return;
-        }
-
-        final String authHeader = request.getHeader("Authorization");
-        if (authHeader == null) {
-            log.debug("Authorization header is missing. Skipping authentication.");
-            filterChain.doFilter(request, response);
-            return;
-        }
-
-        final String jwt;
-        final String userEmail;
-
-        if (authHeader.startsWith("Bearer ")) {
-            jwt = authHeader.substring(7);
-            log.debug("Bearer token detected: {}", jwt);
-
-            userEmail = jwtService.extractUsername(jwt);
-            log.debug("Extracted username from JWT: {}", userEmail);
-
-            if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                log.debug("User not authenticated. Validating token for user: {}", userEmail);
-                UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
-                var isTokenValid = tokenRepository.findByToken(jwt)
-                        .map(t -> !t.isExpired() && !t.isRevoked())
-                        .orElse(false);
-
-                if (jwtService.isTokenValid(jwt, userDetails) && isTokenValid) {
-                    log.debug("JWT is valid. Setting authentication for user: {}", userEmail);
-                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                            userDetails,
-                            null,
-                            userDetails.getAuthorities()
-                    );
-                    authToken.setDetails(
-                            new WebAuthenticationDetailsSource().buildDetails(request)
-                    );
-                    SecurityContextHolder.getContext().setAuthentication(authToken);
-                } else {
-                    log.warn("JWT is invalid or token is revoked/expired for user: {}", userEmail);
-                }
-            }
-        } else if (isValidUUID(authHeader)) {
-            log.debug("UUID token detected: {}", authHeader);
-            if (apiTokenService.validateToken(authHeader)) {
-                log.debug("UUID token validated successfully.");
-                Optional<ApiToken> token = apiTokenService.getApiToken(authHeader);
-                if (token.isEmpty() || !token.get().isActivated()) {
-                    log.warn("Invalid or inactive API token: {}", authHeader);
-                    throw new ArchbaseSecurityException("Token de API inválido ou não ativado.");
-                }
-
-                UserDetails userDetails = this.userDetailsService.loadUserByUsername(token.get().getUser().getEmail());
-                log.debug("Setting authentication for user: {}", userDetails.getUsername());
-                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        userDetails,
-                        null,
-                        userDetails.getAuthorities()
-                );
-                authToken.setDetails(
-                        new WebAuthenticationDetailsSource().buildDetails(request)
-                );
-                SecurityContextHolder.getContext().setAuthentication(authToken);
+        if (authHeader != null) {
+            if (authHeader.startsWith("Bearer ")) {
+                // Token JWT (usuário/senha)
+                token = authHeader.substring(7);
+                processJwtToken(token, request);
+            } else if (isValidUUID(authHeader)) {
+                // Token API (UUID direto)
+                processApiToken(authHeader, request);
             } else {
-                log.warn("UUID token validation failed: {}", authHeader);
+                log.warn("Formato de autorização não reconhecido: {}", authHeader);
             }
         } else {
-            log.warn("Unrecognized authorization format: {}", authHeader);
+            // Se não tem header, tenta pegar token JWT da URL
+            String tokenParam = request.getParameter("token");
+            if (tokenParam != null) {
+                token = tokenParam;
+                processJwtToken(token, request);
+            }
         }
 
-
-        log.debug("Antes do doFilter: Authentication no SecurityContextHolder: {}",
-                SecurityContextHolder.getContext().getAuthentication());
-        log.debug("SecurityContextHolder: {}",
-                SecurityContextHolder.getContextHolderStrategy().toString());
-
         filterChain.doFilter(request, response);
+    }
 
-        log.debug("Depois do doFilter do processamento: Authentication no SecurityContextHolder: {}",
-                SecurityContextHolder.getContext().getAuthentication());
-        log.debug("SecurityContextHolder: {}",
-                SecurityContextHolder.getContextHolderStrategy().toString());
+
+    private void processJwtToken(String token, HttpServletRequest request) {
+        // Processo JWT token
+        String userEmail = jwtService.extractUsername(token);
+        if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            UserDetails userDetails = userDetailsService.loadUserByUsername(userEmail);
+            var isTokenValid = tokenRepository.findByToken(token)
+                    .map(t -> !t.isExpired() && !t.isRevoked())
+                    .orElse(false);
+
+            if (jwtService.isTokenValid(token, userDetails) && isTokenValid) {
+                setAuthentication(userDetails, request);
+            }
+        }
+        // Processo API token
+        else if (isValidUUID(token)) {
+            processApiToken(token, request);
+        }
+    }
+
+    private void processApiToken(String token, HttpServletRequest request) {
+        if (apiTokenService.validateToken(token)) {
+            Optional<ApiToken> apiToken = apiTokenService.getApiToken(token);
+            if (apiToken.isPresent() && apiToken.get().isActivated()) {
+                UserDetails userDetails = userDetailsService.loadUserByUsername(
+                        apiToken.get().getUser().getEmail()
+                );
+                setAuthentication(userDetails, request);
+            }
+        }
+    }
+
+    private void setAuthentication(UserDetails userDetails, HttpServletRequest request) {
+        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                userDetails,
+                null,
+                userDetails.getAuthorities()
+        );
+        authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+        SecurityContextHolder.getContext().setAuthentication(authToken);
     }
 
     private boolean isValidUUID(String token) {
