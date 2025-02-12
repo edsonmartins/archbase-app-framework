@@ -5,6 +5,9 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.cors.reactive.CorsConfigurationSource;
 
 
 import static org.springframework.security.config.http.SessionCreationPolicy.STATELESS;
@@ -27,6 +30,7 @@ public abstract class BaseArchbaseSecurityConfiguration implements ArchbaseSecur
                 .toArray(AntPathRequestMatcher[]::new);
 
         http.csrf().disable()
+                .cors().and()
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers(matchers).permitAll();
                     try {
@@ -37,6 +41,26 @@ public abstract class BaseArchbaseSecurityConfiguration implements ArchbaseSecur
                 })
                 .sessionManagement(session -> session.sessionCreationPolicy(STATELESS))
                 .addFilterBefore(getJwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
+    }
+
+    // Adicione estes métodos abstratos para CORS
+    protected abstract List<String> getAllowedOrigins();
+    protected abstract List<String> getAllowedMethods();
+    protected abstract List<String> getAllowedHeaders();
+    protected abstract boolean getAllowCredentials();
+
+    @Bean
+    public UrlBasedCorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(getAllowedOrigins());
+        configuration.setAllowedMethods(getAllowedMethods());
+        configuration.setAllowedHeaders(getAllowedHeaders());
+        configuration.setAllowCredentials(getAllowCredentials());
+        configuration.setExposedHeaders(List.of("Authorization")); // Headers expostos
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 
     protected abstract List<String> getWhiteListUrls();

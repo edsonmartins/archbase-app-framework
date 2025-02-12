@@ -5,6 +5,7 @@ import com.google.common.collect.Lists;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -19,6 +20,18 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
 
     @Value("${archbase.security.whitelist}")
     private String whitelist;
+
+    @Value("${archbase.security.cors.allowed-origins}")
+    private String corsAllowedOrigins;
+
+    @Value("${archbase.security.cors.allowed-methods}")
+    private String corsAllowedMethods;
+
+    @Value("${archbase.security.cors.allowed-headers}")
+    private String corsAllowedHeaders;
+
+    @Value("${archbase.security.cors.allow-credentials}")
+    private boolean corsAllowCredentials;
 
     private final ArchbaseJwtAuthenticationFilter jwtAuthenticationFilter;
     private List<String> finalWhitelist;
@@ -55,12 +68,37 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
 
     @Override
     protected void configureAuthorizationRules(HttpSecurity http) throws Exception {
-        http.authorizeHttpRequests(auth -> auth.anyRequest().authenticated());
+        http.authorizeHttpRequests(auth -> auth
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // Libera pré-flight requests
+                .anyRequest().authenticated()
+        );
     }
 
     @Override
     protected ArchbaseJwtAuthenticationFilter getJwtAuthenticationFilter() {
         return jwtAuthenticationFilter;
     }
+
+    @Override
+    protected List<String> getAllowedOrigins() {
+        return List.of(corsAllowedOrigins.split(","));
+    }
+
+    @Override
+    protected List<String> getAllowedMethods() {
+        return List.of(corsAllowedMethods.split(","));
+    }
+
+    @Override
+    protected List<String> getAllowedHeaders() {
+        return List.of(corsAllowedHeaders.split(","));
+    }
+
+    @Override
+    protected boolean getAllowCredentials() {
+        return corsAllowCredentials;
+    }
+
+
 
 }
