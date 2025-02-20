@@ -44,8 +44,7 @@ public class ArchbaseAuthenticationService {
 
     public AuthenticationResponse register(RegisterNewUser request) {
         Optional<UserEntity> byEmail = repository.findByEmail(request.getEmail());
-        UserEntity user = null;
-        UserEntity savedUser = null;
+        UserEntity user;
         if (byEmail.isEmpty()) {
             user = UserEntity.builder()
                     .id(UUID.randomUUID().toString())
@@ -55,6 +54,7 @@ public class ArchbaseAuthenticationService {
                     .email(request.getEmail())
                     .userName(request.getUserName())
                     .passwordNeverExpires(true)
+                    .allowPasswordChange(true)
                     .avatar(request.getAvatar())
                     .password(passwordEncoder.encode(request.getPassword()))
                     .build();
