@@ -15,4 +15,14 @@ public class TokenGeneratorUtil {
         }
         return token.toString();
     }
+
+    // Novo método para gerar número com 8 dígitos
+    public static String generateNumericToken() {
+        StringBuilder token = new StringBuilder(8);
+        for (int i = 0; i < 8; i++) {
+            int digit = random.nextInt(10); // Gera um dígito entre 0 e 9
+            token.append(digit);
+        }
+        return token.toString();
+    }
 }

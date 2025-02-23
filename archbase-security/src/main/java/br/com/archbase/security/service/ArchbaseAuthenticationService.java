@@ -204,7 +204,7 @@ public class ArchbaseAuthenticationService {
     }
 
     public String createPasswordResetToken(User user) {
-        String passwordResetToken = TokenGeneratorUtil.generateAlphaNumericToken();
+        String passwordResetToken = TokenGeneratorUtil.generateNumericToken();
         PasswordResetToken token = new PasswordResetToken(passwordResetToken, user);
         passwordResetTokenPersistenceAdapter.save(token);
         return passwordResetToken;
