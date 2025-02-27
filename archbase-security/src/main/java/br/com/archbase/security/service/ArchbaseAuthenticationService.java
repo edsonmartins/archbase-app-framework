@@ -249,4 +249,35 @@ public class ArchbaseAuthenticationService {
         token.revokeToken();
         passwordResetTokenPersistenceAdapter.save(token);
     }
+
+    @Transactional
+    public void changePassword(PasswordResetRequest request) {
+        Optional<UserEntity> usuarioOptional = repository.findByEmail(request.getEmail());
+        if(usuarioOptional.isEmpty()) {
+            throw new ArchbaseValidationException(String.format("Usuário com email %s não foi encontrado.", request.getEmail()));
+        }
+        UserEntity user = usuarioOptional.get();
+
+        PasswordResetToken token = passwordResetTokenPersistenceAdapter.findToken(user, request.getPasswordResetToken());
+
+        if (token == null) {
+            throw new ArchbaseValidationException("Token de redefinição de senha inválido.");
+        }
+        token.updateExpired();
+        passwordResetTokenPersistenceAdapter.save(token);
+
+        if (token.isExpired()) {
+            throw new ArchbaseValidationException("Token de redefinição de senha expirado, favor gerar novamente.");
+        }
+
+        if (token.isRevoked()) {
+            throw new ArchbaseValidationException("Token de redefinição de senha inválido, favor utilizar o token mais recente.");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+
+        repository.save(user);
+        token.revokeToken();
+        passwordResetTokenPersistenceAdapter.save(token);
+    }
 }

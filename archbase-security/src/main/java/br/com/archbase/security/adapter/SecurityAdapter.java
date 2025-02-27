@@ -10,6 +10,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
+import java.security.Principal;
 import java.util.Optional;
 
 @Component
@@ -28,4 +29,15 @@ public class SecurityAdapter implements GetSecurityData {
         Optional<UserEntity> byId = userJpaRepository.findById(principal.getId());
         return byId.get().toDomain();
     }
+
+    @Override
+    public Principal getPrincipal() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (!authentication.isAuthenticated()) {
+            throw new ArchbaseValidationException("Usuário não autenticado.");
+        }
+        return (Principal) authentication.getPrincipal();
+    }
+
+
 }
