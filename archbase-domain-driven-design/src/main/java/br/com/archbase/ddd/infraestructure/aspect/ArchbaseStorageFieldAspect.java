@@ -9,12 +9,17 @@ import jakarta.persistence.PersistenceContext;
 import org.apache.tika.Tika;
 import org.apache.tika.mime.MimeTypes;
 import org.aspectj.lang.JoinPoint;
+import org.aspectj.lang.annotation.After;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
 import org.aspectj.lang.annotation.Pointcut;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronizationAdapter;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import java.io.ByteArrayInputStream;
@@ -24,28 +29,20 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * Aspecto responsável por processar campos anotados com {@link StorageField} antes de salvar ou deletar entidades.
- * <p>
- * Este aspecto intercepta métodos de repositórios para salvar e deletar entidades. Ele processa campos anotados com
- * {@link StorageField} para manipular o armazenamento de dados de arquivos. As principais funcionalidades incluem:
- * <ul>
- *   <li>Fazer upload de novos arquivos para o armazenamento e substituir o valor do campo pela URL do arquivo.</li>
- *   <li>Deletar arquivos antigos do armazenamento quando não são mais necessários.</li>
- *   <li>Manipular tanto dados binários quanto URLs armazenados em campos do tipo byte[].</li>
- * </ul>
- * O aspecto trabalha com campos do tipo byte[], que podem conter:
- * <ul>
- *   <li>Dados binários do arquivo.</li>
- *   <li>URL armazenada como bytes codificados em UTF-8.</li>
- * </ul>
  */
-@Aspect
-@Component
-@ConditionalOnBean(ArchbaseStoragePort.class)
+//@Aspect
+//@Component
+//@ConditionalOnBean(ArchbaseStoragePort.class)
 public class ArchbaseStorageFieldAspect {
+
+    private static final Logger logger = LoggerFactory.getLogger(ArchbaseStorageFieldAspect.class);
 
     @Autowired
     private ArchbaseStoragePort storagePort;
@@ -59,71 +56,204 @@ public class ArchbaseStorageFieldAspect {
     private final Tika tika = new Tika();
     private final MimeTypes allTypes = MimeTypes.getDefaultMimeTypes();
 
+    // ThreadLocal para rastrear entidades já processadas na transação atual
+    private final ThreadLocal<Set<ProcessedEntity>> processedEntities = ThreadLocal.withInitial(HashSet::new);
+
+    // Classe auxiliar para identificar entidades já processadas
+    private static class ProcessedEntity {
+        private final Object entity;
+        private final String operation;
+
+        public ProcessedEntity(Object entity, String operation) {
+            this.entity = entity;
+            this.operation = operation;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            ProcessedEntity that = (ProcessedEntity) o;
+            return entity == that.entity && operation.equals(that.operation);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * System.identityHashCode(entity) + operation.hashCode();
+        }
+    }
+
     /**
-     * Pointcut que corresponde à execução de qualquer método save* em repositórios que estendem a interface base Repository.
+     * Pointcut que corresponde à execução de qualquer método save* nos repositórios.
      */
     @Pointcut("execution(* br.com.archbase.ddd.domain.contracts.Repository+.save*(..))")
     public void repositorySave() {}
 
     /**
-     * Pointcut que corresponde à execução de qualquer método delete* em repositórios que estendem a interface base Repository.
+     * Pointcut que corresponde à execução de qualquer método delete* nos repositórios.
      */
     @Pointcut("execution(* br.com.archbase.ddd.domain.contracts.Repository+.delete*(..))")
     public void repositoryDelete() {}
 
     /**
-     * Advice que é executado antes de qualquer método save do repositório. Processa os campos de armazenamento na entidade para manipular os dados de arquivo.
-     *
-     * @param joinPoint o join point representando a execução do método
-     * @throws Exception se ocorrer um erro durante o processamento
+     * Pointcut para o método merge do EntityManager.
      */
-    @Before("repositorySave()")
+    @Pointcut("execution(* jakarta.persistence.EntityManager.merge(..))")
+    public void entityManagerMerge() {}
+
+    /**
+     * Pointcut para o método persist do EntityManager.
+     */
+    @Pointcut("execution(* jakarta.persistence.EntityManager.persist(..))")
+    public void entityManagerPersist() {}
+
+    /**
+     * Pointcut para o método remove do EntityManager.
+     */
+    @Pointcut("execution(* jakarta.persistence.EntityManager.remove(..))")
+    public void entityManagerRemove() {}
+
+    /**
+     * Advice que é executado antes de qualquer método de salvamento.
+     */
+    @Before("repositorySave() || entityManagerMerge() || entityManagerPersist()")
     public void beforeSave(JoinPoint joinPoint) throws Exception {
+        // Registra início de nova transação se ainda não estiver ativa
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            logger.debug("Iniciando nova transação para processamento de StorageField");
+            registerTransactionCleanup();
+        }
+
+        // Determina o tipo de operação
+        String operationType = determineOperationType(joinPoint);
+
+        // Processa os argumentos
         Object[] args = joinPoint.getArgs();
         for (Object arg : args) {
             if (arg != null) {
                 if (arg instanceof Iterable) {
                     for (Object entity : (Iterable<?>) arg) {
-                        processStorageFields(entity, isUpdate(entity));
+                        processSingleEntity(entity, operationType);
                     }
                 } else {
-                    processStorageFields(arg, isUpdate(arg));
+                    processSingleEntity(arg, operationType);
                 }
             }
         }
     }
 
     /**
-     * Advice que é executado antes de qualquer método delete do repositório. Deleta arquivos associados do armazenamento.
-     *
-     * @param joinPoint o join point representando a execução do método
-     * @throws Exception se ocorrer um erro durante o processamento
+     * Processa uma única entidade, verificando se já foi processada anteriormente.
      */
-    @Before("repositoryDelete()")
+    private void processSingleEntity(Object entity, String operationType) throws Exception {
+        // Verifica se a entidade já foi processada nesta transação
+        ProcessedEntity processedEntity = new ProcessedEntity(entity, operationType);
+        if (!processedEntities.get().contains(processedEntity)) {
+            if (hasStorageFields(entity.getClass())) {
+                logger.debug("Processando entidade {} para operação {}", entity.getClass().getSimpleName(), operationType);
+                processStorageFields(entity, isUpdate(entity));
+                processedEntities.get().add(processedEntity);
+            }
+        } else {
+            logger.debug("Entidade {} já processada para operação {}", entity.getClass().getSimpleName(), operationType);
+        }
+    }
+
+    /**
+     * Verifica rapidamente se a classe possui campos anotados com StorageField.
+     */
+    private boolean hasStorageFields(Class<?> clazz) {
+        while (clazz != null) {
+            for (Field field : clazz.getDeclaredFields()) {
+                if (field.isAnnotationPresent(StorageField.class)) {
+                    return true;
+                }
+            }
+            clazz = clazz.getSuperclass();
+        }
+        return false;
+    }
+
+    /**
+     * Determina o tipo de operação com base no método interceptado.
+     */
+    private String determineOperationType(JoinPoint joinPoint) {
+        String methodName = joinPoint.getSignature().getName();
+        if (methodName.startsWith("save") || methodName.equals("merge") || methodName.equals("persist")) {
+            return "SAVE";
+        } else if (methodName.startsWith("delete") || methodName.equals("remove")) {
+            return "DELETE";
+        }
+        return methodName.toUpperCase();
+    }
+
+    /**
+     * Registra um callback para limpar o ThreadLocal no final da transação.
+     */
+    private void registerTransactionCleanup() {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronizationAdapter() {
+                @Override
+                public void afterCompletion(int status) {
+                    logger.debug("Limpando cache de entidades processadas após transação");
+                    processedEntities.get().clear();
+                }
+            });
+        }
+    }
+
+    /**
+     * Advice que é executado antes de qualquer método de exclusão.
+     */
+    @Before("repositoryDelete() || entityManagerRemove()")
     public void beforeDelete(JoinPoint joinPoint) throws Exception {
+        // Registra início de nova transação se ainda não estiver ativa
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            registerTransactionCleanup();
+        }
+
+        String operationType = "DELETE";
+
         Object[] args = joinPoint.getArgs();
         for (Object arg : args) {
             if (arg != null) {
                 if (arg instanceof Iterable) {
                     for (Object entity : (Iterable<?>) arg) {
-                        deleteStorageFiles(entity);
+                        ProcessedEntity processedEntity = new ProcessedEntity(entity, operationType);
+                        if (!processedEntities.get().contains(processedEntity)) {
+                            if (hasStorageFields(entity.getClass())) {
+                                deleteStorageFiles(entity);
+                                processedEntities.get().add(processedEntity);
+                            }
+                        }
                     }
                 } else {
-                    deleteStorageFiles(arg);
+                    ProcessedEntity processedEntity = new ProcessedEntity(arg, operationType);
+                    if (!processedEntities.get().contains(processedEntity)) {
+                        if (hasStorageFields(arg.getClass())) {
+                            deleteStorageFiles(arg);
+                            processedEntities.get().add(processedEntity);
+                        }
+                    }
                 }
             }
+        }
+    }
+
+    /**
+     * Limpa o ThreadLocal após o fim da execução para evitar vazamentos de memória.
+     */
+    @After("(repositorySave() || entityManagerMerge() || entityManagerPersist() || " +
+            "repositoryDelete() || entityManagerRemove()) && !within(ArchbaseStorageFieldAspect)")
+    public void afterOperation() {
+        // Se não houver uma transação ativa, limpe o ThreadLocal imediatamente
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            processedEntities.get().clear();
         }
     }
 
     /**
      * Processa os campos anotados com {@link StorageField} na entidade fornecida.
-     * <p>
-     * Se o campo contiver dados binários, faz o upload do arquivo para o armazenamento e substitui o valor do campo pela URL do arquivo.
-     * Se o campo contiver uma URL, mantém como está ou atualiza se necessário.
-     *
-     * @param entity   a entidade contendo os campos de armazenamento
-     * @param isUpdate indica se a operação é uma atualização (true) ou uma criação (false)
-     * @throws Exception se ocorrer um erro durante o processamento
      */
     private void processStorageFields(Object entity, boolean isUpdate) throws Exception {
         Class<?> clazz = entity.getClass();
@@ -169,7 +299,7 @@ public class ArchbaseStorageFieldAspect {
                             deleteFileFromStorage(oldFileUrl);
                         }
 
-                        // Salva a nova URL como está
+                        // Mantém a URL como está
                         field.set(entity, data);
                     } else {
                         // É dado binário; processa e faz upload do arquivo
@@ -178,6 +308,7 @@ public class ArchbaseStorageFieldAspect {
                         // Substitui o conteúdo do campo pela nova URL
                         if (newFileUrl != null) {
                             field.set(entity, newFileUrl.getBytes(StandardCharsets.UTF_8));
+                            logger.debug("Campo de armazenamento processado: {} em {}", field.getName(), entity.getClass().getSimpleName());
                         } else {
                             field.set(entity, null);
                         }
@@ -189,10 +320,6 @@ public class ArchbaseStorageFieldAspect {
 
     /**
      * Recupera o valor do campo ID da entidade, que está anotado com {@link Id}.
-     *
-     * @param entity a entidade da qual recuperar o ID
-     * @return o valor do campo ID, ou null se não encontrado
-     * @throws IllegalAccessException se não for possível acessar o campo ID
      */
     private Object getEntityId(Object entity) throws IllegalAccessException {
         Class<?> clazz = entity.getClass();
@@ -210,9 +337,6 @@ public class ArchbaseStorageFieldAspect {
 
     /**
      * Determina se a entidade está sendo atualizada ou criada com base na presença de um ID.
-     *
-     * @param entity a entidade a ser verificada
-     * @return true se a entidade tem um ID (atualização), false caso contrário (criação)
      */
     private boolean isUpdate(Object entity) {
         try {
@@ -225,12 +349,6 @@ public class ArchbaseStorageFieldAspect {
 
     /**
      * Processa os dados do arquivo, fazendo upload para o armazenamento e retornando a URL do arquivo.
-     * <p>
-     * Manipula URLs de dados (por exemplo, "data:image/png;base64,...") e dados binários brutos.
-     *
-     * @param fileData   os dados do arquivo a serem processados
-     * @param oldFileUrl a URL do arquivo antigo a ser deletado, se necessário
-     * @return a URL do arquivo enviado, ou null se nenhum arquivo foi enviado
      */
     private String processFileData(byte[] fileData, String oldFileUrl) {
         if (fileData == null || fileData.length == 0) {
@@ -254,24 +372,21 @@ public class ArchbaseStorageFieldAspect {
             String newFileUrl = uploadContent(fileData, contentType);
 
             // Deleta o arquivo antigo se necessário
-            if (StringUtils.hasText(oldFileUrl)) {
+            if (StringUtils.hasText(oldFileUrl) && !newFileUrl.equals(oldFileUrl)) {
+                logger.debug("Deletando arquivo antigo: {}", oldFileUrl);
                 deleteFileFromStorage(oldFileUrl);
             }
 
             return newFileUrl;
 
         } catch (Exception e) {
+            logger.error("Erro ao processar dados do arquivo", e);
             throw new RuntimeException("Erro ao processar dados do arquivo: " + e.getMessage(), e);
         }
     }
 
     /**
      * Manipula URLs de dados decodificando o conteúdo base64 e fazendo upload do arquivo.
-     *
-     * @param dataUrl    a URL de dados contendo os dados do arquivo
-     * @param oldFileUrl a URL do arquivo antigo a ser deletado, se necessário
-     * @return a URL do arquivo enviado
-     * @throws Exception se ocorrer um erro durante o processamento
      */
     private String handleDataUrl(String dataUrl, String oldFileUrl) throws Exception {
         String[] parts = dataUrl.split(",", 2);
@@ -290,7 +405,8 @@ public class ArchbaseStorageFieldAspect {
         String newFileUrl = uploadContent(decodedBytes, contentType);
 
         // Deleta o arquivo antigo se necessário
-        if (StringUtils.hasText(oldFileUrl)) {
+        if (StringUtils.hasText(oldFileUrl) && !newFileUrl.equals(oldFileUrl)) {
+            logger.debug("Deletando arquivo antigo após upload de data URL: {}", oldFileUrl);
             deleteFileFromStorage(oldFileUrl);
         }
 
@@ -299,9 +415,6 @@ public class ArchbaseStorageFieldAspect {
 
     /**
      * Deleta arquivos associados a campos anotados com {@link StorageField} na entidade fornecida.
-     *
-     * @param entity a entidade cujos arquivos serão deletados
-     * @throws IllegalAccessException se não for possível acessar os valores dos campos
      */
     private void deleteStorageFiles(Object entity) throws IllegalAccessException {
         Class<?> clazz = entity.getClass();
@@ -313,6 +426,8 @@ public class ArchbaseStorageFieldAspect {
                 if (value instanceof byte[]) {
                     String fileUrl = extractFileUrl((byte[]) value);
                     if (fileUrl != null) {
+                        logger.debug("Deletando arquivo armazenado para campo {} da entidade {}: {}",
+                                field.getName(), entity.getClass().getSimpleName(), fileUrl);
                         deleteFileFromStorage(fileUrl);
                     }
                 }
@@ -322,26 +437,23 @@ public class ArchbaseStorageFieldAspect {
 
     /**
      * Deleta um arquivo do armazenamento dado sua URL.
-     *
-     * @param fileUrl a URL do arquivo a ser deletado
      */
     private void deleteFileFromStorage(String fileUrl) {
         if (isValidUrl(fileUrl)) {
             try {
                 String objectName = getObjectNameFromUrl(fileUrl);
-                storagePort.deleteFile(objectName);
+                if (objectName != null) {
+                    storagePort.deleteFile(objectName);
+                    logger.debug("Arquivo excluído com sucesso: {}", objectName);
+                }
             } catch (Exception e) {
-                // Logar a exceção usando um framework de logging
-                System.err.println("Erro ao deletar arquivo antigo: " + e.getMessage());
+                logger.error("Erro ao deletar arquivo: {}", fileUrl, e);
             }
         }
     }
 
     /**
      * Determina se os dados byte[] fornecidos representam uma URL.
-     *
-     * @param data os dados a serem verificados
-     * @return true se os dados representam uma URL, false caso contrário
      */
     private boolean isUrlData(byte[] data) {
         if (data == null || data.length == 0) {
@@ -353,9 +465,6 @@ public class ArchbaseStorageFieldAspect {
 
     /**
      * Extrai a URL do arquivo dos dados byte[] se representar uma URL válida.
-     *
-     * @param data os dados contendo a URL
-     * @return a URL do arquivo como uma string, ou null se não for uma URL válida
      */
     private String extractFileUrl(byte[] data) {
         if (data == null || data.length == 0) {
@@ -370,9 +479,6 @@ public class ArchbaseStorageFieldAspect {
 
     /**
      * Verifica se a string fornecida é uma URL HTTP ou HTTPS válida.
-     *
-     * @param url a string a ser verificada
-     * @return true se válida, false caso contrário
      */
     private boolean isValidUrl(String url) {
         if (!StringUtils.hasText(url)) {
@@ -388,47 +494,60 @@ public class ArchbaseStorageFieldAspect {
 
     /**
      * Extrai o nome do objeto da URL do arquivo para uso em operações de armazenamento.
-     *
-     * @param url a URL do arquivo
-     * @return o nome do objeto no armazenamento
      */
     private String getObjectNameFromUrl(String url) {
-        try {
-            URI uri = new URI(url);
-            String path = uri.getPath();
+        // Dividir a URL por "/"
+        String[] parts = url.split("/");
 
-            String storagePath = storagePort.getStoragePath();
-            int index = path.indexOf(storagePath);
-            if (index == -1) {
-                throw new IllegalArgumentException("URL não contém o caminho de armazenamento esperado: " + url);
+        // Procurar a última parte antes dos parâmetros de consulta
+        String lastPart = "";
+        for (String part : parts) {
+            // Se encontrarmos parâmetros de consulta, quebramos a parte
+            if (part.contains("?")) {
+                lastPart = part.substring(0, part.indexOf("?"));
+                break;
             }
-            return path.substring(index + storagePath.length());
-        } catch (Exception e) {
-            throw new IllegalArgumentException("URL inválida: " + url, e);
+            // Caso contrário, apenas atualizamos a última parte
+            if (!part.isEmpty()) {
+                lastPart = part;
+            }
         }
+
+        // Se não encontramos uma parte com "?", a última parte já é a que queremos
+        if (lastPart.isEmpty() && parts.length > 0) {
+            lastPart = parts[parts.length - 1];
+            // Verificar se há parâmetros de consulta
+            if (lastPart.contains("?")) {
+                lastPart = lastPart.substring(0, lastPart.indexOf("?"));
+            }
+        }
+
+        // Verificar se o nome do arquivo começa com "arquivos_"
+        if (lastPart.startsWith("arquivos_")) {
+            return lastPart;
+        }
+
+        return null; // Não encontrou um nome de arquivo válido
     }
 
     /**
      * Faz upload do conteúdo para o armazenamento e retorna a URL do arquivo.
-     *
-     * @param content     o conteúdo a ser enviado
-     * @param contentType o tipo MIME do conteúdo
-     * @return a URL do arquivo enviado
-     * @throws Exception se ocorrer um erro durante o upload
      */
     private String uploadContent(byte[] content, String contentType) throws Exception {
         String extension = getExtensionFromContentType(contentType);
-        String objectName = "arquivos/" + System.currentTimeMillis() + sanitizeFileName(extension);
+        // Adiciona UUID para garantir unicidade mesmo que o timestamp seja o mesmo
+        String objectName = "arquivos_" + System.currentTimeMillis() + "_" +
+                UUID.randomUUID().toString().substring(0, 8) +
+                sanitizeFileName(extension);
 
         InputStream inputStream = new ByteArrayInputStream(content);
-        return storagePort.uploadFile(objectName, inputStream, contentType);
+        String result = storagePort.uploadFile(objectName, inputStream, contentType);
+        logger.debug("Arquivo enviado com sucesso: {} ({})", objectName, contentType);
+        return result;
     }
 
     /**
      * Sanitiza o nome do arquivo substituindo caracteres inválidos.
-     *
-     * @param fileName o nome original do arquivo
-     * @return o nome do arquivo sanitizado
      */
     private String sanitizeFileName(String fileName) {
         return fileName.replaceAll("[^a-zA-Z0-9.-]", "_");
@@ -436,24 +555,23 @@ public class ArchbaseStorageFieldAspect {
 
     /**
      * Recupera a extensão do arquivo com base no tipo de conteúdo.
-     *
-     * @param contentType o tipo MIME do conteúdo
-     * @return a extensão do arquivo
-     * @throws Exception se não for possível determinar a extensão
      */
     private String getExtensionFromContentType(String contentType) throws Exception {
-        return allTypes.forName(contentType).getExtension();
+        try {
+            return allTypes.forName(contentType).getExtension();
+        } catch (Exception e) {
+            logger.warn("Não foi possível determinar a extensão para o tipo de conteúdo: {}", contentType);
+            // Extensão padrão para tipos de conteúdo desconhecidos
+            return ".bin";
+        }
     }
 
     /**
      * Recupera todos os campos da classe e suas superclasses.
-     *
-     * @param clazz a classe a ser inspecionada
-     * @return uma lista de campos
      */
     private List<Field> getAllFields(Class<?> clazz) {
         List<Field> fields = new ArrayList<>();
-        while (clazz != null) {
+        while (clazz != null && !clazz.equals(Object.class)) {
             Field[] declaredFields = clazz.getDeclaredFields();
             for (Field field : declaredFields) {
                 fields.add(field);
@@ -465,14 +583,9 @@ public class ArchbaseStorageFieldAspect {
 
     /**
      * Recupera um campo da hierarquia de classes pelo nome.
-     *
-     * @param clazz     a classe para iniciar a busca
-     * @param fieldName o nome do campo
-     * @return o objeto Field
-     * @throws NoSuchFieldException se o campo não for encontrado
      */
     private Field getFieldFromClassHierarchy(Class<?> clazz, String fieldName) throws NoSuchFieldException {
-        while (clazz != null) {
+        while (clazz != null && !clazz.equals(Object.class)) {
             try {
                 return clazz.getDeclaredField(fieldName);
             } catch (NoSuchFieldException e) {
