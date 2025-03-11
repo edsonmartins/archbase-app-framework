@@ -1,8 +1,7 @@
 package br.com.archbase.security.config;
 
-import br.com.archbase.ddd.context.ArchbaseTenantContext;
 import br.com.archbase.security.domain.entity.ApiToken;
-import br.com.archbase.security.exception.ArchbaseSecurityException;
+import br.com.archbase.security.persistence.AccessTokenEntity;
 import br.com.archbase.security.repository.AccessTokenJpaRepository;
 import br.com.archbase.security.service.ApiTokenService;
 import br.com.archbase.security.service.ArchbaseJwtService;
@@ -12,7 +11,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -42,61 +40,87 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull HttpServletResponse response,
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
-        String token = null;
-        String authHeader = request.getHeader("Authorization");
+        final String authHeader = request.getHeader("Authorization");
+        final String tokenParam = request.getParameter("token");
 
-        if (authHeader != null) {
-            if (authHeader.startsWith("Bearer ")) {
-                // Token JWT (usuário/senha)
-                token = authHeader.substring(7);
-                processJwtToken(token, request);
-            } else if (isValidUUID(authHeader)) {
-                // Token API (UUID direto)
-                processApiToken(authHeader, request);
-            } else {
-                log.warn("Formato de autorização não reconhecido: {}", authHeader);
+        try {
+            // Processar header de autorização
+            if (authHeader != null) {
+                if (authHeader.startsWith("Bearer ")) {
+                    // Token JWT (usuário/senha)
+                    String token = authHeader.substring(7);
+                    processJwtToken(token, request);
+                } else if (isValidUUID(authHeader)) {
+                    // Token API (UUID direto)
+                    processApiToken(authHeader, request);
+                } else {
+                    log.warn("Formato de autorização não reconhecido: {}", authHeader);
+                }
             }
-        } else {
             // Se não tem header, tenta pegar token JWT da URL
-            String tokenParam = request.getParameter("token");
-            if (tokenParam != null) {
-                token = tokenParam;
-                processJwtToken(token, request);
+            else if (tokenParam != null) {
+                if (isValidUUID(tokenParam)) {
+                    processApiToken(tokenParam, request);
+                } else {
+                    processJwtToken(tokenParam, request);
+                }
             }
+        } catch (Exception e) {
+            // Log detalhado, mas sem interromper o fluxo de filtros
+            log.error("Erro ao processar autenticação: {}", e.getMessage(), e);
         }
 
         filterChain.doFilter(request, response);
     }
 
-
     private void processJwtToken(String token, HttpServletRequest request) {
-        // Processo JWT token
-        String userEmail = jwtService.extractUsername(token);
-        if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            UserDetails userDetails = userDetailsService.loadUserByUsername(userEmail);
-            var isTokenValid = tokenRepository.findByToken(token)
-                    .map(t -> !t.isExpired() && !t.isRevoked())
-                    .orElse(false);
+        try {
+            // Extrai o email do usuário
+            String userEmail = jwtService.extractUsername(token);
 
-            if (jwtService.isTokenValid(token, userDetails) && isTokenValid) {
-                setAuthentication(userDetails, request);
+            if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                // Busca detalhes do usuário
+                UserDetails userDetails = userDetailsService.loadUserByUsername(userEmail);
+
+                // Verifica se o token existe no banco e é válido
+                Optional<AccessTokenEntity> tokenEntity = tokenRepository.findByToken(token);
+
+                boolean isTokenValid = tokenEntity
+                        .map(t -> !t.isExpired() && !t.isRevoked())
+                        .orElse(false);
+
+                // Valida o token JWT
+                if (jwtService.isTokenValid(token, userDetails) && isTokenValid) {
+                    setAuthentication(userDetails, request);
+                    log.debug("Autenticação JWT bem-sucedida para usuário: {}", userEmail);
+                } else {
+                    log.debug("Token JWT inválido para usuário: {}", userEmail);
+                }
             }
-        }
-        // Processo API token
-        else if (isValidUUID(token)) {
-            processApiToken(token, request);
+        } catch (Exception e) {
+            log.warn("Erro ao processar token JWT: {}", e.getMessage());
         }
     }
 
     private void processApiToken(String token, HttpServletRequest request) {
-        if (apiTokenService.validateToken(token)) {
-            Optional<ApiToken> apiToken = apiTokenService.getApiToken(token);
-            if (apiToken.isPresent() && apiToken.get().isActivated()) {
-                UserDetails userDetails = userDetailsService.loadUserByUsername(
-                        apiToken.get().getUser().getEmail()
-                );
-                setAuthentication(userDetails, request);
+        try {
+            if (apiTokenService.validateToken(token)) {
+                Optional<ApiToken> apiToken = apiTokenService.getApiToken(token);
+
+                if (apiToken.isPresent() && apiToken.get().isActivated()) {
+                    String userEmail = apiToken.get().getUser().getEmail();
+                    UserDetails userDetails = userDetailsService.loadUserByUsername(userEmail);
+
+                    setAuthentication(userDetails, request);
+                    log.debug("Autenticação API Token bem-sucedida para usuário: {}", userEmail);
+                } else {
+                    log.debug("API Token inativo ou não encontrado: {}", token);
+                }
+            } else {
+                log.debug("API Token inválido: {}", token);
             }
+        } catch (Exception e) {
+            log.warn("Erro ao processar API token: {}", e.getMessage());
         }
     }
 
@@ -115,9 +139,8 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
             UUID.fromString(token);
             return true;
         } catch (IllegalArgumentException e) {
-            log.debug("Invalid UUID format for token: {}", token);
+            log.trace("Token não é um UUID válido: {}", token);
             return false;
         }
     }
 }
-

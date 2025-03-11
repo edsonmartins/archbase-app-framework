@@ -3,22 +3,22 @@ package br.com.archbase.security.adapter;
 import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
 import br.com.archbase.query.rsql.jpa.SortUtils;
 import br.com.archbase.security.domain.dto.AccessTokenDto;
-import br.com.archbase.security.domain.dto.ApiTokenDto;
 import br.com.archbase.security.persistence.AccessTokenEntity;
-import br.com.archbase.security.persistence.ApiTokenEntity;
 import br.com.archbase.security.persistence.QAccessTokenEntity;
 import br.com.archbase.security.persistence.UserEntity;
 import br.com.archbase.security.repository.AccessTokenJpaRepository;
 import br.com.archbase.security.repository.PasswordResetTokenJpaRepository;
-import br.com.archbase.security.usecase.AccessTokenUseCase;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -26,6 +26,7 @@ import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<String, AccessTokenDto> {
 
     @Autowired
@@ -37,19 +38,32 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
     @Autowired
     private AccessTokenJpaRepository accessTokenJpaRepository;
 
+    /**
+     * Encontra todos os tokens válidos para um usuário
+     * Corrigido: agora retorna apenas tokens não expirados E não revogados
+     */
+    @Transactional(readOnly = true)
     public List<AccessTokenEntity> findAllValidTokenByUser(UserEntity user) {
         QAccessTokenEntity accessToken = QAccessTokenEntity.accessTokenEntity;
 
         JPAQueryFactory queryFactory = new JPAQueryFactory(entityManager);
 
+        // Corrigida a lógica do predicado para AND em vez de OR
         BooleanExpression predicate = accessToken.user.id.eq(user.getId())
-                .and(accessToken.expired.eq(false).or(accessToken.revoked.eq(false)));
+                .and(accessToken.expired.eq(false))
+                .and(accessToken.revoked.eq(false));
 
         return queryFactory.selectFrom(accessToken)
                 .where(predicate)
+                .orderBy(accessToken.expirationDate.desc())
                 .fetch();
     }
 
+    /**
+     * Encontra um token válido para um usuário
+     * Melhorado: agora ordena por data de expiração para pegar o mais recente
+     */
+    @Transactional(readOnly = true)
     public AccessTokenEntity findValidTokenByUser(UserEntity user) {
         QAccessTokenEntity accessToken = QAccessTokenEntity.accessTokenEntity;
 
@@ -61,9 +75,26 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
 
         return queryFactory.selectFrom(accessToken)
                 .where(predicate)
+                .orderBy(accessToken.expirationDate.desc())
                 .fetchFirst();
     }
 
+    /**
+     * Encontra tokens expirados que ainda não foram marcados como tal
+     */
+    @Transactional(readOnly = true)
+    public List<AccessTokenEntity> findExpiredButNotMarkedTokens(LocalDateTime now) {
+        QAccessTokenEntity accessToken = QAccessTokenEntity.accessTokenEntity;
+
+        JPAQueryFactory queryFactory = new JPAQueryFactory(entityManager);
+
+        BooleanExpression predicate = accessToken.expirationDate.before(now)
+                .and(accessToken.expired.eq(false));
+
+        return queryFactory.selectFrom(accessToken)
+                .where(predicate)
+                .fetch();
+    }
 
     @Override
     public AccessTokenDto findById(String id) {

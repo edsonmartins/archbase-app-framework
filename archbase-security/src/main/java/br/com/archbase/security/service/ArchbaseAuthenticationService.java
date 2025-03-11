@@ -15,6 +15,8 @@ import br.com.archbase.validation.exception.ArchbaseValidationException;
 import io.jsonwebtoken.JwtException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -32,6 +34,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ArchbaseAuthenticationService {
     private final UserJpaRepository repository;
     private final AccessTokenJpaRepository tokenRepository;
@@ -62,17 +65,25 @@ public class ArchbaseAuthenticationService {
         } else {
             user = byEmail.get();
         }
+
+        // Revogar tokens antigos antes de criar novos
+        revokeAllUserTokens(user);
+
         var jwtToken = jwtService.generateToken(user);
         var refreshToken = jwtService.generateRefreshToken(user);
         AccessTokenEntity savedUserToken = saveUserToken(user, jwtToken);
+
         return AuthenticationResponse.builder()
                 .id(savedUserToken.getId())
                 .user(user.toDomain())
-                .accessToken(jwtToken.token()).expirationTime(jwtToken.expiresIn()).tokenType(TokenType.BEARER)
+                .accessToken(jwtToken.token())
+                .expirationTime(jwtToken.expiresIn())
+                .tokenType(TokenType.BEARER)
                 .refreshToken(refreshToken.token())
                 .build();
     }
 
+    @Transactional
     public AuthenticationResponse authenticate(AuthenticationRequest request) {
         try {
             authenticationManager.authenticate(
@@ -85,36 +96,46 @@ public class ArchbaseAuthenticationService {
             var user = repository.findByEmail(request.getEmail())
                     .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
 
-            // Melhor verificação de token existente
+            // Verificar se existe um token válido
             AccessTokenEntity accessToken = accessTokenPersistenceAdapter.findValidTokenByUser(user);
 
-            // Verifica se o token existe e não está expirado
+            // Verificar se o token existe e não está expirado
             if (accessToken != null && !jwtService.isTokenExpired(accessToken.getToken())) {
+                log.debug("Token válido encontrado para o usuário {}, reusando token", user.getEmail());
                 // Token ainda válido, retorna o mesmo
                 var refreshToken = jwtService.generateRefreshToken(user);
-                return buildAuthenticationResponse(accessToken, refreshToken.token());
+                return buildAuthenticationResponse(accessToken, refreshToken.token(), user);
             }
 
-            // Se chegou aqui, precisa gerar novo token
+            log.debug("Nenhum token válido encontrado para o usuário {}, criando novo token", user.getEmail());
+            // Sempre revogar tokens antigos antes de criar novos
+            revokeAllUserTokens(user);
+
+            // Gerar novos tokens
             var jwtToken = jwtService.generateToken(user);
-            revokeAllUserTokens(user); // Revoga tokens antigos
             accessToken = saveUserToken(user, jwtToken);
             var refreshToken = jwtService.generateRefreshToken(user);
 
-            return buildAuthenticationResponse(accessToken, refreshToken.token());
+            return buildAuthenticationResponse(accessToken, refreshToken.token(), user);
         } catch (AuthenticationException e) {
+            log.warn("Falha na autenticação", e);
             throw new BadCredentialsException("Login ou senha inválido", e);
         }
     }
 
     private AccessTokenEntity saveUserToken(UserEntity usuario, ArchbaseJwtService.TokenResult jwtToken) {
         // Usar UTC para datas de expiração
+        LocalDateTime expirationDateTime = convertToLocalDateTimeViaInstant(jwtService.extractExpiration(jwtToken.token()));
+
+        log.debug("Salvando novo token para usuário {} com expiração em {}",
+                usuario.getEmail(), expirationDateTime);
+
         var token = AccessTokenEntity.builder()
                 .id(UUID.randomUUID().toString())
                 .user(usuario)
                 .token(jwtToken.token())
                 .expirationTime(jwtToken.expiresIn())
-                .expirationDate(convertToLocalDateTimeViaInstant(jwtService.extractExpiration(jwtToken.token())))
+                .expirationDate(expirationDateTime)
                 .tokenType(TokenType.BEARER)
                 .expired(false)
                 .revoked(false)
@@ -128,65 +149,78 @@ public class ArchbaseAuthenticationService {
                 .toLocalDateTime();
     }
 
-
     public LocalDateTime convertToLocalDateTimeViaMilisecond(Date dateToConvert) {
         return Instant.ofEpochMilli(dateToConvert.getTime())
                 .atZone(ZoneId.systemDefault())
                 .toLocalDateTime();
     }
 
-    private void revokeAllUserTokens(UserEntity user) {
+    @Transactional
+    public void revokeAllUserTokens(UserEntity user) {
+        log.debug("Revogando todos os tokens válidos para o usuário {}", user.getEmail());
+
         var validUserTokens = accessTokenPersistenceAdapter.findAllValidTokenByUser(user);
         if (!validUserTokens.isEmpty()) {
+            log.debug("Encontrados {} tokens válidos para revogação", validUserTokens.size());
             validUserTokens.forEach(token -> {
                 token.setExpired(true);
                 token.setRevoked(true);
             });
             tokenRepository.saveAll(validUserTokens);
+        } else {
+            log.debug("Nenhum token válido encontrado para revogação");
         }
     }
 
+    @Transactional
     public AuthenticationResponse refreshToken(RefreshTokenRequest refreshToken) {
         try {
             String userEmail = jwtService.extractUsername(refreshToken.getToken());
             if (userEmail == null) {
+                log.warn("Refresh token inválido: não foi possível extrair o email do usuário");
                 throw new JwtException("Token inválido");
             }
 
             var user = this.repository.findByEmail(userEmail)
-                    .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
+                    .orElseThrow(() -> {
+                        log.warn("Usuário não encontrado para o email: {}", userEmail);
+                        return new ArchbaseValidationException("Usuário não encontrado");
+                    });
 
             if (!jwtService.isTokenValid(refreshToken.getToken(), user)) {
+                log.warn("Refresh token inválido para o usuário: {}", userEmail);
                 throw new JwtException("Token de refresh inválido");
             }
 
-            AccessTokenEntity accessToken = accessTokenPersistenceAdapter.findValidTokenByUser(user);
+            // Sempre revogar tokens antigos para evitar acumulação
+            revokeAllUserTokens(user);
 
-            // Se não tem token válido ou está expirado, gera novo
-            if (accessToken == null || jwtService.isTokenExpired(accessToken.getToken())) {
-                var jwtToken = jwtService.generateToken(user);
-                revokeAllUserTokens(user);
-                accessToken = saveUserToken(user, jwtToken);
-            }
-
+            // Gerar novos tokens
+            var jwtToken = jwtService.generateToken(user);
+            AccessTokenEntity accessToken = saveUserToken(user, jwtToken);
             var newRefreshToken = jwtService.generateRefreshToken(user);
-            return buildAuthenticationResponse(accessToken, newRefreshToken.token());
+
+            log.debug("Token refreshed com sucesso para o usuário: {}", userEmail);
+            return buildAuthenticationResponse(accessToken, newRefreshToken.token(), user);
 
         } catch (JwtException e) {
+            log.error("Erro ao processar refresh token", e);
             throw new JwtException("Erro ao processar token: " + e.getMessage());
         }
     }
 
     // Método auxiliar para construir resposta de autenticação
-    private AuthenticationResponse buildAuthenticationResponse(AccessTokenEntity accessToken, String refreshToken) {
+    private AuthenticationResponse buildAuthenticationResponse(AccessTokenEntity accessToken, String refreshToken, UserEntity user) {
         return AuthenticationResponse.builder()
                 .id(accessToken.getId())
                 .accessToken(accessToken.getToken())
                 .expirationTime(accessToken.getExpirationTime())
                 .tokenType(TokenType.BEARER)
                 .refreshToken(refreshToken)
+                .user(user != null ? user.toDomain() : null)
                 .build();
     }
+
 
     public void sendResetPasswordEmail(String email)  {
         Optional<UserEntity> usuarioOptional = repository.findByEmail(email);
@@ -218,7 +252,6 @@ public class ArchbaseAuthenticationService {
         }
     }
 
-
     @Transactional
     public void resetPassword(PasswordResetRequest request) {
         Optional<UserEntity> usuarioOptional = repository.findByEmail(request.getEmail());
@@ -248,6 +281,9 @@ public class ArchbaseAuthenticationService {
         repository.save(user);
         token.revokeToken();
         passwordResetTokenPersistenceAdapter.save(token);
+
+        // Revogar tokens de acesso ao alterar a senha
+        revokeAllUserTokens(user);
     }
 
     @Transactional
@@ -279,5 +315,9 @@ public class ArchbaseAuthenticationService {
         repository.save(user);
         token.revokeToken();
         passwordResetTokenPersistenceAdapter.save(token);
+
+        // Revogar tokens de acesso ao alterar a senha
+        revokeAllUserTokens(user);
     }
+
 }
