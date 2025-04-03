@@ -67,7 +67,8 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
                 "/*.html",
                 "/*.png",
                 "/*.jpeg",
-                "/*.jpg"
+                "/*.jpg",
+                "/api/v1/licenca/verificar-tenants/**"
         );
         if (!whitelist.isEmpty()) {
             finalWhitelist.addAll(Arrays.stream(whitelist.split(",")).toList());

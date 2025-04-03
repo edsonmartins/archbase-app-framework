@@ -1,5 +1,6 @@
 package br.com.archbase.security.config;
 
+import br.com.archbase.ddd.context.ArchbaseTenantContext;
 import br.com.archbase.security.domain.entity.ApiToken;
 import br.com.archbase.security.persistence.AccessTokenEntity;
 import br.com.archbase.security.repository.AccessTokenJpaRepository;
@@ -34,6 +35,9 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
     private final AccessTokenJpaRepository tokenRepository;
     private final ApiTokenService apiTokenService;
 
+    public static final String X_TENANT_ID = "X-TENANT-ID";
+    public static final String X_COMPANY_ID = "X-COMPANY-ID";
+
     @Override
     protected void doFilterInternal(
             @NonNull HttpServletRequest request,
@@ -42,6 +46,24 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
         final String authHeader = request.getHeader("Authorization");
         final String tokenParam = request.getParameter("token");
+
+        String tenantId = request.getHeader(X_TENANT_ID);
+        if (tenantId == null || tenantId.isEmpty()) {
+            tenantId = request.getParameter(X_TENANT_ID);
+        }
+
+        String companyId = request.getHeader(X_COMPANY_ID);
+        if (companyId == null || companyId.isEmpty()) {
+            companyId = request.getParameter(X_COMPANY_ID);
+        }
+
+        if (tenantId != null && !tenantId.isEmpty()) {
+            ArchbaseTenantContext.setTenantId(tenantId);
+        }
+
+        if (companyId != null && !companyId.isEmpty()) {
+            ArchbaseTenantContext.setCompanyId(companyId);
+        }
 
         try {
             // Processar header de autorização
