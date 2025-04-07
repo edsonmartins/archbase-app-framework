@@ -3,6 +3,7 @@ package br.com.archbase.security.config;
 
 import com.google.common.collect.Lists;
 import jakarta.annotation.PostConstruct;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -32,6 +33,9 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
 
     @Value("${archbase.security.cors.allow-credentials}")
     private boolean corsAllowCredentials;
+
+    @Autowired
+    private CustomAccessDeniedHandler accessDeniedHandler;
 
     private final ArchbaseJwtAuthenticationFilter jwtAuthenticationFilter;
     private List<String> finalWhitelist;
@@ -113,6 +117,9 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
         return corsAllowCredentials;
     }
 
-
+    @Override
+    protected CustomAccessDeniedHandler getAccessDeniedHandler() {
+        return accessDeniedHandler;
+    }
 
 }

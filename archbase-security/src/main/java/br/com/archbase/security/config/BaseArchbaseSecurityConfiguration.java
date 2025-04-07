@@ -41,8 +41,13 @@ public abstract class BaseArchbaseSecurityConfiguration implements ArchbaseSecur
                     }
                 })
                 .sessionManagement(session -> session.sessionCreationPolicy(STATELESS))
-                .addFilterBefore(getJwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(getJwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class)
+                // Adicione o tratamento de exceção para capturar detalhes de erros de acesso
+                .exceptionHandling(handling -> handling
+                        .accessDeniedHandler(getAccessDeniedHandler()));
     }
+
+    protected abstract CustomAccessDeniedHandler getAccessDeniedHandler();
 
     // Adicione estes métodos abstratos para CORS
     protected abstract List<String> getAllowedOrigins();
