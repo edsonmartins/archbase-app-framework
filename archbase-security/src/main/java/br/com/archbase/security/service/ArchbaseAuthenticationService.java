@@ -42,10 +42,11 @@ public class ArchbaseAuthenticationService {
     private final ArchbaseJwtService jwtService;
     private final AuthenticationManager authenticationManager;
     private final ArchbaseEmailService archbaseEmailService;
+    private final UserService userService;
     private final PasswordResetTokenPersistenceAdapter passwordResetTokenPersistenceAdapter;
     private final AccessTokenPersistenceAdapter accessTokenPersistenceAdapter;
 
-    public AuthenticationResponse register(RegisterNewUser request) {
+    public void register(RegisterNewUser request) {
         Optional<UserEntity> byEmail = repository.findByEmail(request.getEmail());
         UserEntity user;
         if (byEmail.isEmpty()) {
@@ -59,28 +60,12 @@ public class ArchbaseAuthenticationService {
                     .passwordNeverExpires(true)
                     .allowPasswordChange(true)
                     .avatar(request.getAvatar())
-                    .password(passwordEncoder.encode(request.getPassword()))
+                    .password(request.getPassword())
                     .build();
-            user = repository.save(user);
+            userService.createUser(user.toDto());
         } else {
-            user = byEmail.get();
+            throw new ArchbaseValidationException("Usuário já existe.");
         }
-
-        // Revogar tokens antigos antes de criar novos
-        revokeAllUserTokens(user);
-
-        var jwtToken = jwtService.generateToken(user);
-        var refreshToken = jwtService.generateRefreshToken(user);
-        AccessTokenEntity savedUserToken = saveUserToken(user, jwtToken);
-
-        return AuthenticationResponse.builder()
-                .id(savedUserToken.getId())
-                .user(user.toDomain())
-                .accessToken(jwtToken.token())
-                .expirationTime(jwtToken.expiresIn())
-                .tokenType(TokenType.BEARER)
-                .refreshToken(refreshToken.token())
-                .build();
     }
 
     @Transactional

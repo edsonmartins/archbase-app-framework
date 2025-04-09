@@ -22,11 +22,13 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
     private final UserPersistenceAdapter persistenceAdapter;
     private final SecurityAdapter securityAdapter;
     private final PasswordEncoder passwordEncoder;
+    private final UserServiceListener userServiceListener;
 
-    public UserService(UserPersistenceAdapter persistenceAdapter, SecurityAdapter securityAdapter, PasswordEncoder passwordEncoder) {
+    public UserService(UserPersistenceAdapter persistenceAdapter, SecurityAdapter securityAdapter, PasswordEncoder passwordEncoder, UserServiceListener userServiceListener) {
         this.persistenceAdapter =  persistenceAdapter;
         this.securityAdapter = securityAdapter;
         this.passwordEncoder = passwordEncoder;
+        this.userServiceListener = userServiceListener;
     }
 
     @Override
@@ -79,21 +81,33 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
 
     @Override
     public UserDto createUser(UserDto userDto) {
+        userServiceListener.onBeforeCreate(userDto);
         userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
-        return persistenceAdapter.createUser(userDto);
+        UserDto user = persistenceAdapter.createUser(userDto);
+        userServiceListener.onAfterCreate(userDto,user);
+        return user;
     }
 
     @Override
     public Optional<UserDto> updateUser(String id, UserDto userDto) {
+        userServiceListener.onBeforeUpdate(userDto);
         if (!StringUtils.isBlank(userDto.getPassword())) {
             userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
         }
-        return persistenceAdapter.updateUser(id,userDto);
+        Optional<UserDto> result = persistenceAdapter.updateUser(id, userDto);
+        userServiceListener.onAfterUpdate(userDto, result.get());
+        return result;
     }
 
     @Override
     public void removeUser(String id) {
+        UserDto userDto = findById(id);
+        if (userDto==null){
+            throw new ArchbaseValidationException("Usuário não encontrada.");
+        }
+        userServiceListener.onBeforeRemove(userDto);
         persistenceAdapter.removerUser(id);
+        userServiceListener.onAfterRemove(userDto);
     }
 
     @Override
