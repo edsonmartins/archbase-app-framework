@@ -7,7 +7,7 @@ public interface UserServiceListener {
     public void onBeforeCreate(UserDto receivedUser);
     public void onAfterCreate(UserDto receivedUser, UserDto savedUser);
     public void onBeforeUpdate(UserDto receivedUser);
-    public void onAfterUpdate(UserDto receivedUser, UserDto savedUser);
+    public void onAfterUpdate(UserDto receivedUser, UserDto currentUserDto, UserDto savedUser);
     public void onBeforeRemove(UserDto removedUser);
     public void onAfterRemove(UserDto removedUser);
 

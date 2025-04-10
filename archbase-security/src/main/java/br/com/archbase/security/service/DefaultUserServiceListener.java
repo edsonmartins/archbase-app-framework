@@ -21,7 +21,7 @@ public class DefaultUserServiceListener implements UserServiceListener {
     }
 
     @Override
-    public void onAfterUpdate(UserDto receivedUser, UserDto savedUser) {
+    public void onAfterUpdate(UserDto receivedUser, UserDto currentUserDto, UserDto savedUser) {
 
     }
 

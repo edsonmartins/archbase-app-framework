@@ -16,7 +16,6 @@ import io.jsonwebtoken.JwtException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -57,8 +56,14 @@ public class ArchbaseAuthenticationService {
                     .description(request.getDescription())
                     .email(request.getEmail())
                     .userName(request.getUserName())
-                    .passwordNeverExpires(true)
-                    .allowPasswordChange(true)
+                    .changePasswordOnNextLogin(request.getChangePasswordOnNextLogin())
+                    .allowPasswordChange(request.getAllowPasswordChange() != null ? request.getAllowPasswordChange() : true)
+                    .allowMultipleLogins(request.getAllowMultipleLogins())
+                    .passwordNeverExpires(request.getPasswordNeverExpires() != null ? request.getPasswordNeverExpires() : true)
+                    .accountDeactivated(request.getAccountDeactivated())
+                    .accountLocked(request.getAccountLocked())
+                    .unlimitedAccessHours(request.getUnlimitedAccessHours())
+                    .isAdministrator(request.getIsAdministrator())
                     .avatar(request.getAvatar())
                     .password(request.getPassword())
                     .build();

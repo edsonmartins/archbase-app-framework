@@ -1,7 +1,5 @@
 package br.com.archbase.security.usecase;
 
-import br.com.archbase.security.domain.dto.GroupDto;
-import br.com.archbase.security.domain.dto.ResourceDto;
 import br.com.archbase.security.domain.dto.UserDto;
 import br.com.archbase.security.domain.entity.User;
 
