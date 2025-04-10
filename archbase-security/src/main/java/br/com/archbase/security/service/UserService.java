@@ -9,9 +9,11 @@ import br.com.archbase.security.domain.entity.User;
 import br.com.archbase.security.usecase.UserUseCase;
 import br.com.archbase.validation.exception.ArchbaseValidationException;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.BeanUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -80,22 +82,33 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
     }
 
     @Override
+    @Transactional
     public UserDto createUser(UserDto userDto) {
-        userServiceListener.onBeforeCreate(userDto);
+        UserDto originalUserDto = new UserDto();
+        BeanUtils.copyProperties(userDto, originalUserDto);
+
+        userServiceListener.onBeforeCreate(originalUserDto);
         userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
         UserDto user = persistenceAdapter.createUser(userDto);
-        userServiceListener.onAfterCreate(userDto,user);
+        userServiceListener.onAfterCreate(originalUserDto,user);
         return user;
     }
 
     @Override
     public Optional<UserDto> updateUser(String id, UserDto userDto) {
-        userServiceListener.onBeforeUpdate(userDto);
+        UserDto originalUserDto = new UserDto();
+        BeanUtils.copyProperties(userDto, originalUserDto);
+
+        userServiceListener.onBeforeUpdate(originalUserDto);
         if (!StringUtils.isBlank(userDto.getPassword())) {
             userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
         }
+        UserDto currentUserDto = findById(id);
+        if (currentUserDto==null){
+            throw new ArchbaseValidationException("Usuário não encontrada.");
+        }
         Optional<UserDto> result = persistenceAdapter.updateUser(id, userDto);
-        userServiceListener.onAfterUpdate(userDto, result.get());
+        userServiceListener.onAfterUpdate(originalUserDto, currentUserDto, result.get());
         return result;
     }
 

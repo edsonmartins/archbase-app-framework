@@ -19,4 +19,12 @@ public class RegisterNewUser {
   private String password;
   private RoleUser role;
   private byte[] avatar;
+  private Boolean changePasswordOnNextLogin;
+  private Boolean allowPasswordChange;
+  private Boolean allowMultipleLogins;
+  private Boolean passwordNeverExpires;
+  private Boolean accountDeactivated;
+  private Boolean accountLocked;
+  private Boolean unlimitedAccessHours;
+  private Boolean isAdministrator;
 }
