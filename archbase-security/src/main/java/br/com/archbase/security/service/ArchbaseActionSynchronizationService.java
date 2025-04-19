@@ -45,7 +45,11 @@ public class ArchbaseActionSynchronizationService {
         this.reflections = new Reflections(new ConfigurationBuilder()
                 .forPackages(scanPackages.split(","))
                 .setScanners(Scanners.MethodsAnnotated));
-        synchronizeActionsAndResources();
+        try {
+            synchronizeActionsAndResources();
+        } catch (Exception ex) {
+            log.error("Não foi possível sincronizar as ações do sistema {}",ex.getMessage());
+        }
     }
 
     protected void synchronizeActionsAndResources() {
