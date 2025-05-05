@@ -92,6 +92,7 @@ public class UserPersistenceAdapter implements UserPersistencePort, FindDataWith
                 .map(Optional::get)
                 .map(existingEntity -> {
                     existingEntity.setName(userDto.getName());
+                    existingEntity.setNickname(userDto.getNickname());
                     existingEntity.setDescription(userDto.getDescription());
                     existingEntity.setCode(userDto.getCode());
                     if (!StringUtils.isBlank(userDto.getPassword())) {
