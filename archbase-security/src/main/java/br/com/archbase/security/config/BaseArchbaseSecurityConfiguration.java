@@ -3,6 +3,7 @@ package br.com.archbase.security.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
@@ -29,6 +30,10 @@ public abstract class BaseArchbaseSecurityConfiguration implements ArchbaseSecur
                 .map(AntPathRequestMatcher::new)
                 .toArray(AntPathRequestMatcher[]::new);
 
+        if (getHttpDisableFrameOptions()) {
+            http.headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::disable));
+        }
+        
         http.csrf().disable()
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> {
@@ -74,4 +79,6 @@ public abstract class BaseArchbaseSecurityConfiguration implements ArchbaseSecur
     protected abstract void configureAuthorizationRules(HttpSecurity http) throws Exception;
 
     protected abstract ArchbaseJwtAuthenticationFilter getJwtAuthenticationFilter();
+
+    protected abstract boolean getHttpDisableFrameOptions();
 }

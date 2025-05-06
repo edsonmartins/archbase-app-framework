@@ -34,6 +34,9 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
     @Value("${archbase.security.cors.allow-credentials}")
     private boolean corsAllowCredentials;
 
+    @Value("${archbase.security.http.disable-frame-options}")
+    private boolean httpDisableFrameOptions;
+
     @Autowired
     private CustomAccessDeniedHandler accessDeniedHandler;
 
@@ -122,4 +125,8 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
         return accessDeniedHandler;
     }
 
+    @Override
+    protected boolean getHttpDisableFrameOptions() {
+        return httpDisableFrameOptions;
+    }
 }
