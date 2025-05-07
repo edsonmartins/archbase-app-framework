@@ -30,10 +30,6 @@ public abstract class BaseArchbaseSecurityConfiguration implements ArchbaseSecur
                 .map(AntPathRequestMatcher::new)
                 .toArray(AntPathRequestMatcher[]::new);
 
-        if (getHttpDisableFrameOptions()) {
-            http.headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::disable));
-        }
-        
         http.csrf().disable()
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> {
@@ -79,6 +75,4 @@ public abstract class BaseArchbaseSecurityConfiguration implements ArchbaseSecur
     protected abstract void configureAuthorizationRules(HttpSecurity http) throws Exception;
 
     protected abstract ArchbaseJwtAuthenticationFilter getJwtAuthenticationFilter();
-
-    protected abstract boolean getHttpDisableFrameOptions();
 }

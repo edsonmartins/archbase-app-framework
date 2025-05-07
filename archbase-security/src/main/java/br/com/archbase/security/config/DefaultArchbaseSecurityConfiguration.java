@@ -5,6 +5,7 @@ import com.google.common.collect.Lists;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -17,6 +18,7 @@ import java.util.List;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@ConditionalOnMissingBean(BaseArchbaseSecurityConfiguration.class)
 public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityConfiguration {
 
     @Value("${archbase.security.whitelist}")
@@ -33,9 +35,6 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
 
     @Value("${archbase.security.cors.allow-credentials}")
     private boolean corsAllowCredentials;
-
-    @Value("${archbase.security.http.disable-frame-options}")
-    private boolean httpDisableFrameOptions;
 
     @Autowired
     private CustomAccessDeniedHandler accessDeniedHandler;
@@ -123,10 +122,5 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
     @Override
     protected CustomAccessDeniedHandler getAccessDeniedHandler() {
         return accessDeniedHandler;
-    }
-
-    @Override
-    protected boolean getHttpDisableFrameOptions() {
-        return httpDisableFrameOptions;
     }
 }
