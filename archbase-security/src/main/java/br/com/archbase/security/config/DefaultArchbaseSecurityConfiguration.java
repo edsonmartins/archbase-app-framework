@@ -123,4 +123,5 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
     protected CustomAccessDeniedHandler getAccessDeniedHandler() {
         return accessDeniedHandler;
     }
+
 }

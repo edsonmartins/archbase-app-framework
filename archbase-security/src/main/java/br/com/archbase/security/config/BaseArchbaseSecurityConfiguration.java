@@ -75,4 +75,5 @@ public abstract class BaseArchbaseSecurityConfiguration implements ArchbaseSecur
     protected abstract void configureAuthorizationRules(HttpSecurity http) throws Exception;
 
     protected abstract ArchbaseJwtAuthenticationFilter getJwtAuthenticationFilter();
+
 }
