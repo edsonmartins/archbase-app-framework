@@ -5,6 +5,7 @@ import com.google.common.collect.Lists;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -17,6 +18,7 @@ import java.util.List;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@ConditionalOnMissingBean(BaseArchbaseSecurityConfiguration.class)
 public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityConfiguration {
 
     @Value("${archbase.security.whitelist}")
