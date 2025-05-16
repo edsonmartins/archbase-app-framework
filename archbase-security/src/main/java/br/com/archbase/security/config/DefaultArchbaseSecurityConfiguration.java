@@ -15,10 +15,26 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * Configuração de segurança padrão. Esta configuração será usada automaticamente
+ * a menos que uma implementação de {@link CustomSecurityConfiguration} seja fornecida.
+ *
+ * Para sobrepor esta configuração, crie uma classe que estenda {@link BaseArchbaseSecurityConfiguration}
+ * e implemente {@link CustomSecurityConfiguration}:
+ *
+ * <pre>
+ * @Configuration
+ * @EnableWebSecurity
+ * public class MySecurityConfiguration extends BaseArchbaseSecurityConfiguration
+ *                                      implements CustomSecurityConfiguration {
+ *     // Implementação personalizada...
+ * }
+ * </pre>
+ */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
-@ConditionalOnMissingBean(BaseArchbaseSecurityConfiguration.class)
+@ConditionalOnMissingBean(CustomSecurityConfiguration.class)
 public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityConfiguration {
 
     @Value("${archbase.security.whitelist}")
