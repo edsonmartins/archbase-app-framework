@@ -52,7 +52,7 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
     public Optional<User> getUserByEmail(String email)  {
         Optional<User> usuarioOptional = persistenceAdapter.getUserByEmail(email);
         if(usuarioOptional.isEmpty()) {
-            throw new ArchbaseValidationException(String.format("Usuário com email %s  não foi encontrado.",email));
+            throw new ArchbaseValidationException(String.format("Usuário com email %s não foi encontrado.",email));
         }
         return usuarioOptional;
     }
@@ -86,7 +86,10 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
     public UserDto createUser(UserDto userDto) {
         UserDto originalUserDto = new UserDto();
         BeanUtils.copyProperties(userDto, originalUserDto);
-
+        Optional<User> usuarioOptional = persistenceAdapter.getUserByEmail(userDto.getEmail());
+        if (usuarioOptional.isPresent()) {
+            throw new ArchbaseValidationException(String.format("Usuário com email %s já cadastrado.",userDto.getEmail()));
+        }
         userServiceListener.onBeforeCreate(originalUserDto);
         userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
         UserDto user = persistenceAdapter.createUser(userDto);
@@ -98,14 +101,17 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
     public Optional<UserDto> updateUser(String id, UserDto userDto) {
         UserDto originalUserDto = new UserDto();
         BeanUtils.copyProperties(userDto, originalUserDto);
-
+        Optional<User> usuarioOptional = persistenceAdapter.getUserByEmail(userDto.getEmail());
+        if (usuarioOptional.isPresent() && !usuarioOptional.get().getId().toString().equals(id)) {
+            throw new ArchbaseValidationException(String.format("Usuário com email %s já cadastrado.",userDto.getEmail()));
+        }
         userServiceListener.onBeforeUpdate(originalUserDto);
         if (!StringUtils.isBlank(userDto.getPassword())) {
             userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
         }
         UserDto currentUserDto = findById(id);
         if (currentUserDto==null){
-            throw new ArchbaseValidationException("Usuário não encontrada.");
+            throw new ArchbaseValidationException("Usuário não encontrado.");
         }
         Optional<UserDto> result = persistenceAdapter.updateUser(id, userDto);
         userServiceListener.onAfterUpdate(originalUserDto, currentUserDto, result.get());
