@@ -5,6 +5,7 @@ import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
 import br.com.archbase.security.adapter.ActionPersistenceAdapter;
 import br.com.archbase.security.adapter.SecurityAdapter;
 import br.com.archbase.security.domain.dto.*;
+import br.com.archbase.security.domain.entity.TipoRecurso;
 import br.com.archbase.security.domain.entity.User;
 import com.google.common.collect.Lists;
 import br.com.archbase.security.domain.dto.ResourcePermissionsDto;
@@ -75,6 +76,7 @@ public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery
                     .createdByUser("archbase")
                     .version(0L)
                     .active(true)
+                    .type(TipoRecurso.VIEW)
                     .build();
 
             resourceDto = adapter.createResource(resourceDto);

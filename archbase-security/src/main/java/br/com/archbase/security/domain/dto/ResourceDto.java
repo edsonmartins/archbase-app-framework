@@ -1,6 +1,7 @@
 package br.com.archbase.security.domain.dto;
 
 import br.com.archbase.security.domain.entity.Resource;
+import br.com.archbase.security.domain.entity.TipoRecurso;
 import com.fasterxml.jackson.annotation.JsonIdentityInfo;
 import com.fasterxml.jackson.annotation.ObjectIdGenerators;
 import lombok.*;
@@ -28,6 +29,7 @@ public class ResourceDto {
 	protected String name;
 	protected String description;
 	protected Boolean active;
+	protected TipoRecurso type;
 
 	public static ResourceDto fromDomain(Resource resource) {
 		if (resource == null) {
@@ -45,6 +47,7 @@ public class ResourceDto {
 				.name(resource.getName())
 				.description(resource.getDescription())
 				.active(resource.getActive())
+				.type(resource.getType())
 				.build();
 	}
 
@@ -60,6 +63,7 @@ public class ResourceDto {
 				.name(this.name)
 				.active(this.active)
 				.description(this.description)
+				.type(this.type)
 				.build();
 	}
 }
