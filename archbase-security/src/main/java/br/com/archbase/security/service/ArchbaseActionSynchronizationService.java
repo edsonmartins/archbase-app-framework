@@ -1,9 +1,13 @@
 package br.com.archbase.security.service;
 import br.com.archbase.security.annotation.HasPermission;
+import br.com.archbase.security.domain.entity.TipoRecurso;
 import br.com.archbase.security.persistence.ActionEntity;
+import br.com.archbase.security.persistence.QActionEntity;
+import br.com.archbase.security.persistence.QResourceEntity;
 import br.com.archbase.security.persistence.ResourceEntity;
 import br.com.archbase.security.repository.ActionJpaRepository;
 import br.com.archbase.security.repository.ResourceJpaRepository;
+import com.querydsl.core.types.dsl.BooleanExpression;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.reflections.Reflections;
@@ -74,7 +78,17 @@ public class ArchbaseActionSynchronizationService {
             resource.setDescription(resourceName);
             resource.setCreateEntityDate(LocalDateTime.now());
             resource.setCreatedByUser("archbase");
+            resource.setActive(true);
+            resource.setType(TipoRecurso.API);
             resourceRepository.save(resource);
+        } else {
+            if (!resource.getActive()) {
+                resource.setUpdateEntityDate(LocalDateTime.now());
+                resource.setActive(true);
+                resource.setLastModifiedByUser("archbase");
+                resource.setType(TipoRecurso.API);
+                resource = resourceRepository.save(resource);
+            }
         }
         return resource;
     }
@@ -90,18 +104,29 @@ public class ArchbaseActionSynchronizationService {
             action.setActive(true);
             action.setCreateEntityDate(LocalDateTime.now());
             action.setCreatedByUser("archbase");
+            actionRepository.save(action);
         } else {
             action = actionEntityOptional.get();
+            if (!action.getActive()) {
+                action.setActive(true);
+                action.setUpdateEntityDate(LocalDateTime.now());
+                action.setLastModifiedByUser("archbase");
+                actionRepository.save(action);
+            }
         }
-        actionRepository.save(action);
     }
 
     private void disableUnusedActionsAndResources() {
-        List<ActionEntity> allActions = actionRepository.findAll();
-        List<ResourceEntity> allResources = resourceRepository.findAll();
+        QActionEntity qAction = QActionEntity.actionEntity;
+        BooleanExpression actionPredicate = qAction.resource.type.eq(TipoRecurso.API);
+        List<ActionEntity> allAPIActions = actionRepository.findAll(actionPredicate);
+
+        QResourceEntity qResource = QResourceEntity.resourceEntity;
+        BooleanExpression resourcePredicate = qResource.type.eq(TipoRecurso.API);
+        List<ResourceEntity> allAPIResources = resourceRepository.findAll(resourcePredicate);
 
         // Desativar ações e recursos não encontrados
-        allActions.forEach(action -> {
+        allAPIActions.forEach(action -> {
             if (!actionStillExists(action)) {
                 action.setActive(false);
                 action.setUpdateEntityDate(LocalDateTime.now());
@@ -110,7 +135,7 @@ public class ArchbaseActionSynchronizationService {
             }
         });
 
-        allResources.forEach(resource -> {
+        allAPIResources.forEach(resource -> {
             if (!resourceStillExists(resource)) {
                 resource.setActive(false);
                 resource.setUpdateEntityDate(LocalDateTime.now());

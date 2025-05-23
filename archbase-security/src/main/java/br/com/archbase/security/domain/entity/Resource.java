@@ -19,13 +19,15 @@ public class Resource extends DomainAggregatorBase<Resource> {
     protected String name;
     protected String description;
     protected Boolean active;
+    protected TipoRecurso type;
 
     @Builder
-    public Resource(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Boolean active) {
+    public Resource(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Boolean active, TipoRecurso type) {
         super(id, code, version, updateEntityDate, createEntityDate, createdByUser, lastModifiedByUser);
         this.name = name;
         this.description = description;
         this.active = active;
+        this.type = type;
     }
 
     static class Validator extends AbstractArchbaseValidator<Resource> {

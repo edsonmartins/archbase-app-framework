@@ -1,10 +1,9 @@
 package br.com.archbase.security.persistence;
 
 import br.com.archbase.ddd.domain.base.TenantPersistenceEntityBase;
-import br.com.archbase.security.domain.dto.ActionDto;
 import br.com.archbase.security.domain.dto.ResourceDto;
-import br.com.archbase.security.domain.entity.Action;
 import br.com.archbase.security.domain.entity.Resource;
+import br.com.archbase.security.domain.entity.TipoRecurso;
 import br.com.archbase.shared.kernel.converters.BooleanToSNConverter;
 import jakarta.persistence.*;
 import lombok.Builder;
@@ -12,9 +11,6 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
-import java.util.Collections;
-import java.util.List;
-import java.util.stream.Collectors;
 
 @Entity
 @Table(name="SEGURANCA_RECURSO", uniqueConstraints = @UniqueConstraint(columnNames = {"TENANT_ID", "NOME"}))
@@ -38,15 +34,21 @@ public class ResourceEntity extends TenantPersistenceEntityBase {
     @Convert(converter = BooleanToSNConverter.class)
     private Boolean active;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "TIPO_RECURSO", length = 50)
+    private TipoRecurso type;
+
     public ResourceEntity() {
         // Default empty constructor
     }
 
     @Builder
-    public ResourceEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description) {
+    public ResourceEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, Boolean active, TipoRecurso type) {
         super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId);
         this.name = name;
         this.description = description;
+        this.active = active;
+        this.type = type;
     }
 
 
@@ -66,6 +68,7 @@ public class ResourceEntity extends TenantPersistenceEntityBase {
         resourceEntity.setName(resource.getName());
         resourceEntity.setDescription(resource.getDescription());
         resourceEntity.setActive(resource.getActive());
+        resourceEntity.setType(resource.getType());
         return resourceEntity;
     }
 
@@ -82,6 +85,7 @@ public class ResourceEntity extends TenantPersistenceEntityBase {
                 .name(this.getName())
                 .description(this.getDescription())
                 .active(this.getActive())
+                .type(this.getType())
                 .build();
     }
 
@@ -98,6 +102,7 @@ public class ResourceEntity extends TenantPersistenceEntityBase {
                 .name(this.getName())
                 .description(this.getDescription())
                 .active(this.getActive())
+                .type(this.getType())
                 .build();
     }
 }
