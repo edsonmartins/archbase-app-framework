@@ -2,6 +2,7 @@ package br.com.archbase.security.service;
 
 import br.com.archbase.security.domain.entity.User;
 import br.com.archbase.security.persistence.PermissionEntity;
+import br.com.archbase.security.persistence.UserEntity;
 import br.com.archbase.security.repository.PermissionJpaRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
@@ -15,7 +16,10 @@ public class ArchbaseSecurityService {
     private PermissionJpaRepository permissionRepository;
 
     public boolean hasPermission(Authentication authentication, String action, String resource, String tenantId, String companyId, String projectId) {
-        String userId = ((User) authentication.getPrincipal()).getId().toString();
+        if (((UserEntity) authentication.getPrincipal()).getIsAdministrator() &&  ((UserEntity) authentication.getPrincipal()).isEnabled()){
+            return  true;
+        }
+        String userId = ((UserEntity) authentication.getPrincipal()).getId();
         List<PermissionEntity> permissions = permissionRepository.findBySecurityIdAndActionNameAndResourceName(
                 userId, action, resource);
 
