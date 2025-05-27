@@ -1,5 +1,6 @@
 package br.com.archbase.security.annotation;
 
+import org.springframework.security.access.annotation.Secured;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

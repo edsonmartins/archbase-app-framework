@@ -12,32 +12,7 @@ import java.util.UUID;
 @MappedSuperclass
 @Getter
 @Setter
-public class TenantPersistenceEntityBase {
-
-    @Id
-    @Column(name="ID")
-    protected String id;
-
-    @Column(name="CODIGO")
-    protected String code;
-
-    @Version
-    @Column(name="VERSAO")
-    protected Long version;
-
-    @Temporal(TemporalType.TIMESTAMP)
-    @Column(name="DH_CRIACAO")
-    protected LocalDateTime createEntityDate;
-
-    @Column(name="USUARIO_CRIOU")
-    protected String createdByUser;
-
-    @Temporal(TemporalType.TIMESTAMP)
-    @Column(name="DH_ATUALIZACAO")
-    protected LocalDateTime updateEntityDate;
-
-    @Column(name="ULTIMO_USUARIO_ALTEROU")
-    protected String lastModifiedByUser;
+public class TenantPersistenceEntityBase extends PersistenceEntityBase {
 
     @TenantId
     @Column(name = "TENANT_ID", length = 40, nullable = true)
