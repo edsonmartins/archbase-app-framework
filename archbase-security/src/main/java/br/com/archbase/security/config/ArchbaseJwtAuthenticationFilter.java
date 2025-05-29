@@ -149,10 +149,9 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
                 boolean isTokenValid = false;
 
                 if (tokenEntity != null) {
-                    boolean valid = !tokenEntity.isExpired() && !tokenEntity.isRevoked();
+                    isTokenValid = !tokenEntity.isExpired() && !tokenEntity.isRevoked();
                     log.info("Token válido: {}, Expirado: {}, Revogado: {}",
-                            valid, tokenEntity.isExpired(), tokenEntity.isRevoked());
-                    isTokenValid = valid;
+                            isTokenValid, tokenEntity.isExpired(), tokenEntity.isRevoked());
                 }
 
                 // Valida o token JWT
