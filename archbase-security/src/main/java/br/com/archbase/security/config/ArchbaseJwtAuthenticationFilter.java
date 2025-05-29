@@ -1,6 +1,7 @@
 package br.com.archbase.security.config;
 
 import br.com.archbase.ddd.context.ArchbaseTenantContext;
+import br.com.archbase.security.adapter.AccessTokenPersistenceAdapter;
 import br.com.archbase.security.domain.entity.ApiToken;
 import br.com.archbase.security.persistence.AccessTokenEntity;
 import br.com.archbase.security.repository.AccessTokenJpaRepository;
@@ -35,6 +36,7 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
     private final UserDetailsService userDetailsService;
     private final AccessTokenJpaRepository tokenRepository;
     private final ApiTokenService apiTokenService;
+    private final AccessTokenPersistenceAdapter accessTokenPersistenceAdapter;
 
     public static final String X_TENANT_ID = "X-TENANT-ID";
     public static final String X_COMPANY_ID = "X-COMPANY-ID";
@@ -141,17 +143,17 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
                 log.info("Usuário encontrado: {}, Autoridades: {}", userDetails.getUsername(), userDetails.getAuthorities());
 
                 // Verifica se o token existe no banco e é válido
-                Optional<AccessTokenEntity> tokenEntity = tokenRepository.findByToken(token);
-                log.info("Token encontrado no banco: {}", tokenEntity.isPresent());
+                AccessTokenEntity tokenEntity = accessTokenPersistenceAdapter.findTokenByValue(token);
+                log.info("Token encontrado no banco: {}", tokenEntity != null);
 
-                boolean isTokenValid = tokenEntity
-                        .map(t -> {
-                            boolean valid = !t.isExpired() && !t.isRevoked();
-                            log.info("Token válido: {}, Expirado: {}, Revogado: {}",
-                                    valid, t.isExpired(), t.isRevoked());
-                            return valid;
-                        })
-                        .orElse(false);
+                boolean isTokenValid = false;
+
+                if (tokenEntity != null) {
+                    boolean valid = !tokenEntity.isExpired() && !tokenEntity.isRevoked();
+                    log.info("Token válido: {}, Expirado: {}, Revogado: {}",
+                            valid, tokenEntity.isExpired(), tokenEntity.isRevoked());
+                    isTokenValid = valid;
+                }
 
                 // Valida o token JWT
                 boolean isJwtValid = jwtService.isTokenValid(token, userDetails);
