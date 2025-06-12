@@ -98,6 +98,7 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
     }
 
     @Override
+    @Transactional
     public Optional<UserDto> updateUser(String id, UserDto userDto) {
         UserDto originalUserDto = new UserDto();
         BeanUtils.copyProperties(userDto, originalUserDto);
