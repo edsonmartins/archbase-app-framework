@@ -80,6 +80,38 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
     }
 
     /**
+     * Encontra um token pelo valor
+     * Similar ao findTokenByValue, mas busca pelo valor do token
+     *
+     * @param tokenValue o valor do token JWT
+     * @return AccessTokenEntity válido ou null se não encontrado/inválido
+     */
+    @Transactional(readOnly = true)
+    public AccessTokenEntity findTokenByValue(String tokenValue) {
+        QAccessTokenEntity accessToken = QAccessTokenEntity.accessTokenEntity;
+
+        JPAQueryFactory queryFactory = new JPAQueryFactory(entityManager);
+
+        BooleanExpression predicate = accessToken.token.eq(tokenValue);
+
+        AccessTokenEntity result = queryFactory.selectFrom(accessToken)
+                .where(predicate)
+                .orderBy(accessToken.createEntityDate.desc())
+                .fetchFirst();
+
+        if (result != null) {
+            log.debug("Token válido encontrado: ID={}, Usuário={}, Expiração={}",
+                    result.getId(),
+                    result.getUser() != null ? result.getUser().getEmail() : "N/A",
+                    result.getExpirationDate());
+        } else {
+            log.debug("Nenhum token válido encontrado para o valor fornecido");
+        }
+
+        return result;
+    }
+
+    /**
      * Encontra tokens expirados que ainda não foram marcados como tal
      */
     @Transactional(readOnly = true)
