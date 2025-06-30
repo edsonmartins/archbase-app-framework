@@ -1,23 +1,25 @@
 package br.com.archbase.security.usecase;
 
-import br.com.archbase.security.domain.dto.GroupDto;
 import br.com.archbase.security.domain.dto.ProfileDto;
+import br.com.archbase.security.domain.entity.Profile;
 
 import java.util.List;
 import java.util.Optional;
 
 public interface ProfileUseCase {
-    public List<ProfileDto> findAllProfiles();
+    List<ProfileDto> findAllProfiles();
 
-    public Optional<ProfileDto> findProfileById(String id);
+    Optional<ProfileDto> findProfileById(String id);
 
-    public ProfileDto createProfile(ProfileDto profileDto);
+    ProfileDto createProfile(ProfileDto profileDto);
 
-    public Optional<ProfileDto> updateProfile(String id, ProfileDto profileDto);
+    Optional<ProfileDto> updateProfile(String id, ProfileDto profileDto);
 
-    public void deleteProfile(String id);
+    void deleteProfile(String id);
 
-    public void addPermission(String actionId, String permissionId);
+    void addPermission(String actionId, String permissionId);
 
-    public void removePermission(String permissionId);
+    void removePermission(String permissionId);
+
+    Optional<Profile> findByName(String name);
 }
