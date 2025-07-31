@@ -14,6 +14,7 @@ import java.text.DecimalFormat;
 @Embeddable
 @EqualsAndHashCode
 @Access(AccessType.PROPERTY)
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Quantity {
 
     public Quantity(@NonNull BigDecimal amount, @NonNull Metric metric) {

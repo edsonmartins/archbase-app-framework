@@ -367,6 +367,194 @@ public class MinhaConfiguracaoSeguranca extends BaseArchbaseSecurityConfiguratio
 }
 ```
 
+---
+
+# Anotações de Segurança do Archbase
+
+O Archbase Security oferece um conjunto de anotações para controle de acesso granular em métodos e classes. Estas anotações são processadas através do Spring Security usando `AuthorizationManager` customizados.
+
+## Anotações Disponíveis
+
+### 1. @HasPermission (Existente)
+
+Controle baseado no sistema Resource/Action do Archbase:
+
+```java
+@HasPermission(resource = "USER", action = "CREATE")
+public User createUser(UserDto userDto) {
+    // Método protegido por permissão específica
+}
+```
+
+**Parâmetros:**
+- `resource` - Nome do recurso (ex: "USER", "PRODUCT", "ORDER")
+- `action` - Ação permitida (ex: "CREATE", "READ", "UPDATE", "DELETE")
+- `tenantId`, `companyId`, `projectId` - Contexto multi-tenant
+
+### 2. @RequireProfile
+
+Controle baseado em profiles do Archbase:
+
+```java
+@RequireProfile({"ADMIN", "MANAGER"})
+public void adminOnlyMethod() {
+    // Método acessível por usuários com profile ADMIN ou MANAGER
+}
+
+@RequireProfile(value = {"ADMIN", "FINANCE"}, requireAll = true)
+public void restrictedMethod() {
+    // Usuário deve ter AMBOS os profiles: ADMIN E FINANCE
+}
+```
+
+**Parâmetros:**
+- `value` - Array de profiles necessários
+- `requireAll` - Se true, usuário deve ter TODOS os profiles (AND). Se false, apenas UM (OR)
+- `resource`, `action` - Validação adicional de permissão se especificado
+- `allowSystemAdmin` - Permite bypass para administradores (default: true)
+- `requireActiveUser` - Verifica se usuário está ativo (default: true)
+
+### 3. @RequireRole
+
+Controle baseado em roles customizadas (extensível):
+
+```java
+@RequireRole("STORE_MANAGER")
+public void storeManagerMethod() {
+    // Método para gerentes de loja
+}
+
+@RequireRole(value = {"OWNER", "PARTNER"}, requirePlatformAdmin = true)
+public void platformAdminMethod() {
+    // Método que requer ser admin da plataforma E ter role OWNER ou PARTNER
+}
+```
+
+**Parâmetros:**
+- `value` - Array de roles necessárias
+- `requireAll` - Se true, usuário deve ter TODAS as roles (AND)
+- `requirePlatformAdmin` - Requer que seja admin da plataforma
+- `ownerOnly` - Permite acesso apenas para owners (não funcionários)
+- `context` - Contexto específico para validação condicional
+- `allowSystemAdmin` - Permite bypass para administradores
+
+### 4. @RequirePersona (Nova)
+
+Controle baseado em personas de negócio com suporte a contexto:
+
+```java
+@RequirePersona("CUSTOMER")
+public void customerOnlyMethod() {
+    // Método acessível apenas por clientes
+}
+
+@RequirePersona(value = "STORE_ADMIN", context = "STORE_APP")
+public void storeAdminMethod() {
+    // Método para admins de loja no contexto do app da loja
+}
+
+@RequirePersona(
+    value = {"DRIVER", "STORE_ADMIN"}, 
+    context = "DELIVERY_APP",
+    contextData = "{\"region\": \"SP\", \"activeOnly\": true}"
+)
+public void deliveryMethod() {
+    // Método para motoristas ou admins no app de delivery
+    // com dados de contexto específicos
+}
+```
+
+**Parâmetros:**
+- `value` - Array de personas necessárias
+- `requireAll` - Se true, usuário deve ter TODAS as personas
+- `context` - Contexto da aplicação ("STORE_APP", "CUSTOMER_APP", "DRIVER_APP", "WEB_ADMIN")
+- `contextData` - Dados de contexto como JSON para validações específicas
+- `ownerOnly` - Permite acesso apenas para proprietários
+- `resource`, `action` - Validação adicional de permissão
+- `allowSystemAdmin` - Permite bypass para administradores
+
+## Exemplos de Uso em Controllers
+
+```java
+@RestController
+@RequestMapping("/api/v1/products")
+public class ProductController {
+
+    @GetMapping
+    @RequireProfile("USER") // Qualquer usuário logado
+    public List<Product> listProducts() {
+        return productService.findAll();
+    }
+
+    @PostMapping
+    @HasPermission(resource = "PRODUCT", action = "CREATE")
+    public Product createProduct(@RequestBody ProductDto dto) {
+        return productService.create(dto);
+    }
+
+    @PutMapping("/{id}")
+    @RequirePersona(value = "STORE_ADMIN", context = "STORE_APP")
+    public Product updateProduct(@PathVariable String id, @RequestBody ProductDto dto) {
+        return productService.update(id, dto);
+    }
+
+    @DeleteMapping("/{id}")
+    @RequireRole(value = "STORE_OWNER", ownerOnly = true)
+    public void deleteProduct(@PathVariable String id) {
+        productService.delete(id);
+    }
+
+    @GetMapping("/reports")
+    @RequireProfile(value = {"ADMIN", "FINANCE"}, requireAll = true)
+    @HasPermission(resource = "REPORTS", action = "GENERATE")
+    public ProductReport generateReport() {
+        return reportService.generateProductReport();
+    }
+}
+```
+
+## Combinando Anotações
+
+As anotações podem ser combinadas para validações mais complexas:
+
+```java
+@RequireProfile("MANAGER")
+@HasPermission(resource = "FINANCIAL", action = "READ")
+public FinancialReport getFinancialReport() {
+    // Usuário deve ter profile MANAGER E permissão FINANCIAL:READ
+}
+```
+
+## Extensibilidade via Enrichers
+
+As anotações `@RequireRole` e `@RequirePersona` são extensíveis através do sistema de enrichers do Archbase. Aplicações podem implementar lógica customizada de validação baseada em:
+
+- Contexto da aplicação (STORE_APP, CUSTOMER_APP, etc.)
+- Dados específicos do domínio (store, region, etc.)
+- Regras de negócio complexas
+
+## Tratamento de Erros
+
+Quando o acesso é negado, as anotações lançam `AccessDeniedException` com mensagens customizáveis:
+
+```java
+@RequirePersona(value = "STORE_ADMIN", message = "Apenas administradores de loja podem acessar este recurso")
+public void restrictedMethod() {
+    // ...
+}
+```
+
+## Configuração
+
+As anotações são automaticamente configuradas através do `MethodSecurityConfig` e processadas pelos respectivos `AuthorizationManager`:
+
+- `CustomAuthorizationManager` - processa `@HasPermission`
+- `ProfileAuthorizationManager` - processa `@RequireProfile`
+- `RoleAuthorizationManager` - processa `@RequireRole`
+- `PersonaAuthorizationManager` - processa `@RequirePersona`
+
+---
+
 ## Considerações Finais
 
 A customização da configuração de segurança oferece grande flexibilidade, mas também traz responsabilidades. Certifique-se de entender completamente as implicações das alterações que você fizer na configuração de segurança.

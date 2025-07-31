@@ -13,9 +13,11 @@ import br.com.archbase.security.token.TokenType;
 import br.com.archbase.security.util.TokenGeneratorUtil;
 import br.com.archbase.validation.exception.ArchbaseValidationException;
 import io.jsonwebtoken.JwtException;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -26,10 +28,8 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.Date;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -44,6 +44,10 @@ public class ArchbaseAuthenticationService {
     private final UserService userService;
     private final PasswordResetTokenPersistenceAdapter passwordResetTokenPersistenceAdapter;
     private final AccessTokenPersistenceAdapter accessTokenPersistenceAdapter;
+    
+    // Injection opcional de enrichers - não quebra se não existir nenhum
+    @Autowired(required = false)
+    private List<AuthenticationResponseEnricher> enrichers;
 
     public void register(RegisterNewUser request) {
         Optional<UserEntity> byEmail = repository.findByEmail(request.getEmail());
@@ -308,6 +312,95 @@ public class ArchbaseAuthenticationService {
 
         // Revogar tokens de acesso ao alterar a senha
         revokeAllUserTokens(user);
+    }
+
+    /**
+     * Autentica usuário com contexto específico da aplicação.
+     * Aplica enrichers registrados para personalizar a resposta.
+     * 
+     * @param contextualRequest Request com contexto da aplicação
+     * @param httpRequest Request HTTP para contexto adicional  
+     * @return Resposta de autenticação enriquecida
+     */
+    @Transactional
+    public AuthenticationResponse authenticateWithContext(
+            ContextualAuthenticationRequest contextualRequest,
+            HttpServletRequest httpRequest) {
+        
+        try {
+            log.debug("Iniciando autenticação contextual para usuário: {} com contexto: {}", 
+                    contextualRequest.getEmail(), contextualRequest.getContext());
+            
+            // 1. Autenticação básica usando lógica existente
+            AuthenticationResponse baseResponse = authenticate(contextualRequest.toBasicRequest());
+            
+            // 2. Aplicar enrichers se existirem e contexto for especificado
+            if (enrichers != null && !enrichers.isEmpty() && contextualRequest.getContext() != null) {
+                return applyEnrichers(baseResponse, contextualRequest.getContext(), httpRequest);
+            }
+            
+            log.debug("Autenticação contextual concluída sem enrichers para usuário: {}", 
+                    contextualRequest.getEmail());
+            return baseResponse;
+            
+        } catch (AuthenticationException e) {
+            log.warn("Falha na autenticação contextual para usuário: {}", contextualRequest.getEmail(), e);
+            throw new BadCredentialsException("Login ou senha inválido", e);
+        }
+    }
+    
+    /**
+     * Aplica enrichers registrados à resposta de autenticação.
+     * Enrichers são executados em ordem de prioridade (getOrder()).
+     * 
+     * @param baseResponse Resposta básica de autenticação
+     * @param context Contexto da aplicação
+     * @param request Request HTTP original
+     * @return Resposta enriquecida
+     */
+    private AuthenticationResponse applyEnrichers(
+            AuthenticationResponse baseResponse, 
+            String context, 
+            HttpServletRequest request) {
+        
+        log.debug("Aplicando {} enrichers para contexto: {}", enrichers.size(), context);
+        
+        // Filtrar enrichers que suportam o contexto e ordenar por prioridade
+        List<AuthenticationResponseEnricher> applicableEnrichers = enrichers.stream()
+            .filter(enricher -> enricher.supports(context))
+            .sorted(Comparator.comparing(AuthenticationResponseEnricher::getOrder))
+            .collect(Collectors.toList());
+        
+        if (applicableEnrichers.isEmpty()) {
+            log.debug("Nenhum enricher aplicável encontrado para contexto: {}", context);
+            return baseResponse;
+        }
+        
+        log.debug("Aplicando {} enrichers aplicáveis para contexto: {}", 
+                applicableEnrichers.size(), context);
+        
+        // Aplicar enrichers em sequência
+        AuthenticationResponse enrichedResponse = baseResponse;
+        for (AuthenticationResponseEnricher enricher : applicableEnrichers) {
+            try {
+                log.trace("Aplicando enricher: {} para contexto: {}", 
+                        enricher.getClass().getSimpleName(), context);
+                
+                enrichedResponse = enricher.enrich(enrichedResponse, context, request);
+                
+                log.trace("Enricher {} aplicado com sucesso", enricher.getClass().getSimpleName());
+                
+            } catch (Exception e) {
+                log.error("Erro ao aplicar enricher {} para contexto {}: {}", 
+                        enricher.getClass().getSimpleName(), context, e.getMessage(), e);
+                
+                // Continuar com outros enrichers em caso de erro
+                // O comportamento pode ser configurado conforme necessário
+            }
+        }
+        
+        log.debug("Enriquecimento concluído para contexto: {}", context);
+        return enrichedResponse;
     }
 
 }

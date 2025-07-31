@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn clean:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(mvn:*)",
+      "Bash(java:*)",
+      "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn clean compile -DskipTests -pl archbase-error-handling)",
+      "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn clean compile -DskipTests -pl archbase-shared-kernel -X)",
+      "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn clean compile -DskipTests)",
+      "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn clean)",
+      "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn compile)",
+      "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn compile -pl archbase-shared-kernel)",
+      "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn clean compile -DskipTests --batch-mode)"
+    ],
+    "deny": []
+  }
+}
