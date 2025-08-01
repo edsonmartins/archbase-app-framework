@@ -3,6 +3,7 @@ package br.com.archbase.security.service;
 import br.com.archbase.security.adapter.AccessTokenPersistenceAdapter;
 import br.com.archbase.security.adapter.PasswordResetTokenPersistenceAdapter;
 import br.com.archbase.security.auth.*;
+import br.com.archbase.security.domain.dto.UserDto;
 import br.com.archbase.security.domain.entity.PasswordResetToken;
 import br.com.archbase.security.domain.entity.User;
 import br.com.archbase.security.persistence.AccessTokenEntity;
@@ -75,13 +76,13 @@ public class ArchbaseAuthenticationService {
                     .avatar(request.getAvatar())
                     .password(request.getPassword())
                     .build();
-            User createdUser = userService.createUser(user.toDto());
+            UserDto createdUser = userService.createUser(user.toDto());
             
             // Chamar delegate para lógica de negócio específica da aplicação
             if (businessDelegate != null) {
                 try {
                     Map<String, Object> registrationData = createRegistrationDataMap(request);
-                    String businessEntityId = businessDelegate.onUserRegistered(createdUser, registrationData);
+                    String businessEntityId = businessDelegate.onUserRegistered(createdUser.toDomain(), registrationData);
                     log.debug("Business delegate criou entidade de negócio com ID: {} para usuário: {}", 
                             businessEntityId, createdUser.getEmail());
                 } catch (Exception e) {
