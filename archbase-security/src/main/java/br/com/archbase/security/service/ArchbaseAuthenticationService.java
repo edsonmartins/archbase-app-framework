@@ -48,6 +48,10 @@ public class ArchbaseAuthenticationService {
     // Injection opcional de enrichers - não quebra se não existir nenhum
     @Autowired(required = false)
     private List<AuthenticationResponseEnricher> enrichers;
+    
+    // Injection do business delegate - usa implementação padrão se não existir customizada
+    @Autowired
+    private AuthenticationBusinessDelegate businessDelegate;
 
     public void register(RegisterNewUser request) {
         Optional<UserEntity> byEmail = repository.findByEmail(request.getEmail());
@@ -71,7 +75,21 @@ public class ArchbaseAuthenticationService {
                     .avatar(request.getAvatar())
                     .password(request.getPassword())
                     .build();
-            userService.createUser(user.toDto());
+            User createdUser = userService.createUser(user.toDto());
+            
+            // Chamar delegate para lógica de negócio específica da aplicação
+            if (businessDelegate != null) {
+                try {
+                    Map<String, Object> registrationData = createRegistrationDataMap(request);
+                    String businessEntityId = businessDelegate.onUserRegistered(createdUser, registrationData);
+                    log.debug("Business delegate criou entidade de negócio com ID: {} para usuário: {}", 
+                            businessEntityId, createdUser.getEmail());
+                } catch (Exception e) {
+                    log.error("Erro ao executar lógica de negócio após registro para usuário: {}", 
+                            createdUser.getEmail(), e);
+                    // Não falha o registro por erro no delegate
+                }
+            }
         } else {
             throw new ArchbaseValidationException("Usuário já existe.");
         }
@@ -331,17 +349,52 @@ public class ArchbaseAuthenticationService {
             log.debug("Iniciando autenticação contextual para usuário: {} com contexto: {}", 
                     contextualRequest.getEmail(), contextualRequest.getContext());
             
-            // 1. Autenticação básica usando lógica existente
-            AuthenticationResponse baseResponse = authenticate(contextualRequest.toBasicRequest());
-            
-            // 2. Aplicar enrichers se existirem e contexto for especificado
-            if (enrichers != null && !enrichers.isEmpty() && contextualRequest.getContext() != null) {
-                return applyEnrichers(baseResponse, contextualRequest.getContext(), httpRequest);
+            // 1. Pré-autenticação: validações customizadas via delegate
+            if (businessDelegate != null && contextualRequest.getContext() != null) {
+                try {
+                    businessDelegate.preAuthenticate(contextualRequest.getEmail(), contextualRequest.getContext());
+                } catch (Exception e) {
+                    log.warn("Falha na pré-autenticação para usuário: {} no contexto: {}", 
+                            contextualRequest.getEmail(), contextualRequest.getContext(), e);
+                    throw new BadCredentialsException("Acesso negado para este contexto", e);
+                }
             }
             
-            log.debug("Autenticação contextual concluída sem enrichers para usuário: {}", 
+            // 2. Autenticação básica usando lógica existente
+            AuthenticationResponse baseResponse = authenticate(contextualRequest.toBasicRequest());
+            
+            // 3. Pós-autenticação: ações customizadas via delegate
+            if (businessDelegate != null && contextualRequest.getContext() != null) {
+                try {
+                    businessDelegate.postAuthenticate(baseResponse.getUser(), contextualRequest.getContext());
+                } catch (Exception e) {
+                    log.error("Erro na pós-autenticação para usuário: {} no contexto: {}", 
+                            contextualRequest.getEmail(), contextualRequest.getContext(), e);
+                    // Não falha o login por erro no pós-processamento
+                }
+            }
+            
+            // 4. Enriquecimento via business delegate
+            AuthenticationResponse enrichedResponse = baseResponse;
+            if (businessDelegate != null && contextualRequest.getContext() != null) {
+                try {
+                    enrichedResponse = businessDelegate.enrichAuthenticationResponse(
+                            baseResponse, contextualRequest.getContext(), httpRequest);
+                } catch (Exception e) {
+                    log.error("Erro no enriquecimento via business delegate para usuário: {} no contexto: {}", 
+                            contextualRequest.getEmail(), contextualRequest.getContext(), e);
+                    // Continua com resposta base em caso de erro
+                }
+            }
+            
+            // 5. Aplicar enrichers legados se existirem (mantém compatibilidade)
+            if (enrichers != null && !enrichers.isEmpty() && contextualRequest.getContext() != null) {
+                enrichedResponse = applyEnrichers(enrichedResponse, contextualRequest.getContext(), httpRequest);
+            }
+            
+            log.debug("Autenticação contextual concluída para usuário: {}", 
                     contextualRequest.getEmail());
-            return baseResponse;
+            return enrichedResponse;
             
         } catch (AuthenticationException e) {
             log.warn("Falha na autenticação contextual para usuário: {}", contextualRequest.getEmail(), e);
@@ -401,6 +454,67 @@ public class ArchbaseAuthenticationService {
         
         log.debug("Enriquecimento concluído para contexto: {}", context);
         return enrichedResponse;
+    }
+    
+    /**
+     * Autentica usuário sem senha - usado para login social ou outros casos especiais.
+     * Gera tokens JWT baseado apenas no email do usuário.
+     * 
+     * @param email Email do usuário
+     * @return Resposta de autenticação com tokens
+     */
+    @Transactional
+    public AuthenticationResponse authenticateWithoutPassword(String email) {
+        var user = repository.findByEmail(email)
+                .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
+        
+        // Verificar se usuário está ativo
+        if (Boolean.TRUE.equals(user.getAccountDeactivated()) || Boolean.TRUE.equals(user.getAccountLocked())) {
+            throw new BadCredentialsException("Conta de usuário inativa ou bloqueada");
+        }
+        
+        // Revogar tokens antigos
+        revokeAllUserTokens(user);
+        
+        // Gerar novos tokens
+        var jwtToken = jwtService.generateToken(user);
+        AccessTokenEntity accessToken = saveUserToken(user, jwtToken);
+        var refreshToken = jwtService.generateRefreshToken(user);
+        
+        log.debug("Autenticação sem senha bem-sucedida para: {}", email);
+        
+        return buildAuthenticationResponse(accessToken, refreshToken.token(), user);
+    }
+    
+    /**
+     * Verifica se um usuário existe pelo email.
+     * 
+     * @param email Email a verificar
+     * @return true se usuário existe
+     */
+    public boolean existsByEmail(String email) {
+        return repository.existsByEmail(email);
+    }
+    
+    /**
+     * Cria mapa com dados de registro para o business delegate.
+     */
+    private Map<String, Object> createRegistrationDataMap(RegisterNewUser request) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("name", request.getName());
+        data.put("description", request.getDescription());
+        data.put("email", request.getEmail());
+        data.put("userName", request.getUserName());
+        data.put("avatar", request.getAvatar());
+        data.put("isAdministrator", request.getIsAdministrator());
+        data.put("changePasswordOnNextLogin", request.getChangePasswordOnNextLogin());
+        data.put("allowPasswordChange", request.getAllowPasswordChange());
+        data.put("allowMultipleLogins", request.getAllowMultipleLogins());
+        data.put("passwordNeverExpires", request.getPasswordNeverExpires());
+        data.put("accountDeactivated", request.getAccountDeactivated());
+        data.put("accountLocked", request.getAccountLocked());
+        data.put("unlimitedAccessHours", request.getUnlimitedAccessHours());
+        return data;
     }
 
 }

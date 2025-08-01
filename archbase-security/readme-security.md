@@ -1,18 +1,35 @@
-# Guia para Customização da Configuração de Segurança no Archbase
+# Guia de Segurança do Archbase
 
-Este documento descreve como sobrescrever a configuração de segurança padrão do Archbase com uma configuração personalizada para atender às necessidades específicas do seu projeto.
+Este documento aborda todos os aspectos de segurança do Archbase, incluindo:
+- Sistema de autenticação unificado com suporte a múltiplos contextos
+- Customização da configuração de segurança
+- Anotações de segurança disponíveis
+- Sistema de enriquecimento de respostas
+- Integração com lógica de negócio via delegates
 
 ## Visão Geral
 
-O Archbase oferece uma configuração de segurança padrão através da classe `DefaultArchbaseSecurityConfiguration`. Esta configuração inclui:
+O Archbase oferece um sistema completo de segurança que inclui:
 
-- Proteção CSRF desabilitada
+### 1. Sistema de Autenticação Unificado
+- Login flexível (email/telefone)
+- Login social (Google, Facebook, etc.)
+- Suporte a múltiplos contextos (STORE_APP, CUSTOMER_APP, DRIVER_APP, WEB_ADMIN)
+- Sistema de enriquecimento de respostas via `AuthenticationResponseEnricher`
+- Integração com lógica de negócio via `AuthenticationBusinessDelegate`
+
+### 2. Configuração de Segurança
+- Proteção CSRF configurável
 - Configuração de CORS
 - Filtro JWT para autenticação
 - Lista de endpoints públicos (whitelist)
 - Configuração básica de autorização
 
-Se você precisar personalizar esses comportamentos, pode criar sua própria configuração de segurança.
+### 3. Anotações de Segurança
+- `@HasPermission` - Controle baseado em Resource/Action
+- `@RequireProfile` - Controle baseado em profiles
+- `@RequireRole` - Controle baseado em roles customizadas
+- `@RequirePersona` - Controle baseado em personas de negócio
 
 ## Como Sobrescrever a Configuração Padrão
 
@@ -369,6 +386,177 @@ public class MinhaConfiguracaoSeguranca extends BaseArchbaseSecurityConfiguratio
 
 ---
 
+# Sistema de Autenticação Unificado
+
+O Archbase fornece um sistema de autenticação unificado que permite que aplicações customizem o processo de login e registro através de interfaces bem definidas.
+
+## AuthenticationBusinessDelegate
+
+Interface que permite que aplicações adicionem lógica de negócio específica durante autenticação:
+
+```java
+public interface AuthenticationBusinessDelegate {
+    
+    // Chamado após registro bem-sucedido
+    String onUserRegistered(User user, Map<String, Object> registrationData);
+    
+    // Enriquece resposta de autenticação com dados específicos
+    AuthenticationResponse enrichAuthenticationResponse(
+        AuthenticationResponse baseResponse, 
+        String context, 
+        HttpServletRequest request
+    );
+    
+    // Valida se um contexto é suportado
+    boolean supportsContext(String context);
+    
+    // Retorna lista de contextos suportados
+    List<String> getSupportedContexts();
+    
+    // Validações pré-autenticação
+    default void preAuthenticate(String email, String context) { }
+    
+    // Ações pós-autenticação
+    default void postAuthenticate(User user, String context) { }
+    
+    // Login social
+    default String onSocialLogin(String provider, Map<String, Object> providerData) {
+        throw new UnsupportedOperationException("Login social não implementado");
+    }
+}
+```
+
+### Implementação na Aplicação
+
+```java
+@Component
+@Primary
+public class MinhaAppAuthenticationDelegate implements AuthenticationBusinessDelegate {
+    
+    @Override
+    public String onUserRegistered(User user, Map<String, Object> registrationData) {
+        // Criar entidade de negócio (ex: UserApp)
+        UserApp userApp = UserApp.builder()
+            .securityUser(user)
+            .name((String) registrationData.get("name"))
+            .phone((String) registrationData.get("phone"))
+            .build();
+            
+        userApp = userAppService.save(userApp);
+        return userApp.getId();
+    }
+    
+    @Override
+    public AuthenticationResponse enrichAuthenticationResponse(
+            AuthenticationResponse baseResponse, 
+            String context, 
+            HttpServletRequest request) {
+        
+        // Enriquecer resposta baseado no contexto
+        switch (context) {
+            case "STORE_APP":
+                return enrichStoreResponse(baseResponse);
+            case "CUSTOMER_APP":
+                return enrichCustomerResponse(baseResponse);
+            default:
+                return baseResponse;
+        }
+    }
+}
+```
+
+## AuthenticationResponseEnricher
+
+Interface para enriquecer respostas de autenticação:
+
+```java
+public interface AuthenticationResponseEnricher {
+    
+    // Enriquece a resposta de autenticação
+    AuthenticationResponse enrich(
+        AuthenticationResponse baseResponse, 
+        String context, 
+        HttpServletRequest request
+    );
+    
+    // Verifica se suporta o contexto
+    default boolean supports(String context) { return true; }
+    
+    // Ordem de execução (menor = primeiro)
+    default int getOrder() { return 0; }
+}
+```
+
+## Endpoints de Autenticação
+
+### 1. Login Contextual
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "usuario@exemplo.com",
+  "password": "senha123",
+  "context": "STORE_APP",
+  "contextData": "{\"storeId\": \"123\"}"
+}
+```
+
+### 2. Login Flexível (Email ou Telefone)
+```http
+POST /api/v1/auth/login-flexible
+Content-Type: application/json
+
+{
+  "identifier": "usuario@exemplo.com ou 11999999999",
+  "password": "senha123",
+  "context": "CUSTOMER_APP"
+}
+```
+
+### 3. Login Social
+```http
+POST /api/v1/auth/login-social
+Content-Type: application/json
+
+{
+  "provider": "google",
+  "token": "token-do-google",
+  "context": "CUSTOMER_APP"
+}
+```
+
+### 4. Registro com Dados Adicionais
+```http
+POST /api/v1/auth/register
+Content-Type: application/json
+
+{
+  "name": "João Silva",
+  "email": "joao@exemplo.com",
+  "password": "senha123",
+  "role": "USER",
+  "additionalData": {
+    "phone": "+5511999999999",
+    "storeId": "123",
+    "cpf": "12345678900"
+  }
+}
+```
+
+### 5. Listar Contextos Suportados
+```http
+GET /api/v1/auth/contexts
+
+Response:
+{
+  "supportedContexts": ["STORE_APP", "CUSTOMER_APP", "DRIVER_APP", "WEB_ADMIN"],
+  "defaultContext": "WEB_ADMIN"
+}
+```
+
+---
+
 # Anotações de Segurança do Archbase
 
 O Archbase Security oferece um conjunto de anotações para controle de acesso granular em métodos e classes. Estas anotações são processadas através do Spring Security usando `AuthorizationManager` customizados.
@@ -555,8 +743,47 @@ As anotações são automaticamente configuradas através do `MethodSecurityConf
 
 ---
 
+## Fluxo de Autenticação Completo
+
+```
+1. Cliente faz login com contexto
+   ↓
+2. ArchbaseAuthenticationController recebe request
+   ↓
+3. AuthenticationBusinessDelegate.preAuthenticate() (se existir)
+   ↓
+4. ArchbaseAuthenticationService.authenticate()
+   ↓
+5. AuthenticationBusinessDelegate.postAuthenticate() (se existir)
+   ↓
+6. AuthenticationResponseEnricher.enrich() (todos os enrichers)
+   ↓
+7. AuthenticationBusinessDelegate.enrichAuthenticationResponse() (se existir)
+   ↓
+8. Retorna resposta enriquecida ao cliente
+```
+
+## Migração de Sistema Legado
+
+Para migrar de um sistema de autenticação legado:
+
+1. **Implemente AuthenticationBusinessDelegate** na sua aplicação
+2. **Mova lógica de criação de UserApp** para `onUserRegistered()`
+3. **Mova lógica de enriquecimento** para `enrichAuthenticationResponse()`
+4. **Configure validações customizadas** em `preAuthenticate()` e `postAuthenticate()`
+5. **Remova controllers de autenticação duplicados** e use os do Archbase
+
 ## Considerações Finais
 
-A customização da configuração de segurança oferece grande flexibilidade, mas também traz responsabilidades. Certifique-se de entender completamente as implicações das alterações que você fizer na configuração de segurança.
+O sistema de segurança do Archbase oferece:
 
-Lembre-se que desabilitar mecanismos de segurança como CSRF deve ser feito com consciência dos riscos associados, e idealmente apenas para endpoints específicos onde essa proteção não é aplicável (como APIs RESTful sem estado).
+1. **Separação clara** entre infraestrutura (Archbase) e lógica de negócio (aplicação)
+2. **Extensibilidade** através de interfaces bem definidas
+3. **Suporte a múltiplos contextos** para diferentes tipos de aplicações
+4. **Flexibilidade** para customizar cada aspecto do processo de autenticação
+
+Certifique-se de:
+- Implementar corretamente as interfaces quando necessário
+- Entender as implicações de segurança das customizações
+- Manter a separação entre infraestrutura e negócio
+- Documentar contextos e personas específicas da sua aplicação
