@@ -33,8 +33,6 @@ public class RegisterRequest {
     @Schema(description = "Senha do usuário", required = true)
     private String password;
     
-    @Schema(description = "Role do usuário", example = "USER", defaultValue = "USER")
-    private RoleUser role;
     
     @Schema(description = "Avatar do usuário em bytes")
     private byte[] avatar;

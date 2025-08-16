@@ -17,7 +17,6 @@ public class RegisterNewUser {
   private String userName;
   private String email;
   private String password;
-  private RoleUser role;
   private byte[] avatar;
   private Boolean changePasswordOnNextLogin;
   private Boolean allowPasswordChange;

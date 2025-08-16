@@ -124,7 +124,6 @@ public class ArchbaseAuthenticationController {
                 .name(request.getName())
                 .userName(request.getEmail())
                 .password(request.getPassword())
-                .role(request.getRole() != null ? request.getRole() : RoleUser.USER)
                 .description(request.getName())
                 .avatar(request.getAvatar())
                 .build();
@@ -239,7 +238,6 @@ public class ArchbaseAuthenticationController {
                     .name((String) providerData.get("name"))
                     .userName(email)
                     .password(generateSecurePassword()) // Senha aleatória segura
-                    .role(RoleUser.USER)
                     .avatar((byte[]) providerData.get("picture"))
                     .build();
                     
