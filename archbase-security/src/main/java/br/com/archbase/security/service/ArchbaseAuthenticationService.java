@@ -109,6 +109,12 @@ public class ArchbaseAuthenticationService {
             var user = repository.findByEmail(request.getEmail())
                     .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
 
+            // Marcar tokens expirados antes de buscar tokens válidos
+            int expiredCount = accessTokenPersistenceAdapter.markExpiredTokens();
+            if (expiredCount > 0) {
+                log.debug("Marcados {} tokens como expirados antes da autenticação", expiredCount);
+            }
+
             // Verificar se existe um token válido
             AccessTokenEntity accessToken = accessTokenPersistenceAdapter.findValidTokenByUser(user);
 
