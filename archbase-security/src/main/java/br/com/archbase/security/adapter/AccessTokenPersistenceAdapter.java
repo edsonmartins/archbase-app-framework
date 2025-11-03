@@ -99,7 +99,7 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
 
     /**
      * Encontra um token pelo valor
-     * Similar ao findTokenByValue, mas busca pelo valor do token
+     * Corrigido: agora retorna apenas tokens não expirados E não revogados
      *
      * @param tokenValue o valor do token JWT
      * @return AccessTokenEntity válido ou null se não encontrado/inválido
@@ -110,7 +110,10 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
 
         JPAQueryFactory queryFactory = new JPAQueryFactory(entityManager);
 
-        BooleanExpression predicate = accessToken.token.eq(tokenValue);
+        // Corrigido: adicionar filtros para expired=false e revoked=false
+        BooleanExpression predicate = accessToken.token.eq(tokenValue)
+                .and(accessToken.expired.eq(false))
+                .and(accessToken.revoked.eq(false));
 
         AccessTokenEntity result = queryFactory.selectFrom(accessToken)
                 .where(predicate)
