@@ -3,10 +3,11 @@ package br.com.archbase.security.service;
 import br.com.archbase.security.adapter.AccessTokenPersistenceAdapter;
 import br.com.archbase.security.adapter.PasswordResetTokenPersistenceAdapter;
 import br.com.archbase.security.auth.*;
-import br.com.archbase.security.domain.entity.PasswordResetToken;
-import br.com.archbase.security.domain.entity.User;
+import br.com.archbase.security.domain.entity.*;
 import br.com.archbase.security.persistence.AccessTokenEntity;
+import br.com.archbase.security.persistence.ProfileEntity;
 import br.com.archbase.security.persistence.UserEntity;
+import br.com.archbase.security.persistence.UserGroupEntity;
 import br.com.archbase.security.repository.AccessTokenJpaRepository;
 import br.com.archbase.security.repository.UserJpaRepository;
 import br.com.archbase.security.token.TokenType;
@@ -26,16 +27,16 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.Date;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class ArchbaseAuthenticationService {
     private final UserJpaRepository repository;
+    private final GroupService groupService;
+    private final UserProfileService userProfileService;
     private final AccessTokenJpaRepository tokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final ArchbaseJwtService jwtService;
@@ -45,8 +46,11 @@ public class ArchbaseAuthenticationService {
     private final PasswordResetTokenPersistenceAdapter passwordResetTokenPersistenceAdapter;
     private final AccessTokenPersistenceAdapter accessTokenPersistenceAdapter;
 
+    @Transactional
     public void register(RegisterNewUser request) {
         Optional<UserEntity> byEmail = repository.findByEmail(request.getEmail());
+        List<Group> groups = groupService.findByNames(request.getGroupNames());
+        Optional<Profile> profile = userProfileService.findByName(request.getProfileName());
         UserEntity user;
         if (byEmail.isEmpty()) {
             user = UserEntity.builder()
@@ -67,6 +71,13 @@ public class ArchbaseAuthenticationService {
                     .avatar(request.getAvatar())
                     .password(request.getPassword())
                     .build();
+            profile.ifPresent(value -> user.setProfile(ProfileEntity.fromDomain(value)));
+            Set<UserGroupEntity> userGroups = groups.stream()
+                    .map(group -> UserGroupEntity
+                            .fromDomain(UserGroup.builder().group(group)
+                            .build(), user))
+                    .collect(Collectors.toSet());
+            user.setGroups(userGroups);
             userService.createUser(user.toDto());
         } else {
             throw new ArchbaseValidationException("Usuário já existe.");

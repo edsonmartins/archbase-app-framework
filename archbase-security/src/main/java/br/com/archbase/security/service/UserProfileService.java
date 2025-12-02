@@ -1,6 +1,11 @@
 package br.com.archbase.security.service;
 
 import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
+import br.com.archbase.security.domain.entity.Profile;
+import br.com.archbase.security.persistence.ProfileEntity;
+import br.com.archbase.security.persistence.QProfileEntity;
+import com.querydsl.jpa.impl.JPAQueryFactory;
+import jakarta.persistence.EntityManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
@@ -17,9 +22,12 @@ public class UserProfileService implements ProfileUseCase, FindDataWithFilterQue
 
     private final UserProfilePersistenceAdapter adapter;
 
+    private final EntityManager entityManager;
+
     @Autowired
-    public UserProfileService(UserProfilePersistenceAdapter adapter) {
+    public UserProfileService(UserProfilePersistenceAdapter adapter, EntityManager entityManager) {
         this.adapter = adapter;
+        this.entityManager = entityManager;
     }
 
     @Override
@@ -86,5 +94,18 @@ public class UserProfileService implements ProfileUseCase, FindDataWithFilterQue
     @Override
     public Page<ProfileDto> findWithFilter(String filter, int page, int size, String[] sort) {
         return adapter.findWithFilter(filter,page,size,sort);
+    }
+
+    @Override
+    public Optional<Profile> findByName(String name) {
+        if (name == null) {
+            return Optional.empty();
+        }
+        QProfileEntity qProfile = QProfileEntity.profileEntity;
+        JPAQueryFactory queryFactory = new JPAQueryFactory(entityManager);
+        ProfileEntity profile = queryFactory.selectFrom(qProfile)
+                .where(qProfile.name.in(name))
+                .fetchFirst();
+        return Optional.ofNullable(profile != null ? profile.toDomain() : null);
     }
 }

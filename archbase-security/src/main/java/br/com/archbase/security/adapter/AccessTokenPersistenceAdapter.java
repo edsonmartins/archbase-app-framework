@@ -92,7 +92,9 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
 
         JPAQueryFactory queryFactory = new JPAQueryFactory(entityManager);
 
-        BooleanExpression predicate = accessToken.token.eq(tokenValue);
+        BooleanExpression predicate = accessToken.token.eq(tokenValue)
+                .and(accessToken.expired.eq(false))
+                .and(accessToken.revoked.eq(false));
 
         AccessTokenEntity result = queryFactory.selectFrom(accessToken)
                 .where(predicate)
