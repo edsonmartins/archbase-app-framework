@@ -6,6 +6,9 @@ import br.com.archbase.security.domain.dto.UserDto;
 import br.com.archbase.security.domain.entity.User;
 import br.com.archbase.security.service.ArchbaseUserService;
 import br.com.archbase.security.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -21,11 +24,15 @@ import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/v1/user")
+@Tag(name = "Usuários", description = "Gestão de usuários do sistema")
+@SecurityRequirement(name = "bearerAuth")
+@SecurityRequirement(name = "apiTokenAuth")
 public class UserController {
 
     private final ArchbaseUserService service;
 
     @PatchMapping
+    @Operation(summary = "Alterar senha do usuário autenticado")
     public ResponseEntity<?> changePassword(
             @RequestBody ChangePasswordRequest request,
             Principal connectedUser
@@ -44,21 +51,25 @@ public class UserController {
     }
 
     @PostMapping
+    @Operation(summary = "Criar usuário")
     public ResponseEntity<UserDto> createUser(@RequestBody UserDto user)  {
         return ResponseEntity.ok(userService.createUser(user));
     }
 
     @PutMapping("/{id}")
+    @Operation(summary = "Atualizar usuário")
     public ResponseEntity<UserDto> updateUser(@PathVariable String id, @RequestBody UserDto user)  {
         return ResponseEntity.ok(userService.updateUser(id, user).get());
     }
 
     @DeleteMapping("/{id}")
+    @Operation(summary = "Remover usuário")
     public void removeUser(@PathVariable String id)  {
         userService.removeUser(id);
     }
 
     @GetMapping("/{id}")
+    @Operation(summary = "Buscar usuário por ID")
     public ResponseEntity<UserDto> getUserById(@PathVariable String id) {
         try {
             UserDto user = userService.findById(id);
@@ -69,6 +80,7 @@ public class UserController {
     }
 
     @GetMapping("/byEmail/{email}")
+    @Operation(summary = "Buscar usuário por email")
     public ResponseEntity<UserDto> getUserByEmail(@PathVariable String email) {
         try {
             Optional<User> userOptional = userService.getUserByEmail(email);
@@ -84,6 +96,7 @@ public class UserController {
     )
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
+    @Operation(summary = "Listar usuários", description = "Lista usuários com paginação")
     public Page<UserDto> findAll(@RequestParam("page") int page, @RequestParam("size") int size) {
         return userService.findAll(page, size);
     }
@@ -94,6 +107,7 @@ public class UserController {
     )
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
+    @Operation(summary = "Listar usuários com ordenação", description = "Lista usuários com paginação e ordenação")
     public Page<UserDto> findAll(@RequestParam("page") int page, @RequestParam("size") int size, @RequestParam("sort") String[] sort) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(SortUtils.convertSortToJpa(sort)));
         return userService.findAll(page, size, sort);
@@ -105,6 +119,7 @@ public class UserController {
     )
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
+    @Operation(summary = "Buscar usuários por IDs", description = "Busca usuários pelos IDs informados")
     public List<UserDto> findAll(@RequestParam(required = true) List<String> ids) {
         return userService.findAll(ids);
     }
@@ -115,6 +130,7 @@ public class UserController {
     )
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
+    @Operation(summary = "Listar usuários com filtro", description = "Lista usuários aplicando filtro")
     public Page<UserDto> find(@RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size) {
         return userService.findWithFilter(filter, page, size);
     }
@@ -125,6 +141,7 @@ public class UserController {
     )
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
+    @Operation(summary = "Listar usuários com filtro e ordenação", description = "Lista usuários com filtro e ordenação")
     public Page<UserDto> find(@RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size, @RequestParam(value = "sort",required = true) String[] sort) {
         return userService.findWithFilter(filter, page, size, sort);
     }

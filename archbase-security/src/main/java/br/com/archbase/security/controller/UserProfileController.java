@@ -3,6 +3,9 @@ package br.com.archbase.security.controller;
 import br.com.archbase.query.rsql.jpa.SortUtils;
 import br.com.archbase.security.domain.dto.ProfileDto;
 import br.com.archbase.security.service.UserProfileService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -16,6 +19,9 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/userProfile")
+@Tag(name = "Perfis de Usuário", description = "Gestão de perfis e papéis de usuário")
+@SecurityRequirement(name = "bearerAuth")
+@SecurityRequirement(name = "apiTokenAuth")
 public class UserProfileController {
 
     private final UserProfileService profileService;
@@ -26,21 +32,25 @@ public class UserProfileController {
     }
 
     @PostMapping
+    @Operation(summary = "Criar perfil")
     public ResponseEntity<ProfileDto> createProfile(@RequestBody ProfileDto profile)  {
         return ResponseEntity.ok(profileService.createProfile(profile));
     }
 
     @PutMapping("/{id}")
+    @Operation(summary = "Atualizar perfil")
     public ResponseEntity<ProfileDto> updateProfile(@PathVariable String id, @RequestBody ProfileDto profile)  {
         return ResponseEntity.ok(profileService.updateProfile(id, profile).get());
     }
 
     @DeleteMapping("/{id}")
+    @Operation(summary = "Remover perfil")
     public void removeProfile(@PathVariable String id)  {
         profileService.deleteProfile(id);
     }
 
     @GetMapping("/{id}")
+    @Operation(summary = "Buscar perfil por ID")
     public ResponseEntity<ProfileDto> getProfileById(@PathVariable String id) {
         try {
             ProfileDto user = profileService.findById(id);
@@ -57,6 +67,7 @@ public class UserProfileController {
     )
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
+    @Operation(summary = "Listar perfis", description = "Lista perfis com paginação")
     public Page<ProfileDto> findAll(@RequestParam("page") int page, @RequestParam("size") int size) {
         return profileService.findAll(page, size);
     }
@@ -67,6 +78,7 @@ public class UserProfileController {
     )
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
+    @Operation(summary = "Listar perfis com ordenação", description = "Lista perfis com paginação e ordenação")
     public Page<ProfileDto> findAll(@RequestParam("page") int page, @RequestParam("size") int size, @RequestParam("sort") String[] sort) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(SortUtils.convertSortToJpa(sort)));
         return profileService.findAll(page, size, sort);
@@ -78,6 +90,7 @@ public class UserProfileController {
     )
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
+    @Operation(summary = "Buscar perfis por IDs", description = "Busca perfis pelos IDs informados")
     public List<ProfileDto> findAll(@RequestParam(required = true) List<String> ids) {
         return profileService.findAll(ids);
     }
@@ -88,6 +101,7 @@ public class UserProfileController {
     )
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
+    @Operation(summary = "Listar perfis com filtro", description = "Lista perfis aplicando filtro")
     public Page<ProfileDto> find(@RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size) {
         return profileService.findWithFilter(filter, page, size);
     }
@@ -98,6 +112,7 @@ public class UserProfileController {
     )
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
+    @Operation(summary = "Listar perfis com filtro e ordenação", description = "Lista perfis com filtro e ordenação")
     public Page<ProfileDto> find(@RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size, @RequestParam(value = "sort",required = true) String[] sort) {
         return profileService.findWithFilter(filter, page, size, sort);
     }

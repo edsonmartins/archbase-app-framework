@@ -4,6 +4,9 @@ import br.com.archbase.query.rsql.jpa.SortUtils;
 import br.com.archbase.security.domain.dto.*;
 import br.com.archbase.security.domain.dto.ResourcePermissionsDto;
 import br.com.archbase.security.service.*;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -19,6 +22,9 @@ import java.util.Optional;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/resource")
+@Tag(name = "Recursos e Permissões", description = "Gestão de recursos e permissões do sistema")
+@SecurityRequirement(name = "bearerAuth")
+@SecurityRequirement(name = "apiTokenAuth")
 public class ResourceController {
 
     private final ResourceService resourceService;
@@ -28,31 +34,37 @@ public class ResourceController {
     private final UserProfileService userProfileService;
 
     @PostMapping
+    @Operation(summary = "Criar recurso")
     public ResponseEntity<ResourceDto> createResource(@RequestBody ResourceDto resource)  {
         return ResponseEntity.ok(resourceService.createResource(resource));
     }
 
     @PutMapping("/{id}")
+    @Operation(summary = "Atualizar recurso")
     public ResponseEntity<ResourceDto> updateResource(@PathVariable String id, @RequestBody ResourceDto resource)  {
         return ResponseEntity.ok(resourceService.updateResource(id, resource).get());
     }
 
     @DeleteMapping("/{id}")
+    @Operation(summary = "Remover recurso")
     public void removeResoure(@PathVariable String id)  {
         resourceService.deleteResource(id);
     }
 
     @PostMapping("/register")
+    @Operation(summary = "Registrar recurso e permissões iniciais")
     public ResponseEntity<ResourcePermissionsDto> registerResource(@RequestBody ResourceRegisterDto resourceRegister)  {
         return ResponseEntity.ok(resourceService.registerResource(resourceRegister));
     }
 
     @GetMapping("/permissions/{resourceName}")
+    @Operation(summary = "Listar permissões do recurso para usuário logado")
     public ResponseEntity<ResourcePermissionsDto> findLoggedUserResourcePermissions(@PathVariable String resourceName) {
         return ResponseEntity.ok(resourceService.findLoggedUserResourcePermissions(resourceName));
     }
 
     @GetMapping("/{id}")
+    @Operation(summary = "Buscar recurso por ID")
     public ResponseEntity<ResourceDto> getResourceById(@PathVariable String id) {
         try {
             ResourceDto user = resourceService.findById(id);
@@ -66,6 +78,7 @@ public class ResourceController {
             value = {"/permissions/security/{id}"},
             params = {"type"}
     )
+    @Operation(summary = "Listar permissões por entidade de segurança (usuário, perfil ou grupo)")
     public ResponseEntity<List<ResoucePermissionsWithTypeDto>> findResourcesPermissions(@PathVariable String id, @RequestParam("type") SecurityType type) {
         try {
             List<ResoucePermissionsWithTypeDto> resourcesPermissions = resourceService.findResourcesPermissions(id, type);
@@ -76,6 +89,7 @@ public class ResourceController {
     }
 
     @GetMapping("/permissions")
+    @Operation(summary = "Listar permissões de todos os recursos")
     public ResponseEntity<List<ResoucePermissionsWithTypeDto>> findAllResourcesPermissions() {
         try {
             List<ResoucePermissionsWithTypeDto> resourcesPermissions = resourceService.findAllResourcesPermissions();
@@ -86,6 +100,7 @@ public class ResourceController {
     }
 
     @PostMapping("/permissions")
+    @Operation(summary = "Conceder permissão a usuário, perfil ou grupo")
     public ResponseEntity<?> grantPermission(@RequestBody GrantPermissionDto grantPermission) {
         try {
             Optional<ActionDto> action = actionService.findActionById(grantPermission.getActionId());
@@ -125,6 +140,7 @@ public class ResourceController {
     }
 
     @DeleteMapping("/permissions/{id}")
+    @Operation(summary = "Remover permissão")
     public void deletePermission(@PathVariable String id) {
         resourceService.deletePermission(id);
     }
@@ -135,6 +151,7 @@ public class ResourceController {
     )
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
+    @Operation(summary = "Listar recursos", description = "Lista recursos com paginação")
     public Page<ResourceDto> findAll(@RequestParam("page") int page, @RequestParam("size") int size) {
         return resourceService.findAll(page, size);
     }
@@ -145,6 +162,7 @@ public class ResourceController {
     )
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
+    @Operation(summary = "Listar recursos com ordenação", description = "Lista recursos com paginação e ordenação")
     public Page<ResourceDto> findAll(@RequestParam("page") int page, @RequestParam("size") int size, @RequestParam("sort") String[] sort) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(SortUtils.convertSortToJpa(sort)));
         return resourceService.findAll(page, size, sort);
@@ -156,6 +174,7 @@ public class ResourceController {
     )
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
+    @Operation(summary = "Buscar recursos por IDs", description = "Busca recursos pelos IDs informados")
     public List<ResourceDto> findAll(@RequestParam(required = true) List<String> ids) {
         return resourceService.findAll(ids);
     }
@@ -166,6 +185,7 @@ public class ResourceController {
     )
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
+    @Operation(summary = "Listar recursos com filtro", description = "Lista recursos aplicando filtro")
     public Page<ResourceDto> find(@RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size) {
         return resourceService.findWithFilter(filter, page, size);
     }
@@ -176,6 +196,7 @@ public class ResourceController {
     )
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
+    @Operation(summary = "Listar recursos com filtro e ordenação", description = "Lista recursos com filtro e ordenação")
     public Page<ResourceDto> find(@RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size, @RequestParam(value = "sort",required = true) String[] sort) {
         return resourceService.findWithFilter(filter, page, size, sort);
     }
