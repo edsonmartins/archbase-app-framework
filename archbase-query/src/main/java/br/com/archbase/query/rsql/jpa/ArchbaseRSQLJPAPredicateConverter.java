@@ -206,7 +206,8 @@ public class ArchbaseRSQLJPAPredicateConverter extends RSQLVisitorBase<Predicate
                         return builder.equal(attrPath, argument);
                     }
                 } else if (argument == null) {
-                    return builder.isNull(attrPath);
+                    log.warn("Filtro EQUAL ignorado: valor incompatível com o tipo do campo");
+                    return builder.disjunction();  // Retorna FALSE, ignorando este filtro em OR
                 } else {
                     return builder.equal(attrPath, argument);
                 }
@@ -223,7 +224,8 @@ public class ArchbaseRSQLJPAPredicateConverter extends RSQLVisitorBase<Predicate
                         return builder.notEqual(attrPath, argument);
                     }
                 } else if (argument == null) {
-                    return builder.isNotNull(attrPath);
+                    log.warn("Filtro NOT_EQUAL ignorado: valor incompatível com o tipo do campo");
+                    return builder.disjunction();  // Retorna FALSE, ignorando este filtro em OR
                 } else {
                     return builder.notEqual(attrPath, argument);
                 }
