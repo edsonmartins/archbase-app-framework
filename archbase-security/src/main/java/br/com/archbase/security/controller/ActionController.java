@@ -34,25 +34,25 @@ public class ActionController {
     }
 
     @PostMapping
-    @Operation(summary = "Criar ação")
+    @Operation(summary = "Criar ação", description = "Cria uma nova ação de segurança")
     public ResponseEntity<ActionDto> createGroup(@RequestBody ActionDto action)  {
         return ResponseEntity.ok(actionService.createAction(action));
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Atualizar ação")
+    @Operation(summary = "Atualizar ação", description = "Atualiza os dados da ação pelo ID")
     public ResponseEntity<ActionDto> updateAction(@PathVariable String id, @RequestBody ActionDto action)  {
         return ResponseEntity.ok(actionService.updateAction(id, action).get());
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "Remover ação")
+    @Operation(summary = "Remover ação", description = "Remove a ação correspondente ao ID informado")
     public void removeAction(@PathVariable String id)  {
         actionService.deleteAction(id);
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Buscar ação por ID")
+    @Operation(summary = "Buscar ação por ID", description = "Recupera uma ação específica pelo ID")
     public ResponseEntity<ActionDto> getActionById(@PathVariable String id) {
         try {
             ActionDto user = actionService.findById(id);

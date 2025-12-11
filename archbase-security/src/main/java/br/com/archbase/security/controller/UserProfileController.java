@@ -32,25 +32,25 @@ public class UserProfileController {
     }
 
     @PostMapping
-    @Operation(summary = "Criar perfil")
+    @Operation(summary = "Criar perfil", description = "Cria um novo perfil de usuário")
     public ResponseEntity<ProfileDto> createProfile(@RequestBody ProfileDto profile)  {
         return ResponseEntity.ok(profileService.createProfile(profile));
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Atualizar perfil")
+    @Operation(summary = "Atualizar perfil", description = "Atualiza os dados do perfil identificado pelo ID")
     public ResponseEntity<ProfileDto> updateProfile(@PathVariable String id, @RequestBody ProfileDto profile)  {
         return ResponseEntity.ok(profileService.updateProfile(id, profile).get());
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "Remover perfil")
+    @Operation(summary = "Remover perfil", description = "Remove o perfil correspondente ao ID informado")
     public void removeProfile(@PathVariable String id)  {
         profileService.deleteProfile(id);
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Buscar perfil por ID")
+    @Operation(summary = "Buscar perfil por ID", description = "Recupera os detalhes do perfil pelo ID")
     public ResponseEntity<ProfileDto> getProfileById(@PathVariable String id) {
         try {
             ProfileDto user = profileService.findById(id);

@@ -40,25 +40,25 @@ public class GroupController {
     }
 
     @PostMapping
-    @Operation(summary = "Criar grupo")
+    @Operation(summary = "Criar grupo", description = "Cria um novo grupo de usuários")
     public ResponseEntity<GroupDto> createGroup(@RequestBody GroupDto group)  {
         return ResponseEntity.ok(groupService.createGroup(group));
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Atualizar grupo")
+    @Operation(summary = "Atualizar grupo", description = "Atualiza os dados do grupo identificado pelo ID")
     public ResponseEntity<GroupDto> updateGroup(@PathVariable String id, @RequestBody GroupDto group)  {
         return ResponseEntity.ok(groupService.updateGroup(id, group).get());
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "Remover grupo")
+    @Operation(summary = "Remover grupo", description = "Remove o grupo correspondente ao ID informado")
     public void removeGroup(@PathVariable String id)  {
         groupService.deleteGroup(id);
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Buscar grupo por ID")
+    @Operation(summary = "Buscar grupo por ID", description = "Recupera os detalhes do grupo pelo ID")
     public ResponseEntity<GroupDto> getGroupById(@PathVariable String id) {
         try {
             GroupDto user = groupService.findById(id);

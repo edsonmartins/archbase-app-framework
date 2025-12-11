@@ -32,7 +32,7 @@ public class UserController {
     private final ArchbaseUserService service;
 
     @PatchMapping
-    @Operation(summary = "Alterar senha do usuário autenticado")
+    @Operation(summary = "Alterar senha do usuário autenticado", description = "Permite o usuário logado atualizar sua própria senha")
     public ResponseEntity<?> changePassword(
             @RequestBody ChangePasswordRequest request,
             Principal connectedUser
@@ -51,25 +51,25 @@ public class UserController {
     }
 
     @PostMapping
-    @Operation(summary = "Criar usuário")
+    @Operation(summary = "Criar usuário", description = "Cria um novo usuário com os dados informados")
     public ResponseEntity<UserDto> createUser(@RequestBody UserDto user)  {
         return ResponseEntity.ok(userService.createUser(user));
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Atualizar usuário")
+    @Operation(summary = "Atualizar usuário", description = "Atualiza os dados do usuário informado pelo ID")
     public ResponseEntity<UserDto> updateUser(@PathVariable String id, @RequestBody UserDto user)  {
         return ResponseEntity.ok(userService.updateUser(id, user).get());
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "Remover usuário")
+    @Operation(summary = "Remover usuário", description = "Remove o usuário correspondente ao ID informado")
     public void removeUser(@PathVariable String id)  {
         userService.removeUser(id);
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Buscar usuário por ID")
+    @Operation(summary = "Buscar usuário por ID", description = "Recupera os detalhes do usuário a partir do seu ID")
     public ResponseEntity<UserDto> getUserById(@PathVariable String id) {
         try {
             UserDto user = userService.findById(id);
@@ -80,7 +80,7 @@ public class UserController {
     }
 
     @GetMapping("/byEmail/{email}")
-    @Operation(summary = "Buscar usuário por email")
+    @Operation(summary = "Buscar usuário por email", description = "Recupera um usuário pelo endereço de email")
     public ResponseEntity<UserDto> getUserByEmail(@PathVariable String email) {
         try {
             Optional<User> userOptional = userService.getUserByEmail(email);

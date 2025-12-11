@@ -29,7 +29,7 @@ public class AccessTokenController {
 
 
     @PostMapping("/revoke")
-    @Operation(summary = "Revogar token de acesso")
+    @Operation(summary = "Revogar token de acesso", description = "Revoga o token de acesso informado, invalidando seu uso")
     public ResponseEntity<Void> revokeToken(@RequestParam String token) {
         accessTokenService.revokeToken(token);
         return ResponseEntity.ok().build();

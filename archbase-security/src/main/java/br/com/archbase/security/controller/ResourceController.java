@@ -34,37 +34,37 @@ public class ResourceController {
     private final UserProfileService userProfileService;
 
     @PostMapping
-    @Operation(summary = "Criar recurso")
+    @Operation(summary = "Criar recurso", description = "Cria um novo recurso de segurança")
     public ResponseEntity<ResourceDto> createResource(@RequestBody ResourceDto resource)  {
         return ResponseEntity.ok(resourceService.createResource(resource));
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Atualizar recurso")
+    @Operation(summary = "Atualizar recurso", description = "Atualiza os dados do recurso identificado pelo ID")
     public ResponseEntity<ResourceDto> updateResource(@PathVariable String id, @RequestBody ResourceDto resource)  {
         return ResponseEntity.ok(resourceService.updateResource(id, resource).get());
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "Remover recurso")
+    @Operation(summary = "Remover recurso", description = "Remove o recurso correspondente ao ID informado")
     public void removeResoure(@PathVariable String id)  {
         resourceService.deleteResource(id);
     }
 
     @PostMapping("/register")
-    @Operation(summary = "Registrar recurso e permissões iniciais")
+    @Operation(summary = "Registrar recurso e permissões iniciais", description = "Registra o recurso e cria permissões padrão para ele")
     public ResponseEntity<ResourcePermissionsDto> registerResource(@RequestBody ResourceRegisterDto resourceRegister)  {
         return ResponseEntity.ok(resourceService.registerResource(resourceRegister));
     }
 
     @GetMapping("/permissions/{resourceName}")
-    @Operation(summary = "Listar permissões do recurso para usuário logado")
+    @Operation(summary = "Listar permissões do recurso para usuário logado", description = "Retorna as permissões do recurso para o usuário autenticado")
     public ResponseEntity<ResourcePermissionsDto> findLoggedUserResourcePermissions(@PathVariable String resourceName) {
         return ResponseEntity.ok(resourceService.findLoggedUserResourcePermissions(resourceName));
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Buscar recurso por ID")
+    @Operation(summary = "Buscar recurso por ID", description = "Recupera os detalhes do recurso pelo ID")
     public ResponseEntity<ResourceDto> getResourceById(@PathVariable String id) {
         try {
             ResourceDto user = resourceService.findById(id);
@@ -78,7 +78,7 @@ public class ResourceController {
             value = {"/permissions/security/{id}"},
             params = {"type"}
     )
-    @Operation(summary = "Listar permissões por entidade de segurança (usuário, perfil ou grupo)")
+    @Operation(summary = "Listar permissões por entidade de segurança (usuário, perfil ou grupo)", description = "Lista as permissões do recurso considerando o tipo de entidade de segurança informado")
     public ResponseEntity<List<ResoucePermissionsWithTypeDto>> findResourcesPermissions(@PathVariable String id, @RequestParam("type") SecurityType type) {
         try {
             List<ResoucePermissionsWithTypeDto> resourcesPermissions = resourceService.findResourcesPermissions(id, type);
@@ -89,7 +89,7 @@ public class ResourceController {
     }
 
     @GetMapping("/permissions")
-    @Operation(summary = "Listar permissões de todos os recursos")
+    @Operation(summary = "Listar permissões de todos os recursos", description = "Lista todas as permissões existentes para cada recurso")
     public ResponseEntity<List<ResoucePermissionsWithTypeDto>> findAllResourcesPermissions() {
         try {
             List<ResoucePermissionsWithTypeDto> resourcesPermissions = resourceService.findAllResourcesPermissions();
@@ -100,7 +100,7 @@ public class ResourceController {
     }
 
     @PostMapping("/permissions")
-    @Operation(summary = "Conceder permissão a usuário, perfil ou grupo")
+    @Operation(summary = "Conceder permissão a usuário, perfil ou grupo", description = "Concede uma ação a uma entidade de segurança, criando a permissão caso não exista")
     public ResponseEntity<?> grantPermission(@RequestBody GrantPermissionDto grantPermission) {
         try {
             Optional<ActionDto> action = actionService.findActionById(grantPermission.getActionId());
@@ -140,7 +140,7 @@ public class ResourceController {
     }
 
     @DeleteMapping("/permissions/{id}")
-    @Operation(summary = "Remover permissão")
+    @Operation(summary = "Remover permissão", description = "Remove a permissão correspondente ao ID informado")
     public void deletePermission(@PathVariable String id) {
         resourceService.deletePermission(id);
     }

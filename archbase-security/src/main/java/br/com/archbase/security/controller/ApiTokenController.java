@@ -36,14 +36,14 @@ public class ApiTokenController {
     private ApiTokenService apiTokenService;
 
     @PostMapping("/create")
-    @Operation(summary = "Criar token de API")
+    @Operation(summary = "Criar token de API", description = "Gera um novo token de API para o email informado com data de expiração")
     public ResponseEntity<ApiTokenDto> createToken(@RequestParam String email, @RequestParam LocalDateTime expirationDate, @RequestParam String name, @RequestParam String description) {
         ApiTokenDto token = apiTokenService.createToken(email,expirationDate, name, description);
         return ResponseEntity.ok(token);
     }
 
     @PostMapping("/revoke")
-    @Operation(summary = "Revogar token de API")
+    @Operation(summary = "Revogar token de API", description = "Revoga o token de API informado, impedindo novos acessos")
     public ResponseEntity<Void> revokeToken(@RequestParam String token) {
         apiTokenService.revokeToken(token);
         return ResponseEntity.ok().build();
