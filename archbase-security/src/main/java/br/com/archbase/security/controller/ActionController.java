@@ -35,25 +35,25 @@ public class ActionController {
 
     @PostMapping
     @Operation(summary = "Criar ação", description = "Cria uma nova ação de segurança")
-    public ResponseEntity<ActionDto> createGroup(@RequestBody ActionDto action)  {
+    public ResponseEntity<ActionDto> createGroup(@RequestHeader("X-TENANT-ID") String tenantId, @RequestBody ActionDto action)  {
         return ResponseEntity.ok(actionService.createAction(action));
     }
 
     @PutMapping("/{id}")
     @Operation(summary = "Atualizar ação", description = "Atualiza os dados da ação pelo ID")
-    public ResponseEntity<ActionDto> updateAction(@PathVariable String id, @RequestBody ActionDto action)  {
+    public ResponseEntity<ActionDto> updateAction(@RequestHeader("X-TENANT-ID") String tenantId, @PathVariable String id, @RequestBody ActionDto action)  {
         return ResponseEntity.ok(actionService.updateAction(id, action).get());
     }
 
     @DeleteMapping("/{id}")
     @Operation(summary = "Remover ação", description = "Remove a ação correspondente ao ID informado")
-    public void removeAction(@PathVariable String id)  {
+    public void removeAction(@RequestHeader("X-TENANT-ID") String tenantId, @PathVariable String id)  {
         actionService.deleteAction(id);
     }
 
     @GetMapping("/{id}")
     @Operation(summary = "Buscar ação por ID", description = "Recupera uma ação específica pelo ID")
-    public ResponseEntity<ActionDto> getActionById(@PathVariable String id) {
+    public ResponseEntity<ActionDto> getActionById(@RequestHeader("X-TENANT-ID") String tenantId, @PathVariable String id) {
         try {
             ActionDto user = actionService.findById(id);
             return ResponseEntity.ok(user);
@@ -70,7 +70,7 @@ public class ActionController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar ações", description = "Lista ações com paginação")
-    public Page<ActionDto> findAll(@RequestParam("page") int page, @RequestParam("size") int size) {
+    public Page<ActionDto> findAll(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam("page") int page, @RequestParam("size") int size) {
         return actionService.findAll(page, size);
     }
 
@@ -81,7 +81,7 @@ public class ActionController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar ações com ordenação", description = "Lista ações com paginação e ordenação")
-    public Page<ActionDto> findAll(@RequestParam("page") int page, @RequestParam("size") int size, @RequestParam("sort") String[] sort) {
+    public Page<ActionDto> findAll(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam("page") int page, @RequestParam("size") int size, @RequestParam("sort") String[] sort) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(SortUtils.convertSortToJpa(sort)));
         return actionService.findAll(page, size, sort);
     }
@@ -93,7 +93,7 @@ public class ActionController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Buscar ações por IDs", description = "Busca ações pelos IDs informados")
-    public List<ActionDto> findAll(@RequestParam(required = true) List<String> ids) {
+    public List<ActionDto> findAll(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam(required = true) List<String> ids) {
         return actionService.findAll(ids);
     }
 
@@ -104,7 +104,7 @@ public class ActionController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar ações com filtro", description = "Lista ações aplicando filtro")
-    public Page<ActionDto> find(@RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size) {
+    public Page<ActionDto> find(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size) {
         return actionService.findWithFilter(filter, page, size);
     }
 
@@ -115,7 +115,7 @@ public class ActionController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar ações com filtro e ordenação", description = "Lista ações com filtro e ordenação")
-    public Page<ActionDto> find(@RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size, @RequestParam(value = "sort",required = true) String[] sort) {
+    public Page<ActionDto> find(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size, @RequestParam(value = "sort",required = true) String[] sort) {
         return actionService.findWithFilter(filter, page, size, sort);
     }
 }

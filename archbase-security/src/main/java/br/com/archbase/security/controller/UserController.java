@@ -34,6 +34,7 @@ public class UserController {
     @PatchMapping
     @Operation(summary = "Alterar senha do usuário autenticado", description = "Permite o usuário logado atualizar sua própria senha")
     public ResponseEntity<?> changePassword(
+            @RequestHeader("X-TENANT-ID") String tenantId,
             @RequestBody ChangePasswordRequest request,
             Principal connectedUser
     ) {
@@ -52,25 +53,25 @@ public class UserController {
 
     @PostMapping
     @Operation(summary = "Criar usuário", description = "Cria um novo usuário com os dados informados")
-    public ResponseEntity<UserDto> createUser(@RequestBody UserDto user)  {
+    public ResponseEntity<UserDto> createUser(@RequestHeader("X-TENANT-ID") String tenantId, @RequestBody UserDto user)  {
         return ResponseEntity.ok(userService.createUser(user));
     }
 
     @PutMapping("/{id}")
     @Operation(summary = "Atualizar usuário", description = "Atualiza os dados do usuário informado pelo ID")
-    public ResponseEntity<UserDto> updateUser(@PathVariable String id, @RequestBody UserDto user)  {
+    public ResponseEntity<UserDto> updateUser(@RequestHeader("X-TENANT-ID") String tenantId, @PathVariable String id, @RequestBody UserDto user)  {
         return ResponseEntity.ok(userService.updateUser(id, user).get());
     }
 
     @DeleteMapping("/{id}")
     @Operation(summary = "Remover usuário", description = "Remove o usuário correspondente ao ID informado")
-    public void removeUser(@PathVariable String id)  {
+    public void removeUser(@RequestHeader("X-TENANT-ID") String tenantId, @PathVariable String id)  {
         userService.removeUser(id);
     }
 
     @GetMapping("/{id}")
     @Operation(summary = "Buscar usuário por ID", description = "Recupera os detalhes do usuário a partir do seu ID")
-    public ResponseEntity<UserDto> getUserById(@PathVariable String id) {
+    public ResponseEntity<UserDto> getUserById(@RequestHeader("X-TENANT-ID") String tenantId, @PathVariable String id) {
         try {
             UserDto user = userService.findById(id);
             return ResponseEntity.ok(user);
@@ -81,7 +82,7 @@ public class UserController {
 
     @GetMapping("/byEmail/{email}")
     @Operation(summary = "Buscar usuário por email", description = "Recupera um usuário pelo endereço de email")
-    public ResponseEntity<UserDto> getUserByEmail(@PathVariable String email) {
+    public ResponseEntity<UserDto> getUserByEmail(@RequestHeader("X-TENANT-ID") String tenantId, @PathVariable String email) {
         try {
             Optional<User> userOptional = userService.getUserByEmail(email);
             return userOptional.map(user -> ResponseEntity.ok(UserDto.fromDomain(user))).orElseGet(() -> ResponseEntity.notFound().build());
@@ -97,7 +98,7 @@ public class UserController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar usuários", description = "Lista usuários com paginação")
-    public Page<UserDto> findAll(@RequestParam("page") int page, @RequestParam("size") int size) {
+    public Page<UserDto> findAll(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam("page") int page, @RequestParam("size") int size) {
         return userService.findAll(page, size);
     }
 
@@ -108,7 +109,7 @@ public class UserController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar usuários com ordenação", description = "Lista usuários com paginação e ordenação")
-    public Page<UserDto> findAll(@RequestParam("page") int page, @RequestParam("size") int size, @RequestParam("sort") String[] sort) {
+    public Page<UserDto> findAll(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam("page") int page, @RequestParam("size") int size, @RequestParam("sort") String[] sort) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(SortUtils.convertSortToJpa(sort)));
         return userService.findAll(page, size, sort);
     }
@@ -120,7 +121,7 @@ public class UserController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Buscar usuários por IDs", description = "Busca usuários pelos IDs informados")
-    public List<UserDto> findAll(@RequestParam(required = true) List<String> ids) {
+    public List<UserDto> findAll(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam(required = true) List<String> ids) {
         return userService.findAll(ids);
     }
 
@@ -131,7 +132,7 @@ public class UserController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar usuários com filtro", description = "Lista usuários aplicando filtro")
-    public Page<UserDto> find(@RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size) {
+    public Page<UserDto> find(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size) {
         return userService.findWithFilter(filter, page, size);
     }
 
@@ -142,7 +143,7 @@ public class UserController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar usuários com filtro e ordenação", description = "Lista usuários com filtro e ordenação")
-    public Page<UserDto> find(@RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size, @RequestParam(value = "sort",required = true) String[] sort) {
+    public Page<UserDto> find(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size, @RequestParam(value = "sort",required = true) String[] sort) {
         return userService.findWithFilter(filter, page, size, sort);
     }
 }
