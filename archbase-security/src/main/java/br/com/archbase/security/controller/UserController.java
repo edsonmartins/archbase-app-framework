@@ -149,8 +149,8 @@ public class UserController {
     }
 
     @PostMapping("/create")
-    @Operation(summary = "Criar múltiplos usuários", description = "Cria novos usuários com os dados informados")
-    public ResponseEntity<List<String>> createUsers(@RequestHeader("X-TENANT-ID") String tenantId, @RequestBody List<SimpleUserDto> users)  {
-        return ResponseEntity.ok(userService.createUsers(users));
+    @Operation(summary = "Criar usuário simples", description = "Cria um novo usuário a partir de dados simplificados (SimpleUserDto)")
+    public ResponseEntity<String> createUser(@RequestHeader("X-TENANT-ID") String tenantId, @RequestBody SimpleUserDto user)  {
+        return ResponseEntity.ok(userService.createSimpleUser(user));
     }
 }

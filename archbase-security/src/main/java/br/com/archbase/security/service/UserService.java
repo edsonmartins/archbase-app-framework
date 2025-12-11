@@ -18,8 +18,6 @@ import br.com.archbase.security.usecase.UserUseCase;
 import br.com.archbase.validation.exception.ArchbaseValidationException;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -27,7 +25,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Component
@@ -115,6 +112,75 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
 
     @Override
     @Transactional
+    public String createSimpleUser(SimpleUserDto simpleUserDto) {
+        // Convert SimpleUserDto to UserDto with database lookups
+        UserDto userDto = convertSimpleUserToUserDto(simpleUserDto);
+
+        // Delegate to existing createUser method (handles validation, hooks, password encoding)
+        UserDto createdUser = createUser(userDto);
+
+        // Return the created user's ID
+        return createdUser.getId();
+    }
+
+    private UserDto convertSimpleUserToUserDto(SimpleUserDto simpleDto) {
+        UserDto userDto = new UserDto();
+        BeanUtils.copyProperties(simpleDto, userDto);
+
+        // Lookup profile by name
+        if (simpleDto.getProfile() != null && !simpleDto.getProfile().isBlank()) {
+            QProfileEntity qProfile = QProfileEntity.profileEntity;
+            BooleanExpression predicate = qProfile.name.eq(simpleDto.getProfile());
+            List<br.com.archbase.security.persistence.ProfileEntity> profiles = profileJpaRepository.findAll(predicate);
+            if (profiles.isEmpty()) {
+                throw new ArchbaseValidationException(
+                    String.format("Perfil '%s' não encontrado", simpleDto.getProfile())
+                );
+            }
+            ProfileDto profile = ProfileDto.fromDomain(profiles.get(0).toDomain());
+            userDto.setProfile(profile);
+        }
+
+        // Lookup groups by names
+        if (simpleDto.getGroups() != null && !simpleDto.getGroups().isEmpty()) {
+            List<String> groupNames = simpleDto.getGroups().stream()
+                .filter(name -> name != null && !name.isBlank())
+                .toList();
+
+            if (!groupNames.isEmpty()) {
+                QGroupEntity qGroup = QGroupEntity.groupEntity;
+                BooleanExpression predicate = qGroup.name.in(groupNames);
+                List<GroupDto> groups = groupJpaRepository.findAll(predicate)
+                    .stream()
+                    .map(groupEntity -> GroupDto.fromDomain(groupEntity.toDomain()))
+                    .toList();
+
+                // Validate all groups were found
+                if (groups.size() != groupNames.size()) {
+                    Set<String> foundNames = groups.stream()
+                        .map(GroupDto::getName)
+                        .collect(Collectors.toSet());
+                    List<String> missingNames = groupNames.stream()
+                        .filter(name -> !foundNames.contains(name))
+                        .collect(Collectors.toList());
+                    throw new ArchbaseValidationException(
+                        String.format("Grupos não encontrados: %s",
+                            String.join(", ", missingNames))
+                    );
+                }
+
+                List<UserGroupDto> userGroups = groups.stream()
+                    .map(group -> UserGroupDto.builder().group(group).build())
+                    .collect(Collectors.toList());
+                userDto.setGroups(userGroups);
+            }
+        }
+
+        return userDto;
+    }
+
+    @Override
+    @Transactional
     public Optional<UserDto> updateUser(String id, UserDto userDto) {
         UserDto originalUserDto = new UserDto();
         BeanUtils.copyProperties(userDto, originalUserDto);
@@ -159,160 +225,5 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
     @Override
     public Optional<User> getLoggedUser() {
         return Optional.ofNullable(securityAdapter.getLoggedUser());
-    }
-
-    private UserDto convertSimpleUserToUserDto(
-            SimpleUserDto simpleDto,
-            Map<String, ProfileDto> profilesByName,
-            Map<String, GroupDto> groupsByName
-    ) {
-        UserDto userDto = new UserDto();
-        BeanUtils.copyProperties(simpleDto, userDto);
-
-        // Converter profile (String -> ProfileDto)
-        if (simpleDto.getProfile() != null && !simpleDto.getProfile().isBlank()) {
-            ProfileDto profile = profilesByName.get(simpleDto.getProfile());
-            if (profile == null) {
-                throw new ArchbaseValidationException(
-                        String.format("Perfil '%s' não encontrado para usuário %s",
-                                simpleDto.getProfile(), simpleDto.getEmail())
-                );
-            }
-            userDto.setProfile(profile);
-        }
-
-        // Converter groups (List<String> -> List<UserGroupDto>)
-        if (simpleDto.getGroups() != null && !simpleDto.getGroups().isEmpty()) {
-            List<UserGroupDto> userGroups = simpleDto.getGroups().stream()
-                    .filter(groupName -> groupName != null && !groupName.isBlank())
-                    .map(groupName -> {
-                        GroupDto group = groupsByName.get(groupName);
-                        if (group == null) {
-                            throw new ArchbaseValidationException(
-                                    String.format("Grupo '%s' não encontrado para usuário %s",
-                                            groupName, simpleDto.getEmail())
-                            );
-                        }
-                        return UserGroupDto.builder()
-                                .group(group)
-                                .build();
-                    })
-                    .collect(Collectors.toList());
-            userDto.setGroups(userGroups);
-        }
-
-        return userDto;
-    }
-
-    @Override
-    @Transactional
-    public List<String> createUsers(List<SimpleUserDto> usersDtos) {
-        // 1. Buscar usuários existentes por email (idempotência)
-        List<User> existingUsers = persistenceAdapter.getUsersByEmails(
-                usersDtos.stream().map(SimpleUserDto::getEmail).toList()
-        );
-
-        // Criar mapa de emails existentes -> IDs
-        Map<String, String> existingUserIdsByEmail = existingUsers.stream()
-                .collect(Collectors.toMap(User::getEmail, user -> user.getId().toString()));
-
-        // 2. Extrair nomes únicos de perfis e grupos
-        Set<String> uniqueProfileNames = usersDtos.stream()
-                .map(SimpleUserDto::getProfile)
-                .filter(Objects::nonNull)
-                .filter(name -> !name.isBlank())
-                .collect(Collectors.toSet());
-
-        Set<String> uniqueGroupNames = usersDtos.stream()
-                .flatMap(dto -> dto.getGroups().stream())
-                .filter(Objects::nonNull)
-                .filter(name -> !name.isBlank())
-                .collect(Collectors.toSet());
-
-        // 3. Buscar profiles em lote com QueryDSL
-        Map<String, ProfileDto> profilesByName = new HashMap<>();
-        if (!uniqueProfileNames.isEmpty()) {
-            QProfileEntity qProfile = QProfileEntity.profileEntity;
-            BooleanExpression predicate = qProfile.name.in(uniqueProfileNames);
-            List<ProfileDto> profiles = profileJpaRepository.findAll(predicate)
-                    .stream()
-                    .map(profileEntity -> ProfileDto.fromDomain(profileEntity.toDomain()))
-                    .toList();
-            profilesByName = profiles.stream()
-                    .collect(Collectors.toMap(ProfileDto::getName, Function.identity()));
-        }
-
-        // 4. Buscar groups em lote com QueryDSL
-        Map<String, GroupDto> groupsByName = new HashMap<>();
-        if (!uniqueGroupNames.isEmpty()) {
-            QGroupEntity qGroup = QGroupEntity.groupEntity;
-            BooleanExpression predicate = qGroup.name.in(uniqueGroupNames);
-            List<GroupDto> groups = groupJpaRepository.findAll(predicate)
-                    .stream()
-                    .map(groupEntity -> GroupDto.fromDomain(groupEntity.toDomain()))
-                    .toList();
-            groupsByName = groups.stream()
-                    .collect(Collectors.toMap(GroupDto::getName, Function.identity()));
-        }
-
-        // 5. Processar cada usuário sequencialmente
-        List<UserDto> usersToCreate = new ArrayList<>();
-        List<UserDto> originalUserDtos = new ArrayList<>();
-
-        for (SimpleUserDto simpleDto : usersDtos) {
-            // Pula se usuário já existe (idempotência)
-            if (existingUserIdsByEmail.containsKey(simpleDto.getEmail())) {
-                continue;
-            }
-
-            // Converter para UserDto usando caches
-            // NOTA: Se profile/group não encontrado, lança exceção → rollback
-            UserDto userDto = convertSimpleUserToUserDto(simpleDto, profilesByName, groupsByName);
-
-            // Criar cópia original para hooks
-            UserDto originalUserDto = new UserDto();
-            BeanUtils.copyProperties(userDto, originalUserDto);
-
-            // Hook onBeforeCreate
-            // NOTA: Se falhar, exceção propaga → rollback completo
-            userServiceListener.onBeforeCreate(originalUserDto);
-
-            // Codificar senha
-            userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
-
-            // Adicionar às listas
-            usersToCreate.add(userDto);
-            originalUserDtos.add(originalUserDto);
-        }
-
-        // 6. Salvar todos em lote
-        Map<String, String> newUserIdsByEmail = new HashMap<>();
-
-        if (!usersToCreate.isEmpty()) {
-            List<UserDto> savedUsers = persistenceAdapter.createUsers(usersToCreate);
-
-            // Hook onAfterCreate para cada
-            // NOTA: Se falhar, exceção propaga → rollback completo
-            for (int i = 0; i < savedUsers.size(); i++) {
-                userServiceListener.onAfterCreate(
-                        originalUserDtos.get(i),
-                        savedUsers.get(i)
-                );
-                newUserIdsByEmail.put(savedUsers.get(i).getEmail(), savedUsers.get(i).getId());
-            }
-        }
-
-        // 7. Retornar IDs na ordem original do request
-        // Combinar IDs existentes + novos, mantendo ordem do request
-        List<String> resultIds = new ArrayList<>();
-        for (SimpleUserDto dto : usersDtos) {
-            String userId = existingUserIdsByEmail.get(dto.getEmail());
-            if (userId == null) {
-                userId = newUserIdsByEmail.get(dto.getEmail());
-            }
-            resultIds.add(userId);
-        }
-
-        return resultIds;
     }
 }

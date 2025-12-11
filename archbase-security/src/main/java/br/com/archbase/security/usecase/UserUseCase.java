@@ -15,6 +15,8 @@ public interface UserUseCase {
 
     UserDto createUser(UserDto userDto);
 
+    String createSimpleUser(SimpleUserDto simpleUserDto);
+
     Optional<UserDto> updateUser(String id, UserDto userDto);
 
     void removeUser(String id);
@@ -26,6 +28,4 @@ public interface UserUseCase {
     Optional<User> getLoggedUser() ;
 
     Optional<User> getUserByEmail(String email);
-
-    List<String> createUsers(List<SimpleUserDto> usersDtos);
 }
