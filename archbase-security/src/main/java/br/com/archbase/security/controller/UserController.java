@@ -2,6 +2,7 @@ package br.com.archbase.security.controller;
 
 import br.com.archbase.query.rsql.jpa.SortUtils;
 import br.com.archbase.security.auth.ChangePasswordRequest;
+import br.com.archbase.security.domain.dto.SimpleUserDto;
 import br.com.archbase.security.domain.dto.UserDto;
 import br.com.archbase.security.domain.entity.User;
 import br.com.archbase.security.service.ArchbaseUserService;
@@ -145,5 +146,11 @@ public class UserController {
     @Operation(summary = "Listar usuários com filtro e ordenação", description = "Lista usuários com filtro e ordenação")
     public Page<UserDto> find(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size, @RequestParam(value = "sort",required = true) String[] sort) {
         return userService.findWithFilter(filter, page, size, sort);
+    }
+
+    @PostMapping("/create")
+    @Operation(summary = "Criar múltiplos usuários", description = "Cria novos usuários com os dados informados")
+    public ResponseEntity<List<String>> createUsers(@RequestHeader("X-TENANT-ID") String tenantId, @RequestBody List<SimpleUserDto> users)  {
+        return ResponseEntity.ok(userService.createUsers(users));
     }
 }

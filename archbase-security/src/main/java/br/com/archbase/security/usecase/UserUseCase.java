@@ -1,5 +1,6 @@
 package br.com.archbase.security.usecase;
 
+import br.com.archbase.security.domain.dto.SimpleUserDto;
 import br.com.archbase.security.domain.dto.UserDto;
 import br.com.archbase.security.domain.entity.User;
 
@@ -8,21 +9,23 @@ import java.util.Optional;
 
 public interface UserUseCase {
 
-    public List<UserDto> getAllUsersByGroup(String groupId);
+    List<UserDto> getAllUsersByGroup(String groupId);
 
-    public Optional<UserDto> findGroupById(String id);
+    Optional<UserDto> findGroupById(String id);
 
-    public UserDto createUser(UserDto userDto);
+    UserDto createUser(UserDto userDto);
 
-    public Optional<UserDto> updateUser(String id, UserDto userDto);
+    Optional<UserDto> updateUser(String id, UserDto userDto);
 
-    public void removeUser(String id);
+    void removeUser(String id);
 
-    public void addPermission(String userId, String actionId);
+    void addPermission(String userId, String actionId);
 
-    public void removePermission(String permissionId);
+    void removePermission(String permissionId);
 
     Optional<User> getLoggedUser() ;
 
     Optional<User> getUserByEmail(String email);
+
+    List<String> createUsers(List<SimpleUserDto> usersDtos);
 }

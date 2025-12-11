@@ -1,6 +1,5 @@
 package br.com.archbase.security.adapter.port;
 
-import br.com.archbase.security.domain.dto.GroupDto;
 import br.com.archbase.security.domain.dto.UserDto;
 import br.com.archbase.security.domain.entity.User;
 
@@ -23,7 +22,12 @@ public interface UserPersistencePort {
 
     boolean existeUserByEmail(String email) ;
 
-    public void addPermission(String userId, String actionId);
-    public void removePermission(String permissionId);
+    void addPermission(String userId, String actionId);
+
+    void removePermission(String permissionId);
+
+    List<UserDto> createUsers(List<UserDto> userDtos);
+
+    List<User> getUsersByEmails(List<String> emails);
 
 }

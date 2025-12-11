@@ -4,6 +4,7 @@ package br.com.archbase.security.service;
 import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
 import br.com.archbase.security.adapter.SecurityAdapter;
 import br.com.archbase.security.adapter.UserPersistenceAdapter;
+import br.com.archbase.security.domain.dto.SimpleUserDto;
 import br.com.archbase.security.domain.dto.UserDto;
 import br.com.archbase.security.domain.entity.User;
 import br.com.archbase.security.usecase.UserUseCase;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Component
 public class UserService implements UserUseCase, FindDataWithFilterQuery<String, UserDto> {
@@ -143,5 +145,16 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
     @Override
     public Optional<User> getLoggedUser() {
         return Optional.ofNullable(securityAdapter.getLoggedUser());
+    }
+
+    @Override
+    @Transactional
+    public List<String> createUsers(List<SimpleUserDto> usersDtos) {
+        List<User> users = persistenceAdapter.getUsersByEmails(usersDtos.stream().map(SimpleUserDto::getEmail).toList());
+        if (!users.isEmpty()) {
+            throw new ArchbaseValidationException(String.format("Usuários com email já cadastrado: %s.", users.stream().map(User::getEmail).collect(Collectors.joining(", "))));
+        }
+
+        return persistenceAdapter.createUsers().stream().map(UserDto::getId).toList();
     }
 }
