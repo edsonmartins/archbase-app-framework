@@ -126,16 +126,67 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
     @Override
     @Transactional
     public String updateSimpleUser(String id, SimpleUserDto simpleUserDto) {
-        // Convert SimpleUserDto to UserDto with database lookups
-        UserDto userDto = convertSimpleUserToUserDto(simpleUserDto);
+        // 1. Fetch current user data
+        UserDto currentUser = findById(id);
+        if (currentUser == null) {
+            throw new ArchbaseValidationException(String.format("Usuário com ID %s não encontrado", id));
+        }
 
-        // Set the ID from the path parameter
-        userDto.setId(id);
+        // 2. Convert SimpleUserDto to UserDto (handles profile and groups lookup)
+        UserDto updateData = convertSimpleUserToUserDto(simpleUserDto);
 
-        // Delegate to existing updateUser method (handles validation, hooks, password encoding)
-        Optional<UserDto> updatedUser = updateUser(id, userDto);
+        // 3. Merge only non-null fields from updateData into currentUser
+        if (updateData.getName() != null) {
+            currentUser.setName(updateData.getName());
+        }
+        if (updateData.getNickname() != null) {
+            currentUser.setNickname(updateData.getNickname());
+        }
+        if (updateData.getDescription() != null) {
+            currentUser.setDescription(updateData.getDescription());
+        }
+        if (updateData.getPassword() != null && !updateData.getPassword().isBlank()) {
+            currentUser.setPassword(updateData.getPassword());
+        }
+        if (updateData.getChangePasswordOnNextLogin() != null) {
+            currentUser.setChangePasswordOnNextLogin(updateData.getChangePasswordOnNextLogin());
+        }
+        if (updateData.getAllowPasswordChange() != null) {
+            currentUser.setAllowPasswordChange(updateData.getAllowPasswordChange());
+        }
+        if (updateData.getAllowMultipleLogins() != null) {
+            currentUser.setAllowMultipleLogins(updateData.getAllowMultipleLogins());
+        }
+        if (updateData.getPasswordNeverExpires() != null) {
+            currentUser.setPasswordNeverExpires(updateData.getPasswordNeverExpires());
+        }
+        if (updateData.getAccountDeactivated() != null) {
+            currentUser.setAccountDeactivated(updateData.getAccountDeactivated());
+        }
+        if (updateData.getAccountLocked() != null) {
+            currentUser.setAccountLocked(updateData.getAccountLocked());
+        }
+        if (updateData.getUnlimitedAccessHours() != null) {
+            currentUser.setUnlimitedAccessHours(updateData.getUnlimitedAccessHours());
+        }
+        if (updateData.getIsAdministrator() != null) {
+            currentUser.setIsAdministrator(updateData.getIsAdministrator());
+        }
 
-        // Return the updated user's ID
+        // Profile was already converted to ProfileDto by convertSimpleUserToUserDto
+        if (updateData.getProfile() != null) {
+            currentUser.setProfile(updateData.getProfile());
+        }
+
+        // Groups were already converted to UserGroupDto list by convertSimpleUserToUserDto
+        if (updateData.getGroups() != null && !updateData.getGroups().isEmpty()) {
+            currentUser.setGroups(updateData.getGroups());
+        }
+
+        // 4. Delegate to existing updateUser method (handles validation, hooks, password encoding)
+        Optional<UserDto> updatedUser = updateUser(id, currentUser);
+
+        // 5. Return the updated user's ID
         return updatedUser.orElseThrow(() ->
             new ArchbaseValidationException("Falha ao atualizar usuário")).getId();
     }
@@ -143,6 +194,7 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
     private UserDto convertSimpleUserToUserDto(SimpleUserDto simpleDto) {
         UserDto userDto = new UserDto();
         BeanUtils.copyProperties(simpleDto, userDto);
+        userDto.setUserName(simpleDto.getEmail());
 
         // Lookup profile by name
         if (simpleDto.getProfile() != null && !simpleDto.getProfile().isBlank()) {
