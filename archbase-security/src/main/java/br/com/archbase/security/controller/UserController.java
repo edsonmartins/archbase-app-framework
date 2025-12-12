@@ -147,10 +147,4 @@ public class UserController {
     public Page<UserDto> find(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size, @RequestParam(value = "sort",required = true) String[] sort) {
         return userService.findWithFilter(filter, page, size, sort);
     }
-
-    @PostMapping("/create")
-    @Operation(summary = "Criar usuário simples", description = "Cria um novo usuário a partir de dados simplificados (SimpleUserDto)")
-    public ResponseEntity<String> createUser(@RequestHeader("X-TENANT-ID") String tenantId, @RequestBody SimpleUserDto user)  {
-        return ResponseEntity.ok(userService.createSimpleUser(user));
-    }
 }

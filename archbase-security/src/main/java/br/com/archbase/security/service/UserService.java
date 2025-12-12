@@ -123,6 +123,23 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
         return createdUser.getId();
     }
 
+    @Override
+    @Transactional
+    public String updateSimpleUser(String id, SimpleUserDto simpleUserDto) {
+        // Convert SimpleUserDto to UserDto with database lookups
+        UserDto userDto = convertSimpleUserToUserDto(simpleUserDto);
+
+        // Set the ID from the path parameter
+        userDto.setId(id);
+
+        // Delegate to existing updateUser method (handles validation, hooks, password encoding)
+        Optional<UserDto> updatedUser = updateUser(id, userDto);
+
+        // Return the updated user's ID
+        return updatedUser.orElseThrow(() ->
+            new ArchbaseValidationException("Falha ao atualizar usuário")).getId();
+    }
+
     private UserDto convertSimpleUserToUserDto(SimpleUserDto simpleDto) {
         UserDto userDto = new UserDto();
         BeanUtils.copyProperties(simpleDto, userDto);
