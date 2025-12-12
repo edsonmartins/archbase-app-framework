@@ -125,17 +125,30 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
 
     @Override
     @Transactional
-    public String updateSimpleUser(String id, SimpleUserDto simpleUserDto) {
-        // 1. Fetch current user data
-        UserDto currentUser = findById(id);
-        if (currentUser == null) {
-            throw new ArchbaseValidationException(String.format("Usuário com ID %s não encontrado", id));
+    public String updateSimpleUser(SimpleUserDto simpleUserDto) {
+        // 1. Validate email is provided
+        if (simpleUserDto.getEmail() == null || simpleUserDto.getEmail().isBlank()) {
+            throw new ArchbaseValidationException("O campo 'email' é obrigatório para atualização de usuário");
         }
 
-        // 2. Convert SimpleUserDto to UserDto (handles profile and groups lookup)
+        // 2. Fetch current user by email (throws exception if not found)
+        Optional<User> userOptional = persistenceAdapter.getUserByEmail(simpleUserDto.getEmail());
+        if (userOptional.isEmpty()) {
+            throw new ArchbaseValidationException(
+                String.format("Usuário com email %s não encontrado", simpleUserDto.getEmail())
+            );
+        }
+
+        User currentUserEntity = userOptional.get();
+        String userId = currentUserEntity.getId().toString();
+
+        // 3. Convert User domain entity to UserDto (no additional query needed)
+        UserDto currentUser = UserDto.fromDomain(currentUserEntity);
+
+        // 4. Convert SimpleUserDto to UserDto (handles profile and groups lookup)
         UserDto updateData = convertSimpleUserToUserDto(simpleUserDto);
 
-        // 3. Merge only non-null fields from updateData into currentUser
+        // 5. Merge only non-null fields from updateData into currentUser
         if (updateData.getName() != null) {
             currentUser.setName(updateData.getName());
         }
@@ -183,10 +196,10 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
             currentUser.setGroups(updateData.getGroups());
         }
 
-        // 4. Delegate to existing updateUser method (handles validation, hooks, password encoding)
-        Optional<UserDto> updatedUser = updateUser(id, currentUser);
+        // 6. Delegate to existing updateUser method (handles validation, hooks, password encoding)
+        Optional<UserDto> updatedUser = updateUser(userId, currentUser);
 
-        // 5. Return the updated user's ID
+        // 7. Return the updated user's ID
         return updatedUser.orElseThrow(() ->
             new ArchbaseValidationException("Falha ao atualizar usuário")).getId();
     }

@@ -1,5 +1,7 @@
 package br.com.archbase.security.domain.dto;
 
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -15,6 +17,9 @@ public class SimpleUserDto {
     protected String name;
     protected String nickname;
     protected String description;
+
+    @NotBlank(message = "O email é obrigatório")
+    @Email(message = "Email inválido")
     protected String email;
 	protected String password;
 	protected Boolean changePasswordOnNextLogin;
@@ -29,7 +34,11 @@ public class SimpleUserDto {
 	protected String profile;
 
 	@Builder
-	public SimpleUserDto(String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, List<String> groups, String profile, String email, String nickname) {
+	public SimpleUserDto(String name, String nickname, String description, String email, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, List<String> groups, String profile) {
+		this.name = name;
+		this.nickname = nickname;
+		this.description = description;
+		this.email = email;
 		this.password = password;
 		this.changePasswordOnNextLogin = changePasswordOnNextLogin;
 		this.allowPasswordChange = allowPasswordChange;
@@ -41,7 +50,5 @@ public class SimpleUserDto {
 		this.isAdministrator = isAdministrator;
 		this.groups = groups;
 		this.profile = profile;
-		this.email = email;
-		this.nickname = nickname;
 	}
 }

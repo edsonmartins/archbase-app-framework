@@ -17,7 +17,7 @@ public interface UserUseCase {
 
     String createSimpleUser(SimpleUserDto simpleUserDto);
 
-    String updateSimpleUser(String id, SimpleUserDto simpleUserDto);
+    String updateSimpleUser(SimpleUserDto simpleUserDto);
 
     Optional<UserDto> updateUser(String id, UserDto userDto);
 
