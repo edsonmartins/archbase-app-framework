@@ -33,25 +33,25 @@ public class UserProfileController {
 
     @PostMapping
     @Operation(summary = "Criar perfil", description = "Cria um novo perfil de usuário")
-    public ResponseEntity<ProfileDto> createProfile(@RequestBody ProfileDto profile)  {
+    public ResponseEntity<ProfileDto> createProfile(@RequestHeader("X-TENANT-ID") String tenantId, @RequestBody ProfileDto profile)  {
         return ResponseEntity.ok(profileService.createProfile(profile));
     }
 
     @PutMapping("/{id}")
     @Operation(summary = "Atualizar perfil", description = "Atualiza os dados do perfil identificado pelo ID")
-    public ResponseEntity<ProfileDto> updateProfile(@PathVariable String id, @RequestBody ProfileDto profile)  {
+    public ResponseEntity<ProfileDto> updateProfile(@RequestHeader("X-TENANT-ID") String tenantId, @PathVariable String id, @RequestBody ProfileDto profile)  {
         return ResponseEntity.ok(profileService.updateProfile(id, profile).get());
     }
 
     @DeleteMapping("/{id}")
     @Operation(summary = "Remover perfil", description = "Remove o perfil correspondente ao ID informado")
-    public void removeProfile(@PathVariable String id)  {
+    public void removeProfile(@RequestHeader("X-TENANT-ID") String tenantId, @PathVariable String id)  {
         profileService.deleteProfile(id);
     }
 
     @GetMapping("/{id}")
     @Operation(summary = "Buscar perfil por ID", description = "Recupera os detalhes do perfil pelo ID")
-    public ResponseEntity<ProfileDto> getProfileById(@PathVariable String id) {
+    public ResponseEntity<ProfileDto> getProfileById(@RequestHeader("X-TENANT-ID") String tenantId, @PathVariable String id) {
         try {
             ProfileDto user = profileService.findById(id);
             return ResponseEntity.ok(user);
@@ -68,7 +68,7 @@ public class UserProfileController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar perfis", description = "Lista perfis com paginação")
-    public Page<ProfileDto> findAll(@RequestParam("page") int page, @RequestParam("size") int size) {
+    public Page<ProfileDto> findAll(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam("page") int page, @RequestParam("size") int size) {
         return profileService.findAll(page, size);
     }
 
@@ -79,7 +79,7 @@ public class UserProfileController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar perfis com ordenação", description = "Lista perfis com paginação e ordenação")
-    public Page<ProfileDto> findAll(@RequestParam("page") int page, @RequestParam("size") int size, @RequestParam("sort") String[] sort) {
+    public Page<ProfileDto> findAll(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam("page") int page, @RequestParam("size") int size, @RequestParam("sort") String[] sort) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(SortUtils.convertSortToJpa(sort)));
         return profileService.findAll(page, size, sort);
     }
@@ -91,7 +91,7 @@ public class UserProfileController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Buscar perfis por IDs", description = "Busca perfis pelos IDs informados")
-    public List<ProfileDto> findAll(@RequestParam(required = true) List<String> ids) {
+    public List<ProfileDto> findAll(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam(required = true) List<String> ids) {
         return profileService.findAll(ids);
     }
 
@@ -102,7 +102,7 @@ public class UserProfileController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar perfis com filtro", description = "Lista perfis aplicando filtro")
-    public Page<ProfileDto> find(@RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size) {
+    public Page<ProfileDto> find(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size) {
         return profileService.findWithFilter(filter, page, size);
     }
 
@@ -113,7 +113,7 @@ public class UserProfileController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar perfis com filtro e ordenação", description = "Lista perfis com filtro e ordenação")
-    public Page<ProfileDto> find(@RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size, @RequestParam(value = "sort",required = true) String[] sort) {
+    public Page<ProfileDto> find(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size, @RequestParam(value = "sort",required = true) String[] sort) {
         return profileService.findWithFilter(filter, page, size, sort);
     }
 }

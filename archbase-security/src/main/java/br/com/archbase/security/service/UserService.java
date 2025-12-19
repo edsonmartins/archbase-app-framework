@@ -4,10 +4,19 @@ package br.com.archbase.security.service;
 import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
 import br.com.archbase.security.adapter.SecurityAdapter;
 import br.com.archbase.security.adapter.UserPersistenceAdapter;
+import br.com.archbase.security.domain.dto.GroupDto;
+import br.com.archbase.security.domain.dto.ProfileDto;
+import br.com.archbase.security.domain.dto.SimpleUserDto;
 import br.com.archbase.security.domain.dto.UserDto;
+import br.com.archbase.security.domain.dto.UserGroupDto;
 import br.com.archbase.security.domain.entity.User;
+import br.com.archbase.security.persistence.QGroupEntity;
+import br.com.archbase.security.persistence.QProfileEntity;
+import br.com.archbase.security.repository.GroupJpaRepository;
+import br.com.archbase.security.repository.ProfileJpaRepository;
 import br.com.archbase.security.usecase.UserUseCase;
 import br.com.archbase.validation.exception.ArchbaseValidationException;
+import com.querydsl.core.types.dsl.BooleanExpression;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.data.domain.Page;
@@ -15,8 +24,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Component
 public class UserService implements UserUseCase, FindDataWithFilterQuery<String, UserDto> {
@@ -25,12 +34,16 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
     private final SecurityAdapter securityAdapter;
     private final PasswordEncoder passwordEncoder;
     private final UserServiceListener userServiceListener;
+    private final GroupJpaRepository groupJpaRepository;
+    private final ProfileJpaRepository profileJpaRepository;
 
-    public UserService(UserPersistenceAdapter persistenceAdapter, SecurityAdapter securityAdapter, PasswordEncoder passwordEncoder, UserServiceListener userServiceListener) {
+    public UserService(UserPersistenceAdapter persistenceAdapter, SecurityAdapter securityAdapter, PasswordEncoder passwordEncoder, UserServiceListener userServiceListener, GroupJpaRepository groupJpaRepository, ProfileJpaRepository profileJpaRepository) {
         this.persistenceAdapter =  persistenceAdapter;
         this.securityAdapter = securityAdapter;
         this.passwordEncoder = passwordEncoder;
         this.userServiceListener = userServiceListener;
+        this.groupJpaRepository = groupJpaRepository;
+        this.profileJpaRepository = profileJpaRepository;
     }
 
     @Override
@@ -95,6 +108,157 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
         UserDto user = persistenceAdapter.createUser(userDto);
         userServiceListener.onAfterCreate(originalUserDto,user);
         return user;
+    }
+
+    @Override
+    @Transactional
+    public String createSimpleUser(SimpleUserDto simpleUserDto) {
+        // Convert SimpleUserDto to UserDto with database lookups
+        UserDto userDto = convertSimpleUserToUserDto(simpleUserDto);
+
+        // Delegate to existing createUser method (handles validation, hooks, password encoding)
+        UserDto createdUser = createUser(userDto);
+
+        // Return the created user's ID
+        return createdUser.getId();
+    }
+
+    @Override
+    @Transactional
+    public String updateSimpleUser(SimpleUserDto simpleUserDto) {
+        // 1. Validate email is provided
+        if (simpleUserDto.getEmail() == null || simpleUserDto.getEmail().isBlank()) {
+            throw new ArchbaseValidationException("O campo 'email' é obrigatório para atualização de usuário");
+        }
+
+        // 2. Fetch current user by email (throws exception if not found)
+        Optional<User> userOptional = persistenceAdapter.getUserByEmail(simpleUserDto.getEmail());
+        if (userOptional.isEmpty()) {
+            throw new ArchbaseValidationException(
+                String.format("Usuário com email %s não encontrado", simpleUserDto.getEmail())
+            );
+        }
+
+        User currentUserEntity = userOptional.get();
+        String userId = currentUserEntity.getId().toString();
+
+        // 3. Convert User domain entity to UserDto (no additional query needed)
+        UserDto currentUser = UserDto.fromDomain(currentUserEntity);
+
+        // 4. Convert SimpleUserDto to UserDto (handles profile and groups lookup)
+        UserDto updateData = convertSimpleUserToUserDto(simpleUserDto);
+
+        // 5. Merge only non-null fields from updateData into currentUser
+        if (updateData.getName() != null) {
+            currentUser.setName(updateData.getName());
+        }
+        if (updateData.getNickname() != null) {
+            currentUser.setNickname(updateData.getNickname());
+        }
+        if (updateData.getDescription() != null) {
+            currentUser.setDescription(updateData.getDescription());
+        }
+        if (updateData.getPassword() != null && !updateData.getPassword().isBlank()) {
+            currentUser.setPassword(updateData.getPassword());
+        }
+        if (updateData.getChangePasswordOnNextLogin() != null) {
+            currentUser.setChangePasswordOnNextLogin(updateData.getChangePasswordOnNextLogin());
+        }
+        if (updateData.getAllowPasswordChange() != null) {
+            currentUser.setAllowPasswordChange(updateData.getAllowPasswordChange());
+        }
+        if (updateData.getAllowMultipleLogins() != null) {
+            currentUser.setAllowMultipleLogins(updateData.getAllowMultipleLogins());
+        }
+        if (updateData.getPasswordNeverExpires() != null) {
+            currentUser.setPasswordNeverExpires(updateData.getPasswordNeverExpires());
+        }
+        if (updateData.getAccountDeactivated() != null) {
+            currentUser.setAccountDeactivated(updateData.getAccountDeactivated());
+        }
+        if (updateData.getAccountLocked() != null) {
+            currentUser.setAccountLocked(updateData.getAccountLocked());
+        }
+        if (updateData.getUnlimitedAccessHours() != null) {
+            currentUser.setUnlimitedAccessHours(updateData.getUnlimitedAccessHours());
+        }
+        if (updateData.getIsAdministrator() != null) {
+            currentUser.setIsAdministrator(updateData.getIsAdministrator());
+        }
+
+        // Profile was already converted to ProfileDto by convertSimpleUserToUserDto
+        if (updateData.getProfile() != null) {
+            currentUser.setProfile(updateData.getProfile());
+        }
+
+        // Groups were already converted to UserGroupDto list by convertSimpleUserToUserDto
+        if (updateData.getGroups() != null && !updateData.getGroups().isEmpty()) {
+            currentUser.setGroups(updateData.getGroups());
+        }
+
+        // 6. Delegate to existing updateUser method (handles validation, hooks, password encoding)
+        Optional<UserDto> updatedUser = updateUser(userId, currentUser);
+
+        // 7. Return the updated user's ID
+        return updatedUser.orElseThrow(() ->
+            new ArchbaseValidationException("Falha ao atualizar usuário")).getId();
+    }
+
+    private UserDto convertSimpleUserToUserDto(SimpleUserDto simpleDto) {
+        UserDto userDto = new UserDto();
+        BeanUtils.copyProperties(simpleDto, userDto);
+        userDto.setUserName(simpleDto.getEmail());
+
+        // Lookup profile by name
+        if (simpleDto.getProfile() != null && !simpleDto.getProfile().isBlank()) {
+            QProfileEntity qProfile = QProfileEntity.profileEntity;
+            BooleanExpression predicate = qProfile.name.eq(simpleDto.getProfile());
+            List<br.com.archbase.security.persistence.ProfileEntity> profiles = profileJpaRepository.findAll(predicate);
+            if (profiles.isEmpty()) {
+                throw new ArchbaseValidationException(
+                    String.format("Perfil '%s' não encontrado", simpleDto.getProfile())
+                );
+            }
+            ProfileDto profile = ProfileDto.fromDomain(profiles.get(0).toDomain());
+            userDto.setProfile(profile);
+        }
+
+        // Lookup groups by names
+        if (simpleDto.getGroups() != null && !simpleDto.getGroups().isEmpty()) {
+            List<String> groupNames = simpleDto.getGroups().stream()
+                .filter(name -> name != null && !name.isBlank())
+                .toList();
+
+            if (!groupNames.isEmpty()) {
+                QGroupEntity qGroup = QGroupEntity.groupEntity;
+                BooleanExpression predicate = qGroup.name.in(groupNames);
+                List<GroupDto> groups = groupJpaRepository.findAll(predicate)
+                    .stream()
+                    .map(groupEntity -> GroupDto.fromDomain(groupEntity.toDomain()))
+                    .toList();
+
+                // Validate all groups were found
+                if (groups.size() != groupNames.size()) {
+                    Set<String> foundNames = groups.stream()
+                        .map(GroupDto::getName)
+                        .collect(Collectors.toSet());
+                    List<String> missingNames = groupNames.stream()
+                        .filter(name -> !foundNames.contains(name))
+                        .collect(Collectors.toList());
+                    throw new ArchbaseValidationException(
+                        String.format("Grupos não encontrados: %s",
+                            String.join(", ", missingNames))
+                    );
+                }
+
+                List<UserGroupDto> userGroups = groups.stream()
+                    .map(group -> UserGroupDto.builder().group(group).build())
+                    .collect(Collectors.toList());
+                userDto.setGroups(userGroups);
+            }
+        }
+
+        return userDto;
     }
 
     @Override

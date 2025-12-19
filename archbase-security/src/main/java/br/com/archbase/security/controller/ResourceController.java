@@ -35,37 +35,37 @@ public class ResourceController {
 
     @PostMapping
     @Operation(summary = "Criar recurso", description = "Cria um novo recurso de segurança")
-    public ResponseEntity<ResourceDto> createResource(@RequestBody ResourceDto resource)  {
+    public ResponseEntity<ResourceDto> createResource(@RequestHeader("X-TENANT-ID") String tenantId, @RequestBody ResourceDto resource)  {
         return ResponseEntity.ok(resourceService.createResource(resource));
     }
 
     @PutMapping("/{id}")
     @Operation(summary = "Atualizar recurso", description = "Atualiza os dados do recurso identificado pelo ID")
-    public ResponseEntity<ResourceDto> updateResource(@PathVariable String id, @RequestBody ResourceDto resource)  {
+    public ResponseEntity<ResourceDto> updateResource(@RequestHeader("X-TENANT-ID") String tenantId, @PathVariable String id, @RequestBody ResourceDto resource)  {
         return ResponseEntity.ok(resourceService.updateResource(id, resource).get());
     }
 
     @DeleteMapping("/{id}")
     @Operation(summary = "Remover recurso", description = "Remove o recurso correspondente ao ID informado")
-    public void removeResoure(@PathVariable String id)  {
+    public void removeResoure(@RequestHeader("X-TENANT-ID") String tenantId, @PathVariable String id)  {
         resourceService.deleteResource(id);
     }
 
     @PostMapping("/register")
     @Operation(summary = "Registrar recurso e permissões iniciais", description = "Registra o recurso e cria permissões padrão para ele")
-    public ResponseEntity<ResourcePermissionsDto> registerResource(@RequestBody ResourceRegisterDto resourceRegister)  {
+    public ResponseEntity<ResourcePermissionsDto> registerResource(@RequestHeader("X-TENANT-ID") String tenantId, @RequestBody ResourceRegisterDto resourceRegister)  {
         return ResponseEntity.ok(resourceService.registerResource(resourceRegister));
     }
 
     @GetMapping("/permissions/{resourceName}")
     @Operation(summary = "Listar permissões do recurso para usuário logado", description = "Retorna as permissões do recurso para o usuário autenticado")
-    public ResponseEntity<ResourcePermissionsDto> findLoggedUserResourcePermissions(@PathVariable String resourceName) {
+    public ResponseEntity<ResourcePermissionsDto> findLoggedUserResourcePermissions(@RequestHeader("X-TENANT-ID") String tenantId, @PathVariable String resourceName) {
         return ResponseEntity.ok(resourceService.findLoggedUserResourcePermissions(resourceName));
     }
 
     @GetMapping("/{id}")
     @Operation(summary = "Buscar recurso por ID", description = "Recupera os detalhes do recurso pelo ID")
-    public ResponseEntity<ResourceDto> getResourceById(@PathVariable String id) {
+    public ResponseEntity<ResourceDto> getResourceById(@RequestHeader("X-TENANT-ID") String tenantId, @PathVariable String id) {
         try {
             ResourceDto user = resourceService.findById(id);
             return ResponseEntity.ok(user);
@@ -79,7 +79,7 @@ public class ResourceController {
             params = {"type"}
     )
     @Operation(summary = "Listar permissões por entidade de segurança (usuário, perfil ou grupo)", description = "Lista as permissões do recurso considerando o tipo de entidade de segurança informado")
-    public ResponseEntity<List<ResoucePermissionsWithTypeDto>> findResourcesPermissions(@PathVariable String id, @RequestParam("type") SecurityType type) {
+    public ResponseEntity<List<ResoucePermissionsWithTypeDto>> findResourcesPermissions(@RequestHeader("X-TENANT-ID") String tenantId, @PathVariable String id, @RequestParam("type") SecurityType type) {
         try {
             List<ResoucePermissionsWithTypeDto> resourcesPermissions = resourceService.findResourcesPermissions(id, type);
             return ResponseEntity.ok(resourcesPermissions);
@@ -90,7 +90,7 @@ public class ResourceController {
 
     @GetMapping("/permissions")
     @Operation(summary = "Listar permissões de todos os recursos", description = "Lista todas as permissões existentes para cada recurso")
-    public ResponseEntity<List<ResoucePermissionsWithTypeDto>> findAllResourcesPermissions() {
+    public ResponseEntity<List<ResoucePermissionsWithTypeDto>> findAllResourcesPermissions(@RequestHeader("X-TENANT-ID") String tenantId) {
         try {
             List<ResoucePermissionsWithTypeDto> resourcesPermissions = resourceService.findAllResourcesPermissions();
             return ResponseEntity.ok(resourcesPermissions);
@@ -101,7 +101,7 @@ public class ResourceController {
 
     @PostMapping("/permissions")
     @Operation(summary = "Conceder permissão a usuário, perfil ou grupo", description = "Concede uma ação a uma entidade de segurança, criando a permissão caso não exista")
-    public ResponseEntity<?> grantPermission(@RequestBody GrantPermissionDto grantPermission) {
+    public ResponseEntity<?> grantPermission(@RequestHeader("X-TENANT-ID") String tenantId, @RequestBody GrantPermissionDto grantPermission) {
         try {
             Optional<ActionDto> action = actionService.findActionById(grantPermission.getActionId());
             if (action.isEmpty()) {
@@ -141,7 +141,7 @@ public class ResourceController {
 
     @DeleteMapping("/permissions/{id}")
     @Operation(summary = "Remover permissão", description = "Remove a permissão correspondente ao ID informado")
-    public void deletePermission(@PathVariable String id) {
+    public void deletePermission(@RequestHeader("X-TENANT-ID") String tenantId, @PathVariable String id) {
         resourceService.deletePermission(id);
     }
 
@@ -152,7 +152,7 @@ public class ResourceController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar recursos", description = "Lista recursos com paginação")
-    public Page<ResourceDto> findAll(@RequestParam("page") int page, @RequestParam("size") int size) {
+    public Page<ResourceDto> findAll(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam("page") int page, @RequestParam("size") int size) {
         return resourceService.findAll(page, size);
     }
 
@@ -163,7 +163,7 @@ public class ResourceController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar recursos com ordenação", description = "Lista recursos com paginação e ordenação")
-    public Page<ResourceDto> findAll(@RequestParam("page") int page, @RequestParam("size") int size, @RequestParam("sort") String[] sort) {
+    public Page<ResourceDto> findAll(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam("page") int page, @RequestParam("size") int size, @RequestParam("sort") String[] sort) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(SortUtils.convertSortToJpa(sort)));
         return resourceService.findAll(page, size, sort);
     }
@@ -175,7 +175,7 @@ public class ResourceController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Buscar recursos por IDs", description = "Busca recursos pelos IDs informados")
-    public List<ResourceDto> findAll(@RequestParam(required = true) List<String> ids) {
+    public List<ResourceDto> findAll(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam(required = true) List<String> ids) {
         return resourceService.findAll(ids);
     }
 
@@ -186,7 +186,7 @@ public class ResourceController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar recursos com filtro", description = "Lista recursos aplicando filtro")
-    public Page<ResourceDto> find(@RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size) {
+    public Page<ResourceDto> find(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size) {
         return resourceService.findWithFilter(filter, page, size);
     }
 
@@ -197,7 +197,7 @@ public class ResourceController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar recursos com filtro e ordenação", description = "Lista recursos com filtro e ordenação")
-    public Page<ResourceDto> find(@RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size, @RequestParam(value = "sort",required = true) String[] sort) {
+    public Page<ResourceDto> find(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size, @RequestParam(value = "sort",required = true) String[] sort) {
         return resourceService.findWithFilter(filter, page, size, sort);
     }
 }

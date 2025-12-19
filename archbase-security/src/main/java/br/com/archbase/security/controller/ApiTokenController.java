@@ -37,14 +37,14 @@ public class ApiTokenController {
 
     @PostMapping("/create")
     @Operation(summary = "Criar token de API", description = "Gera um novo token de API para o email informado com data de expiração")
-    public ResponseEntity<ApiTokenDto> createToken(@RequestParam String email, @RequestParam LocalDateTime expirationDate, @RequestParam String name, @RequestParam String description) {
+    public ResponseEntity<ApiTokenDto> createToken(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam String email, @RequestParam LocalDateTime expirationDate, @RequestParam String name, @RequestParam String description) {
         ApiTokenDto token = apiTokenService.createToken(email,expirationDate, name, description);
         return ResponseEntity.ok(token);
     }
 
     @PostMapping("/revoke")
     @Operation(summary = "Revogar token de API", description = "Revoga o token de API informado, impedindo novos acessos")
-    public ResponseEntity<Void> revokeToken(@RequestParam String token) {
+    public ResponseEntity<Void> revokeToken(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam String token) {
         apiTokenService.revokeToken(token);
         return ResponseEntity.ok().build();
     }
@@ -93,7 +93,7 @@ public class ApiTokenController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar tokens de API", description = "Lista tokens de API com paginação")
-    public Page<ApiTokenDto> findAll(@RequestParam("page") int page, @RequestParam("size") int size) {
+    public Page<ApiTokenDto> findAll(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam("page") int page, @RequestParam("size") int size) {
         return apiTokenService.findAll(page, size);
     }
 
@@ -104,7 +104,7 @@ public class ApiTokenController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar tokens de API com ordenação", description = "Lista tokens de API paginados com ordenação")
-    public Page<ApiTokenDto> findAll(@RequestParam("page") int page, @RequestParam("size") int size, @RequestParam("sort") String[] sort) {
+    public Page<ApiTokenDto> findAll(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam("page") int page, @RequestParam("size") int size, @RequestParam("sort") String[] sort) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(SortUtils.convertSortToJpa(sort)));
         return apiTokenService.findAll(page, size, sort);
     }
@@ -116,7 +116,7 @@ public class ApiTokenController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Buscar tokens de API por IDs", description = "Busca tokens de API pelos IDs informados")
-    public List<ApiTokenDto> findAll(@RequestParam(required = true) List<String> ids) {
+    public List<ApiTokenDto> findAll(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam(required = true) List<String> ids) {
         return apiTokenService.findAll(ids);
     }
 
@@ -127,7 +127,7 @@ public class ApiTokenController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar tokens de API com filtro", description = "Lista tokens de API aplicando filtro")
-    public Page<ApiTokenDto> find(@RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size) {
+    public Page<ApiTokenDto> find(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size) {
         return apiTokenService.findWithFilter(filter, page, size);
     }
 
@@ -138,7 +138,7 @@ public class ApiTokenController {
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     @Operation(summary = "Listar tokens de API com filtro e ordenação", description = "Lista tokens de API com filtro e ordenação")
-    public Page<ApiTokenDto> find(@RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size, @RequestParam(value = "sort",required = true) String[] sort) {
+    public Page<ApiTokenDto> find(@RequestHeader("X-TENANT-ID") String tenantId, @RequestParam(value = "filter",required = true) String filter, @RequestParam(value = "page",required = true) int page, @RequestParam(value = "size",required = true) int size, @RequestParam(value = "sort",required = true) String[] sort) {
         return apiTokenService.findWithFilter(filter, page, size, sort);
     }
 }

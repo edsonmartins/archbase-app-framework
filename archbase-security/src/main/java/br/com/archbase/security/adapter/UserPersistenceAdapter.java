@@ -85,6 +85,12 @@ public class UserPersistenceAdapter implements UserPersistencePort, FindDataWith
     }
 
     @Override
+    public List<UserDto> createUsers(List<UserDto> userDtos)  {
+        return repository.saveAll(userDtos.stream().map(userDto -> UserEntity.fromDomain(userDto.toDomain())).toList())
+                .stream().map(UserEntity::toDto).toList();
+    }
+
+    @Override
     public Optional<UserDto> updateUser(String id, UserDto userDto) {
         User loggedUser = securityAdapter.getLoggedUser();
         return Optional.of(repository.findById(id))
@@ -153,6 +159,19 @@ public class UserPersistenceAdapter implements UserPersistencePort, FindDataWith
     public Optional<User> getUserByEmail(String email)  {
         Optional<UserEntity> optionalUser = repository.findByEmail(email);
         return optionalUser.map(UserEntity::toDomain);
+    }
+
+    @Override
+    public List<User> getUsersByEmails(List<String> emails) {
+        QUserEntity qUser = QUserEntity.userEntity;
+
+        // Construindo o predicado para QueryDSL
+        BooleanExpression predicate = qUser.email.in(emails);
+
+        List<UserEntity> users = (List<UserEntity>) repository.findAll(predicate);
+        return users.stream()
+                .map(UserEntity::toDomain)
+                .collect(Collectors.toList());
     }
 
     @Override
