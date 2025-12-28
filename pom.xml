@@ -83,6 +83,10 @@
         <module>archbase-architecture</module>
         <module>archbase-security</module>
         <module>archbase-multitenancy</module>
+        <module>archbase-test-utils</module>
+        <module>archbase-logging</module>
+        <module>archbase-value-objects</module>
+        <module>archbase-mapper</module>
     </modules>
 
     <packaging>pom</packaging>
