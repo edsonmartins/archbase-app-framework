@@ -9,46 +9,48 @@
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>archbase-resource-logger</artifactId>
+    <artifactId>archbase-jackson</artifactId>
+    <name>Archbase Jackson</name>
+    <description>Jackson module for optimized Value Object serialization in Archbase applications</description>
 
     <dependencies>
+        <!-- Spring Boot -->
         <dependency>
-            <groupId>org.powermock</groupId>
-            <artifactId>powermock-module-junit4</artifactId>
-            <version>2.0.9</version>
-            <scope>test</scope>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+            <scope>compile</scope>
         </dependency>
+
+        <!-- Spring Boot Auto-configuration -->
         <dependency>
-            <groupId>org.powermock</groupId>
-            <artifactId>powermock-api-mockito2</artifactId>
-            <version>2.0.9</version>
-            <scope>test</scope>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+            <scope>compile</scope>
         </dependency>
+
+        <!-- Jackson -->
         <dependency>
-            <groupId>org.powermock</groupId>
-            <artifactId>powermock-api-support</artifactId>
-            <version>2.0.9</version>
-            <scope>test</scope>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <scope>compile</scope>
         </dependency>
-        <!--        <dependency>-->
-        <!--            <groupId>com.github.valfirst</groupId>-->
-        <!--            <artifactId>slf4j-test</artifactId>-->
-        <!--            <version>2.1.1</version>-->
-        <!--            <exclusions>-->
-        <!--                <exclusion>-->
-        <!--                    <groupId>org.slf4j</groupId>-->
-        <!--                    <artifactId>slf4j-log4j12</artifactId>-->
-        <!--                </exclusion>-->
-        <!--                <exclusion>-->
-        <!--                    <groupId>log4j</groupId>-->
-        <!--                    <artifactId>log4j</artifactId>-->
-        <!--                </exclusion>-->
-        <!--            </exclusions>-->
-        <!--        </dependency>-->
+
+        <!-- Archbase DDD Spec (optional, for ValueObject interface) -->
         <dependency>
-            <groupId>io.github.benas</groupId>
-            <artifactId>random-beans</artifactId>
-            <version>3.7.0</version>
+            <groupId>br.com.archbase</groupId>
+            <artifactId>archbase-domain-driven-design-spec</artifactId>
+            <version>${project.version}</version>
+            <scope>compile</scope>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Archbase Identifier (optional, for @ArchbaseIdentifier support) -->
+        <dependency>
+            <groupId>br.com.archbase</groupId>
+            <artifactId>archbase-identifier</artifactId>
+            <version>${project.version}</version>
+            <scope>compile</scope>
+            <optional>true</optional>
         </dependency>
 
         <!-- Lombok -->
@@ -63,6 +65,13 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
             <scope>compile</scope>
+        </dependency>
+
+        <!-- Test dependencies -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 
@@ -83,6 +92,5 @@
             </plugin>
         </plugins>
     </build>
-
 
 </project>

@@ -87,6 +87,8 @@
         <module>archbase-logging</module>
         <module>archbase-value-objects</module>
         <module>archbase-mapper</module>
+        <module>archbase-identifier</module>
+        <module>archbase-jackson</module>
     </modules>
 
     <packaging>pom</packaging>

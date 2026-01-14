@@ -2,11 +2,9 @@ package br.com.archbase.ddd.domain.base;
 
 import br.com.archbase.ddd.domain.contracts.Identifier;
 import lombok.EqualsAndHashCode;
-import lombok.RequiredArgsConstructor;
 
 import java.util.UUID;
 
-@RequiredArgsConstructor
 @EqualsAndHashCode
 public class ArchbaseIdentifier implements Identifier {
 
@@ -14,6 +12,10 @@ public class ArchbaseIdentifier implements Identifier {
 
     public ArchbaseIdentifier() {
         this.id = UUID.randomUUID().toString();
+    }
+
+    public ArchbaseIdentifier(String id) {
+        this.id = id;
     }
 
     public String getIdentifier() {
