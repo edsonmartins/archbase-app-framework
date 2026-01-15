@@ -6,7 +6,7 @@
     <servers>
         <server>
             <id>central</id>
-            <username>${env.MAVEN_USERNAME}</username>
+            <username>${env.MAVEN_CENTRAL_USERNAME}</username>
             <password>${env.MAVEN_CENTRAL_TOKEN}</password>
         </server>
     </servers>

@@ -60,7 +60,7 @@ jobs:
           mvn clean deploy -Pmaven-central -DskipTests \
             -s .maven-settings.xml.template
         env:
-          MAVEN_USERNAME: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           MAVEN_CENTRAL_TOKEN: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
