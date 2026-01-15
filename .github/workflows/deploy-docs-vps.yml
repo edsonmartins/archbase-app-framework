@@ -94,12 +94,15 @@ jobs:
             grep -E "^[0-9]+$" | \
             xargs -I {} docker rmi archbase-java-docs:{} 2>/dev/null || true
 
+          # Remover imagens dangling (<none>)
+          docker images -f "dangling=true" -q | xargs -r docker rmi -f 2>/dev/null || true
+
       - name: Docker system prune
         run: |
-          # Remover imagens dangling, containers parados e cache de build
+          # Remover imagens não usadas, containers parados e cache de build
           docker image prune -a -f
           docker container prune -f
-          docker system prune -f
+          docker system prune -a -f
           # Exibir uso de disco após limpeza
           echo "=== Uso de disco após limpeza ==="
           df -h /var/lib/docker
