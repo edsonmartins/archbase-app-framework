@@ -438,6 +438,11 @@
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-gpg-plugin</artifactId>
                         <version>${maven-gpg-plugin.version}</version>
+                        <configuration>
+                            <keyname>BEFBA859508A8489</keyname>
+                            <pinentryMode>loopback</pinentryMode>
+                            <useAgent>true</useAgent>
+                        </configuration>
                         <executions>
                             <execution>
                                 <id>sign-artifacts</id>
@@ -492,6 +497,11 @@
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-gpg-plugin</artifactId>
                         <version>${maven-gpg-plugin.version}</version>
+                        <configuration>
+                            <keyname>BEFBA859508A8489</keyname>
+                            <pinentryMode>loopback</pinentryMode>
+                            <useAgent>true</useAgent>
+                        </configuration>
                         <executions>
                             <execution>
                                 <id>sign-artifacts</id>
