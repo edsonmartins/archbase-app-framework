@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  java-docs:
+    image: archbase-java-docs:latest
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: start-first
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.archbase-java-docs.rule=Host(`java.archbase.dev`)"
+        - "traefik.http.routers.archbase-java-docs.entrypoints=websecure"
+        - "traefik.http.routers.archbase-java-docs.tls.certresolver=letsencrypt"
+        - "traefik.http.services.archbase-java-docs.loadbalancer.server.port=80"
+    networks:
+      - traefik-public
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  traefik-public:
+    external: true
