@@ -62,6 +62,13 @@ jobs:
           gpg --list-keys || true
           gpg --list-secret-keys || true
 
+      - name: Pre-cache passphrase in gpg-agent
+        run: |
+          /usr/libexec/gpg-preset-passphrase --preset --passphrase "${{ secrets.GPG_PASSPHRASE }}" BEFBA859508A8489 || \
+          echo "gpg-preset-passphrase not available, trying alternative method"
+          gpg --batch --pinentry-mode loopback --passphrase "${{ secrets.GPG_PASSPHRASE }}" --sign --detach-sign /tmp/testfile || true
+          rm -f /tmp/testfile /tmp/testfile.asc 2>/dev/null || true
+
       - name: Build and Publish to Maven Central
         run: |
           export GPG_TTY=$(tty)
