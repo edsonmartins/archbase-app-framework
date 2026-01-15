@@ -12,9 +12,9 @@
 
     <artifactId>archbase-codegen-maven-plugin</artifactId>
 
-    <name>${project.groupId}:${project.artifactId}</name>
+    <name>Archbase Code Generator Maven Plugin</name>
     <description>Archbase Data Generator for JPA repositories and services.</description>
-    <url></url>
+    <url>https://github.com/edsonmartins/archbase-app-framework</url>
 
     <licenses>
         <license>
@@ -33,9 +33,9 @@
     </developers>
 
     <scm>
-        <connection></connection>
-        <developerConnection></developerConnection>
-        <url></url>
+        <connection>scm:git:git@github.com:edsonmartins/archbase-app-framework.git</connection>
+        <developerConnection>scm:git:git@github.com:edsonmartins/archbase-app-framework.git</developerConnection>
+        <url>https://github.com/edsonmartins/archbase-app-framework</url>
     </scm>
 
 

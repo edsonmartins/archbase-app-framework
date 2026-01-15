@@ -10,6 +10,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>archbase-workflow-process</artifactId>
+    <name>Archbase Workflow Process</name>
 
 
 </project>
