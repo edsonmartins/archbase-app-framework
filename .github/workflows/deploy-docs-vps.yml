@@ -61,10 +61,15 @@ jobs:
         run: |
           # Criar diretório temporário para o build
           mkdir -p docker-build-context
-          # Copiar arquivos buildados
-          cp -r docs-site/build/* docker-build-context/
+          # Copiar arquivos buildados (incluindo arquivos ocultos)
+          rsync -av --delete docs-site/build/ docker-build-context/
           # Copiar nginx.conf
           cp deployment/docs/nginx.conf docker-build-context/
+          # Verificar o que foi copiado
+          echo "=== Arquivos copiados ==="
+          ls -la docker-build-context/
+          echo "=== Assets ==="
+          ls -la docker-build-context/assets/ || echo "pasta assets não encontrada"
 
       - name: Build Docker image
         run: |
