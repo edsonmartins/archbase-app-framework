@@ -440,8 +440,12 @@
                         <version>${maven-gpg-plugin.version}</version>
                         <configuration>
                             <keyname>BEFBA859508A8489</keyname>
-                            <pinentryMode>loopback</pinentryMode>
-                            <useAgent>true</useAgent>
+                            <gpgArguments>
+                                <arg>--pinentry-mode</arg>
+                                <arg>loopback</arg>
+                                <arg>--batch</arg>
+                                <arg>--yes</arg>
+                            </gpgArguments>
                         </configuration>
                         <executions>
                             <execution>
@@ -499,8 +503,12 @@
                         <version>${maven-gpg-plugin.version}</version>
                         <configuration>
                             <keyname>BEFBA859508A8489</keyname>
-                            <pinentryMode>loopback</pinentryMode>
-                            <useAgent>true</useAgent>
+                            <gpgArguments>
+                                <arg>--pinentry-mode</arg>
+                                <arg>loopback</arg>
+                                <arg>--batch</arg>
+                                <arg>--yes</arg>
+                            </gpgArguments>
                         </configuration>
                         <executions>
                             <execution>

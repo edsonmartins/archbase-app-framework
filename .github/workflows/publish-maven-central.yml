@@ -68,8 +68,7 @@ jobs:
           echo "GPG_TTY=$GPG_TTY"
           mvn clean deploy -Pmaven-central -DskipTests \
             -s .maven-settings.xml.template \
-            -Dgpg.pinentry-mode=loopback \
-            -Dgpg.batch=true
+            -Dgpg.passphrase="${{ secrets.GPG_PASSPHRASE }}"
         env:
           MAVEN_USERNAME: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
           MAVEN_CENTRAL_TOKEN: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
