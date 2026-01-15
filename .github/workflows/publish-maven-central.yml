@@ -43,8 +43,11 @@ jobs:
 
       - name: Import GPG key
         run: |
-          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 --decode > /tmp/private_key.asc
+          gpg --batch --import /tmp/private_key.asc
+          rm -f /tmp/private_key.asc
           gpg --list-keys
+          gpg --list-secret-keys
 
       - name: Build and Publish to Maven Central
         run: |
