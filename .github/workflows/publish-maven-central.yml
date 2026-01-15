@@ -45,13 +45,17 @@ jobs:
         run: |
           mkdir -p ~/.gnupg
           chmod 700 ~/.gnupg
-          echo "no-use-agent" > ~/.gnupg/gpg.conf
-          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+          echo "pinentry-mode loopback" > ~/.gnupg/gpg.conf
+          echo "allow-loopback-pinentry" > ~/.gnupg/gpg-agent.conf
+
+      - name: Start gpg-agent
+        run: |
+          gpg-agent --daemon --batch 2>/dev/null || true
 
       - name: Import GPG key
         run: |
           echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 --decode > /tmp/private_key.asc
-          gpg --batch --no-use-agent --pinentry-mode loopback --passphrase "${{ secrets.GPG_PASSPHRASE }}" --import /tmp/private_key.asc
+          gpg --batch --pinentry-mode loopback --passphrase "${{ secrets.GPG_PASSPHRASE }}" --import /tmp/private_key.asc || true
           rm -f /tmp/private_key.asc
           gpg --list-keys
           gpg --list-secret-keys
