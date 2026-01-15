@@ -15,8 +15,6 @@
             <id>gpg</id>
             <properties>
                 <gpg.executable>gpg</gpg.executable>
-                <gpg.passphrase>${env.GPG_PASSPHRASE}</gpg.passphrase>
-                <gpg.keyname>BEFBA859508A8489</gpg.keyname>
             </properties>
         </profile>
     </profiles>

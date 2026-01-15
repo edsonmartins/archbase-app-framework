@@ -68,14 +68,12 @@ jobs:
           echo "GPG_TTY=$GPG_TTY"
           mvn clean deploy -Pmaven-central -DskipTests \
             -s .maven-settings.xml.template \
-            -Dgpg.passphrase=${{ secrets.GPG_PASSPHRASE }} \
             -Dgpg.pinentry-mode=loopback \
-            -Dgpg.batch=true \
-            -X
+            -Dgpg.batch=true
         env:
           MAVEN_USERNAME: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
           MAVEN_CENTRAL_TOKEN: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
