@@ -10,6 +10,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>archbase-error-handling</artifactId>
+    <name>Archbase Error Handling</name>
 
 
     <properties>

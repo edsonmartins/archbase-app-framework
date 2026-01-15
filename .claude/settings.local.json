@@ -13,7 +13,13 @@
       "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn compile)",
       "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn compile -pl archbase-shared-kernel)",
       "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn clean compile -DskipTests --batch-mode)",
-      "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn clean:*)"
+      "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn clean:*)",
+      "Bash(git mv:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git restore:*)",
+      "Bash(gpg:*)"
     ],
     "deny": []
   }

@@ -10,6 +10,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>archbase-resource-logger</artifactId>
+    <name>Archbase Resource Logger</name>
 
     <dependencies>
         <dependency>
