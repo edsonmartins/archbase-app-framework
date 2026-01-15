@@ -22,7 +22,11 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'maven'
+
+      - name: Setup Maven
+        uses: stCarolas/setup-maven@v4.5
+        with:
+          maven-version: '3.9.9'
 
       - name: Configure Git user
         run: |
