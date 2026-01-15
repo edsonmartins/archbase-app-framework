@@ -2,9 +2,9 @@
 
 [![Maven Central](https://img.shields.io/maven-central/v/br.com.archbase/archbase-starter.svg?style=flat-square)](https://central.sonatype.com/search?q=g:br.com.archbase)
 [![Java](https://img.shields.io/badge/Java-17-orange.svg?style=flat-square)](https://openjdk.org/projects/jdk/17/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.5-brightgreen.svg?style=flat-square)](https://spring.io/projects/spring-boot)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.6-brightgreen.svg?style=flat-square)](https://spring.io/projects/spring-boot)
 
-**Archbase** é um framework Java para aplicações empresariais construído sobre Spring Boot 3.2.5 e Java 17. Implementa Domain-Driven Design (DDD) com Onion Architecture, oferecendo uma base sólida e modular para aplicações complexas.
+**Archbase** é um framework Java para aplicações empresariais construído sobre Spring Boot 3.5.6 e Java 17. Implementa Domain-Driven Design (DDD) com Onion Architecture, oferecendo uma base sólida e modular para aplicações complexas.
 
 > **Versão 2.0.0** - Veja as [notas de release](CHANGELOG.md) para informações sobre atualizações.
 
@@ -168,19 +168,9 @@ public class ClienteController {
 
 ## Arquitetura
 
-O framework segue **Onion Architecture** com separação clara de responsabilidades:
+O framework segue **Hexagonal Architecture** (Ports & Adapters) com separação clara de responsabilidades:
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  Interface Layer (Controllers, DTOs, APIs)             │
-├─────────────────────────────────────────────────────────┤
-│  Application Layer (Use Cases, Services, Handlers)      │
-├─────────────────────────────────────────────────────────┤
-│  Domain Layer (Entities, Aggregates, Value Objects)    │
-├─────────────────────────────────────────────────────────┤
-│  Infrastructure (Persistence, Messaging, External)      │
-└─────────────────────────────────────────────────────────┘
-```
+![Arquitetura Hexagonal](docs/hexagonal-architecture.svg)
 
 ## Recursos Avançados
 
@@ -255,7 +245,7 @@ Para documentação completa e detalhada, visite:
 ## Requisitos
 
 - Java 17 ou superior
-- Spring Boot 3.2.5
+- Spring Boot 3.5.6
 - Maven 3.6+
 
 ## Licença

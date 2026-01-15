@@ -1,0 +1,200 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 650" fill="none">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+      .text { font-family: 'Inter', system-ui, sans-serif; }
+      .title { font-size: 20px; font-weight: 700; fill: #1a1a1a; }
+      .subtitle { font-size: 14px; font-weight: 600; fill: #333; }
+      .label { font-size: 12px; font-weight: 500; fill: #555; }
+      .small { font-size: 11px; font-weight: 400; fill: #666; }
+      .tiny { font-size: 10px; font-weight: 400; fill: #777; }
+    </style>
+    <linearGradient id="coreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0EA5E9;stop-opacity:0.15" />
+      <stop offset="100%" style="stop-color:#0284c7;stop-opacity:0.15" />
+    </linearGradient>
+    <linearGradient id="appGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#38bdf8;stop-opacity:0.15" />
+      <stop offset="100%" style="stop-color:#0ea5e9;stop-opacity:0.15" />
+    </linearGradient>
+    <linearGradient id="adapterGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#7dd3fc;stop-opacity:0.15" />
+      <stop offset="100%" style="stop-color:#38bdf8;stop-opacity:0.15" />
+    </linearGradient>
+    <linearGradient id="portGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f59e0b;stop-opacity:0.15" />
+      <stop offset="100%" style="stop-color:#d97706;stop-opacity:0.15" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="650" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="450" y="18" text-anchor="middle" class="text title">Arquitetura Hexagonal (Ports &amp; Adapters)</text>
+
+  <!-- Domain (Core) - Center Hexagon -->
+  <g transform="translate(450, 320)">
+    <!-- Outer glow -->
+    <ellipse cx="0" cy="0" rx="165" ry="165" fill="url(#coreGrad)"/>
+    <!-- Main hexagon -->
+    <polygon points="0,-160 140,-80 140,80 0,160 -140,80 -140,-80"
+             fill="none" stroke="#0EA5E9" stroke-width="3"/>
+    <polygon points="0,-155 135,-77 135,77 0,155 -135,77 -135,-77"
+             fill="url(#coreGrad)" stroke="none"/>
+
+    <!-- Inner content -->
+    <text x="0" y="-40" text-anchor="middle" class="text title">DOMÍNIO</text>
+    <text x="0" y="-20" text-anchor="middle" class="text subtitle">(Core)</text>
+    <line x1="-80" y1="-10" x2="80" y2="-10" stroke="#0EA5E9" stroke-width="1.5"/>
+
+    <text x="0" y="15" text-anchor="middle" class="text label">Entities &amp; Aggregates</text>
+    <text x="0" y="35" text-anchor="middle" class="text label">Value Objects</text>
+    <text x="0" y="55" text-anchor="middle" class="text label">Domain Services</text>
+    <text x="0" y="75" text-anchor="middle" class="text label">Business Rules</text>
+    <text x="0" y="100" text-anchor="middle" class="text small">Regras do negócio</text>
+  </g>
+
+  <!-- Application (Use Cases) - Ring -->
+  <g transform="translate(450, 320)">
+    <!-- Ring -->
+    <ellipse cx="0" cy="0" rx="235" ry="235" fill="url(#appGrad)"/>
+    <polygon points="0,-230 200,-115 200,115 0,230 -200,115 -200,-115"
+             fill="url(#appGrad)" stroke="#38bdf8" stroke-width="2" stroke-dasharray="5,5"/>
+
+    <!-- Inner labels -->
+    <text x="0" y="-180" text-anchor="middle" class="text label">Use Cases</text>
+    <text x="0" y="-163" text-anchor="middle" class="text tiny">Application Services</text>
+  </g>
+
+  <!-- Ports - Ring -->
+  <g transform="translate(450, 320)">
+    <polygon points="0,-300 260,-150 260,150 0,300 -260,150 -260,-150"
+             fill="url(#portGrad)" stroke="#0EA5E9" stroke-width="2" stroke-dasharray="8,4"/>
+  </g>
+
+  <!-- Input Adapters - Top -->
+  <g transform="translate(450, 90)">
+    <rect x="-280" y="-45" width="130" height="90" rx="8" fill="url(#adapterGrad)" stroke="#0EA5E9" stroke-width="2"/>
+    <text x="-215" y="-15" text-anchor="middle" class="text subtitle" fill="#0284c7">REST</text>
+    <text x="-215" y="5" text-anchor="middle" class="text small">Controller</text>
+    <text x="-215" y="25" text-anchor="middle" class="text tiny">HTTP API</text>
+
+    <rect x="-130" y="-45" width="130" height="90" rx="8" fill="url(#adapterGrad)" stroke="#0EA5E9" stroke-width="2"/>
+    <text x="-65" y="-15" text-anchor="middle" class="text subtitle" fill="#0284c7">GraphQL</text>
+    <text x="-65" y="5" text-anchor="middle" class="text small">Resolver</text>
+    <text x="-65" y="25" text-anchor="middle" class="text tiny">Query/Mutation</text>
+
+    <rect x="20" y="-45" width="130" height="90" rx="8" fill="url(#adapterGrad)" stroke="#0EA5E9" stroke-width="2"/>
+    <text x="85" y="-15" text-anchor="middle" class="text subtitle" fill="#0284c7">WebSocket</text>
+    <text x="85" y="5" text-anchor="middle" class="text small">Handler</text>
+    <text x="85" y="25" text-anchor="middle" class="text tiny">Real-time</text>
+
+    <rect x="170" y="-45" width="130" height="90" rx="8" fill="url(#adapterGrad)" stroke="#0EA5E9" stroke-width="2"/>
+    <text x="235" y="-15" text-anchor="middle" class="text subtitle" fill="#0284c7">Scheduler</text>
+    <text x="235" y="5" text-anchor="middle" class="text small">Jobs</text>
+    <text x="235" y="25" text-anchor="middle" class="text tiny">Cron/Tasks</text>
+  </g>
+
+  <!-- Output Adapters - Bottom -->
+  <g transform="translate(450, 530)">
+    <rect x="-280" y="-45" width="130" height="90" rx="8" fill="url(#adapterGrad)" stroke="#0EA5E9" stroke-width="2"/>
+    <text x="-215" y="-15" text-anchor="middle" class="text subtitle" fill="#0284c7">JPA/DB</text>
+    <text x="-215" y="5" text-anchor="middle" class="text small">Repository</text>
+    <text x="-215" y="25" text-anchor="middle" class="text tiny">PostgreSQL/MySQL</text>
+
+    <rect x="-130" y="-45" width="130" height="90" rx="8" fill="url(#adapterGrad)" stroke="#0EA5E9" stroke-width="2"/>
+    <text x="-65" y="-15" text-anchor="middle" class="text subtitle" fill="#0284c7">Artemis</text>
+    <text x="-65" y="5" text-anchor="middle" class="text small">JMS/MQTT</text>
+    <text x="-65" y="25" text-anchor="middle" class="text tiny">Message Broker</text>
+
+    <rect x="20" y="-45" width="130" height="90" rx="8" fill="url(#adapterGrad)" stroke="#0EA5E9" stroke-width="2"/>
+    <text x="85" y="-15" text-anchor="middle" class="text subtitle" fill="#0284c7">External</text>
+    <text x="85" y="5" text-anchor="middle" class="text small">HTTP Client</text>
+    <text x="85" y="25" text-anchor="middle" class="text tiny">REST APIs</text>
+
+    <rect x="170" y="-45" width="130" height="90" rx="8" fill="url(#adapterGrad)" stroke="#0EA5E9" stroke-width="2"/>
+    <text x="235" y="-15" text-anchor="middle" class="text subtitle" fill="#0284c7">Cache</text>
+    <text x="235" y="5" text-anchor="middle" class="text small">Redis</text>
+    <text x="235" y="25" text-anchor="middle" class="text tiny">Caching</text>
+  </g>
+
+  <!-- Side Labels -->
+  <g>
+    <!-- INPUT ADAPTERS Label (rotated, positioned left) -->
+    <text x="45" y="280" text-anchor="middle" class="text label" transform="rotate(-90 45 280)">INPUT ADAPTERS</text>
+    <text x="45" y="400" text-anchor="middle" class="text tiny" transform="rotate(-90 45 400)">Driving / Primary</text>
+  </g>
+
+  <g>
+    <!-- OUTPUT ADAPTERS Label (rotated, positioned right) -->
+    <text x="855" y="280" text-anchor="middle" class="text label" transform="rotate(90 855 280)">OUTPUT ADAPTERS</text>
+    <text x="855" y="400" text-anchor="middle" class="text tiny" transform="rotate(90 855 400)">Driven / Secondary</text>
+  </g>
+
+  <!-- Layer Labels (horizontal, centered on layers) -->
+  <g>
+    <!-- PORTS Label -->
+    <rect x="150" y="298" width="70" height="22" rx="4" fill="#f59e0b"/>
+    <text x="185" y="314" text-anchor="middle" class="text" fill="white" font-size="11" font-weight="600">PORTS</text>
+    <text x="185" y="340" text-anchor="middle" class="text tiny" fill="#777">Interfaces</text>
+
+    <!-- APPLICATION Label -->
+    <rect x="235" y="270" width="100" height="22" rx="4" fill="#0EA5E9"/>
+    <text x="285" y="286" text-anchor="middle" class="text" fill="white" font-size="11" font-weight="600">APPLICATION</text>
+    <text x="285" y="305" text-anchor="middle" class="text tiny" fill="#777">Use Cases</text>
+  </g>
+
+  <!-- Arrows from Input Adapters -->
+  <g stroke="#666" stroke-width="1.5" fill="none">
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#666"/>
+      </marker>
+    </defs>
+    <!-- From REST to Port -->
+    <path d="M 235 135 Q 235 180, 300 220" marker-end="url(#arrowhead)"/>
+    <!-- From GraphQL to Port -->
+    <path d="M 385 135 Q 385 180, 380 220" marker-end="url(#arrowhead)"/>
+    <!-- From WebSocket to Port -->
+    <path d="M 535 135 Q 535 180, 520 220" marker-end="url(#arrowhead)"/>
+    <!-- From Scheduler to Port -->
+    <path d="M 685 135 Q 685 180, 620 220" marker-end="url(#arrowhead)"/>
+  </g>
+
+  <!-- Arrows from Port to Output Adapters -->
+  <g stroke="#666" stroke-width="1.5" fill="none">
+    <defs>
+      <marker id="arrowhead2" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#666"/>
+      </marker>
+    </defs>
+    <!-- From Port to JPA -->
+    <path d="M 300 420 Q 235 450, 235 485" marker-end="url(#arrowhead2)"/>
+    <!-- From Port to Artemis -->
+    <path d="M 380 420 Q 385 450, 385 485" marker-end="url(#arrowhead2)"/>
+    <!-- From Port to External -->
+    <path d="M 520 420 Q 535 450, 535 485" marker-end="url(#arrowhead2)"/>
+    <!-- From Port to Cache -->
+    <path d="M 600 420 Q 685 450, 685 485" marker-end="url(#arrowhead2)"/>
+  </g>
+
+  <!-- Legend -->
+  <g transform="translate(50, 580)">
+    <rect x="0" y="0" width="800" height="50" rx="8" fill="#f8fafc" stroke="#e2e8f0"/>
+
+    <circle cx="25" cy="25" r="8" fill="#0EA5E9"/>
+    <text x="40" y="29" class="text small">Domínio</text>
+
+    <circle cx="150" cy="25" r="8" fill="#38bdf8"/>
+    <text x="165" y="29" class="text small">Aplicação</text>
+
+    <circle cx="280" cy="25" r="8" fill="#7dd3fc"/>
+    <text x="295" y="29" class="text small">Ports</text>
+
+    <circle cx="390" cy="25" r="8" fill="#0EA5E9"/>
+    <text x="405" y="29" class="text small">Adapters</text>
+
+    <text x="510" y="29" class="text tiny" fill="#999">Dependencies → Core</text>
+  </g>
+</svg>
