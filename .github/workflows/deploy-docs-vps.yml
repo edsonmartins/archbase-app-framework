@@ -68,12 +68,9 @@ jobs:
 
       - name: Build Docker image
         run: |
-          # Build da imagem com timestamp para forçar atualização
-          TIMESTAMP=$(date +%s)
+          # Build da imagem (sem timestamp para não acumular tags)
           docker build \
-            --build-arg BUILD_DATE=$TIMESTAMP \
             -t archbase-java-docs:latest \
-            -t archbase-java-docs:$TIMESTAMP \
             -f deployment/docs/Dockerfile \
             docker-build-context
 
@@ -92,17 +89,19 @@ jobs:
 
       - name: Cleanup old Docker images
         run: |
-          # Remover imagens antigas da documentação (manter apenas latest + 2 anteriores)
-          docker images archbase-java-docs --format "{{.ID}} {{.Tag}}" | \
-            grep -v "latest" | \
-            tail -n +3 | \
-            awk '{print $1}' | \
-            xargs -r docker rmi -f 2>/dev/null || true
+          # Remover todas as tags antigas de archbase-java-docs (exceto latest)
+          docker images archbase-java-docs --format "{{.Tag}}" | \
+            grep -E "^[0-9]+$" | \
+            xargs -I {} docker rmi archbase-java-docs:{} 2>/dev/null || true
 
       - name: Docker system prune
         run: |
-          # Remover imagens não usadas e cache de build para liberar espaço
-          docker image prune -a -f --filter "until=72h"
+          # Remover imagens dangling, containers parados e cache de build
+          docker image prune -a -f
+          docker container prune -f
           docker system prune -f
           # Exibir uso de disco após limpeza
+          echo "=== Uso de disco após limpeza ==="
           df -h /var/lib/docker
+          echo "=== Imagens restantes ==="
+          docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
