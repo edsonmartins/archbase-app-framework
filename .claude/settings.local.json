@@ -13,7 +13,14 @@
       "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn compile)",
       "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn compile -pl archbase-shared-kernel)",
       "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn clean compile -DskipTests --batch-mode)",
-      "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn clean:*)"
+      "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn clean:*)",
+      "Bash(tree:*)",
+      "Bash(npx docusaurus build:*)",
+      "Bash(touch:*)",
+      "Bash(npm start)",
+      "Bash(npm install:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm start:*)"
     ],
     "deny": []
   }
