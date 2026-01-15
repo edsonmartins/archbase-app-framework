@@ -41,10 +41,17 @@ jobs:
         run: |
           mvn versions:set -DnewVersion=${{ steps.get_version.outputs.VERSION }}
 
+      - name: Configure GPG
+        run: |
+          mkdir -p ~/.gnupg
+          echo "use-agent" >> ~/.gnupg/gpg.conf
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+
       - name: Import GPG key
         run: |
           echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 --decode > /tmp/private_key.asc
-          gpg --batch --import /tmp/private_key.asc
+          gpg --batch --pinentry-mode loopback --passphrase "${{ secrets.GPG_PASSPHRASE }}" --import /tmp/private_key.asc
           rm -f /tmp/private_key.asc
           gpg --list-keys
           gpg --list-secret-keys
@@ -53,7 +60,9 @@ jobs:
         run: |
           mvn clean deploy -Pmaven-central -DskipTests \
             -s .maven-settings.xml.template \
-            -Dgpg.passphrase=${{ secrets.GPG_PASSPHRASE }}
+            -Dgpg.passphrase=${{ secrets.GPG_PASSPHRASE }} \
+            -Dgpg.pinentry-mode=loopback \
+            -Dgpg.batch=true
         env:
           MAVEN_USERNAME: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
           MAVEN_CENTRAL_TOKEN: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
