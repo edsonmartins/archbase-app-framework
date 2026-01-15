@@ -19,16 +19,15 @@ on:
 jobs:
   deploy:
     runs-on: self-hosted
-    # Só roda se não for uma tag (para não duplicar em releases)
-    if: |
-      contains(github.event.head_commit.message, '[skip deploy]') == false ||
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'workflow_run'
     timeout-minutes: 30
 
     steps:
-      - name: Checkout
+      - name: Checkout documentation
         uses: actions/checkout@v4
+        with:
+          repository: edsonmartins/archbase-app-documentation
+          path: docs-site
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -40,50 +39,16 @@ jobs:
         with:
           version: 9
 
-      - name: Checkout documentation
-        uses: actions/checkout@v4
-        with:
-          repository: edsonmartins/archbase-app-documentation
-          path: docs-site
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install dependencies
-        working-directory: ./docs-site
-        run: pnpm install --frozen-lockfile
-
-      - name: Build docs
-        working-directory: ./docs-site
-        run: |
-          export NODE_OPTIONS=--max_old_space_size=8192
-          pnpm run build
-
-      - name: Prepare Docker build context
-        run: |
-          # Criar diretório temporário para o build
-          mkdir -p docker-build-context
-          # Copiar arquivos buildados (incluindo arquivos ocultos)
-          rsync -av --delete docs-site/build/ docker-build-context/
-          # Copiar nginx.conf
-          cp deployment/docs/nginx.conf docker-build-context/
-          # Verificar o que foi copiado
-          echo "=== Arquivos copiados ==="
-          ls -la docker-build-context/
-          echo "=== Assets ==="
-          ls -la docker-build-context/assets/ || echo "pasta assets não encontrada"
-
       - name: Build Docker image
+        working-directory: ./docs-site
         run: |
-          # Build da imagem (sem timestamp para não acumular tags)
-          docker build \
-            -t archbase-java-docs:latest \
-            -f deployment/docs/Dockerfile \
-            docker-build-context
+          docker build -t archbase-java-docs:latest .
 
       - name: Deploy to Docker Swarm
         run: |
           # Copiar docker-compose para local persistente
           sudo mkdir -p /opt/archbase-infrastructure
-          sudo cp deployment/docker-compose.vps.yml /opt/archbase-infrastructure/docker-compose.yml
+          sudo cp docs-site/docker-compose.stack.yml /opt/archbase-infrastructure/docker-compose.yml
 
           # Recrear stack com nova versão (Docker Swarm)
           cd /opt/archbase-infrastructure
@@ -92,24 +57,16 @@ jobs:
           # Forçar atualização do serviço
           docker service update archbase-java_frontend --force
 
-      - name: Cleanup old Docker images
+      - name: Cleanup
         run: |
-          # Remover todas as tags antigas de archbase-java-docs (exceto latest)
-          docker images archbase-java-docs --format "{{.Tag}}" | \
-            grep -E "^[0-9]+$" | \
-            xargs -I {} docker rmi archbase-java-docs:{} 2>/dev/null || true
-
-          # Remover imagens dangling (<none>)
+          # Remover imagens dangling
           docker images -f "dangling=true" -q | xargs -r docker rmi -f 2>/dev/null || true
 
-      - name: Docker system prune
-        run: |
-          # Remover imagens não usadas, containers parados e cache de build
-          docker image prune -a -f
-          docker container prune -f
-          docker system prune -a -f
-          # Exibir uso de disco após limpeza
-          echo "=== Uso de disco após limpeza ==="
-          df -h /var/lib/docker
-          echo "=== Imagens restantes ==="
+          # Docker system prune
+          docker system prune -f
+
+          # Exibir uso de disco
+          echo "=== Uso de disco ==="
+          df -h /
+          echo "=== Imagens ==="
           docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"

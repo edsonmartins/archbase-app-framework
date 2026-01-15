@@ -28,7 +28,9 @@
       "Bash(mvn help:evaluate:*)",
       "Bash(echo:*)",
       "Bash(GITHUB_REF=\"refs/tags/v2.0.0-test.1\")",
-      "Bash(VERSION=\"$GITHUB_REF#refs/tags/v\")"
+      "Bash(VERSION=\"$GITHUB_REF#refs/tags/v\")",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)"
     ],
     "deny": []
   }
