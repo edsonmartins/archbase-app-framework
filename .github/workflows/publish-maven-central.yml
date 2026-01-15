@@ -44,14 +44,14 @@ jobs:
       - name: Configure GPG
         run: |
           mkdir -p ~/.gnupg
-          echo "use-agent" >> ~/.gnupg/gpg.conf
+          chmod 700 ~/.gnupg
+          echo "no-use-agent" > ~/.gnupg/gpg.conf
           echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
-          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
 
       - name: Import GPG key
         run: |
           echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 --decode > /tmp/private_key.asc
-          gpg --batch --pinentry-mode loopback --passphrase "${{ secrets.GPG_PASSPHRASE }}" --import /tmp/private_key.asc
+          gpg --batch --no-use-agent --pinentry-mode loopback --passphrase "${{ secrets.GPG_PASSPHRASE }}" --import /tmp/private_key.asc
           rm -f /tmp/private_key.asc
           gpg --list-keys
           gpg --list-secret-keys
