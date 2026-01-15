@@ -437,15 +437,9 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-gpg-plugin</artifactId>
-                        <version>${maven-gpg-plugin.version}</version>
+                        <version>3.2.7</version>
                         <configuration>
                             <keyname>BEFBA859508A8489</keyname>
-                            <gpgArguments>
-                                <arg>--pinentry-mode</arg>
-                                <arg>loopback</arg>
-                                <arg>--batch</arg>
-                                <arg>--yes</arg>
-                            </gpgArguments>
                         </configuration>
                         <executions>
                             <execution>
@@ -500,15 +494,9 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-gpg-plugin</artifactId>
-                        <version>${maven-gpg-plugin.version}</version>
+                        <version>3.2.7</version>
                         <configuration>
                             <keyname>BEFBA859508A8489</keyname>
-                            <gpgArguments>
-                                <arg>--pinentry-mode</arg>
-                                <arg>loopback</arg>
-                                <arg>--batch</arg>
-                                <arg>--yes</arg>
-                            </gpgArguments>
                         </configuration>
                         <executions>
                             <execution>

@@ -48,34 +48,17 @@ jobs:
           echo "pinentry-mode loopback" > ~/.gnupg/gpg.conf
           echo "allow-loopback-pinentry" > ~/.gnupg/gpg-agent.conf
 
-      - name: Start gpg-agent
-        run: |
-          gpg-agent --daemon --batch 2>/dev/null &
-          sleep 2
-          echo "GPG_AGENT_INFO=$GPG_AGENT_INFO"
-
       - name: Import GPG key
         run: |
           echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 --decode > /tmp/private_key.asc
           gpg --batch --pinentry-mode loopback --passphrase "${{ secrets.GPG_PASSPHRASE }}" --import /tmp/private_key.asc || true
           rm -f /tmp/private_key.asc
           gpg --list-keys || true
-          gpg --list-secret-keys || true
-
-      - name: Pre-cache passphrase in gpg-agent
-        run: |
-          /usr/libexec/gpg-preset-passphrase --preset --passphrase "${{ secrets.GPG_PASSPHRASE }}" BEFBA859508A8489 || \
-          echo "gpg-preset-passphrase not available, trying alternative method"
-          gpg --batch --pinentry-mode loopback --passphrase "${{ secrets.GPG_PASSPHRASE }}" --sign --detach-sign /tmp/testfile || true
-          rm -f /tmp/testfile /tmp/testfile.asc 2>/dev/null || true
 
       - name: Build and Publish to Maven Central
         run: |
-          export GPG_TTY=$(tty)
-          echo "GPG_TTY=$GPG_TTY"
           mvn clean deploy -Pmaven-central -DskipTests \
-            -s .maven-settings.xml.template \
-            -Dgpg.passphrase="${{ secrets.GPG_PASSPHRASE }}"
+            -s .maven-settings.xml.template
         env:
           MAVEN_USERNAME: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
           MAVEN_CENTRAL_TOKEN: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
