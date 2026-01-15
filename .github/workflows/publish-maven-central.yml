@@ -57,8 +57,8 @@ jobs:
           echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 --decode > /tmp/private_key.asc
           gpg --batch --pinentry-mode loopback --passphrase "${{ secrets.GPG_PASSPHRASE }}" --import /tmp/private_key.asc || true
           rm -f /tmp/private_key.asc
-          gpg --list-keys
-          gpg --list-secret-keys
+          gpg --list-keys || true
+          gpg --list-secret-keys || true
 
       - name: Build and Publish to Maven Central
         run: |
