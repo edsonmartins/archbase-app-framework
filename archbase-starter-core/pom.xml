@@ -10,6 +10,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>archbase-starter-core</artifactId>
+    <name>Archbase Starter Core</name>
 
     <dependencies>
         <dependency>

@@ -10,6 +10,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>archbase-domain-driven-design</artifactId>
+    <name>Archbase Domain Driven Design</name>
     <dependencies>
         <dependency>
             <groupId>br.com.archbase</groupId>

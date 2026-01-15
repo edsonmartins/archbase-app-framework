@@ -10,6 +10,7 @@
     </parent>
 
     <artifactId>archbase-architecture</artifactId>
+    <name>Archbase Architecture</name>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>

@@ -10,6 +10,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>archbase-multitenancy</artifactId>
+    <name>Archbase Multitenancy Support</name>
 
     <dependencies>
         <dependency>

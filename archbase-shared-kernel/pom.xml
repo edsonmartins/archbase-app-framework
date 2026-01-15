@@ -16,6 +16,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>archbase-shared-kernel</artifactId>
+    <name>Archbase Shared Kernel</name>
 
 
     <dependencies>

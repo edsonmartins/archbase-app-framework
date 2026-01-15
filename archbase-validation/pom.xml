@@ -10,6 +10,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>archbase-validation</artifactId>
+    <name>Archbase Validation</name>
 
     <dependencies>
         <dependency>
