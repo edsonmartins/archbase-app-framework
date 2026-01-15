@@ -121,3 +121,20 @@ jobs:
       - name: Trigger docs deployment
         run: |
           echo "Documentation will be deployed automatically by workflow_run trigger"
+
+      - name: Cleanup workspace and system
+        if: always()
+        run: |
+          # Limpar diretório de trabalho do GitHub Actions
+          cd /opt/actions-runner-archbase-java/_work
+          rm -rf archbase-app-framework 2>/dev/null || true
+
+          # Limpar cache do Maven local (manter últimos 7 dias)
+          find ~/.m2/repository -type f -mtime +7 -delete 2>/dev/null || true
+
+          # Docker system prune
+          docker system prune -f
+
+          # Exibir uso de disco
+          echo "=== Uso de disco após limpeza ==="
+          df -h /
