@@ -62,6 +62,12 @@ Documentação prática sobre como utilizar o módulo em suas aplicações.
 - [Melhores Práticas](guides/best-practices.md) - Recomendações de design e segurança
 - [Troubleshooting](guides/troubleshooting.md) - Solução de problemas comuns
 
+### Análises Comparativas
+
+Documentação comparativa entre o Archbase e outras soluções de segurança.
+
+- [Archbase vs Keycloak](guides/archbase-vs-keycloak.md) - Comparação detalhada entre os modelos de segurança do Archbase e Keycloak, incluindo diagramas de entidades, equivalências conceituais e estratégias de migração
+
 ### Diagramas
 
 Diagramas visuais para entender a estrutura e fluxos do sistema.
