@@ -1,23 +1,25 @@
 package br.com.archbase.security.usecase;
 
 import br.com.archbase.security.domain.dto.GroupDto;
-import br.com.archbase.security.domain.dto.ResourceDto;
+import br.com.archbase.security.domain.entity.Group;
 
 import java.util.List;
 import java.util.Optional;
 
 public interface GroupUseCase {
-    public List<GroupDto> findAllGroups();
+    List<GroupDto> findAllGroups();
 
-    public Optional<GroupDto> findGroupById(String id);
+    Optional<GroupDto> findGroupById(String id);
 
-    public GroupDto createGroup(GroupDto groupDto);
+    GroupDto createGroup(GroupDto groupDto);
 
-    public Optional<GroupDto> updateGroup(String id, GroupDto groupDto);
+    Optional<GroupDto> updateGroup(String id, GroupDto groupDto);
 
-    public void deleteGroup(String id);
+    void deleteGroup(String id);
 
-    public void addPermission(String groupId, String actionId);
+    void addPermission(String groupId, String actionId);
 
-    public void removePermission(String permissionId);
+    void removePermission(String permissionId);
+
+    List<Group> findByNames(List<String> names);
 }

@@ -1,7 +1,11 @@
 package br.com.archbase.security.service;
 
 import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
-import br.com.archbase.security.domain.dto.UserDto;
+import br.com.archbase.security.domain.entity.Group;
+import br.com.archbase.security.persistence.GroupEntity;
+import br.com.archbase.security.persistence.QGroupEntity;
+import com.querydsl.jpa.impl.JPAQueryFactory;
+import jakarta.persistence.EntityManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
@@ -10,6 +14,7 @@ import br.com.archbase.security.adapter.GroupPersistenceAdapter;
 import br.com.archbase.security.domain.dto.GroupDto;
 import br.com.archbase.security.usecase.GroupUseCase;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -18,9 +23,12 @@ public class GroupService implements GroupUseCase, FindDataWithFilterQuery<Strin
 
     private final GroupPersistenceAdapter adapter;
 
+    private final EntityManager entityManager;
+
     @Autowired
-    public GroupService(GroupPersistenceAdapter adapter) {
+    public GroupService(GroupPersistenceAdapter adapter, EntityManager entityManager) {
         this.adapter = adapter;
+        this.entityManager = entityManager;
     }
 
     @Override
@@ -86,6 +94,18 @@ public class GroupService implements GroupUseCase, FindDataWithFilterQuery<Strin
     @Override
     public Page<GroupDto> findWithFilter(String filter, int page, int size, String[] sort) {
         return adapter.findWithFilter(filter, page, size, sort);
+    }
+
+    public List<Group> findByNames(List<String> names) {
+        if (names == null) {
+            return new ArrayList<>();
+        }
+        QGroupEntity qGroup = QGroupEntity.groupEntity;
+        JPAQueryFactory queryFactory = new JPAQueryFactory(entityManager);
+        List<GroupEntity> groups = queryFactory.selectFrom(qGroup)
+                .where(qGroup.name.in(names))
+                .fetch();
+        return groups.stream().map(GroupEntity::toDomain).toList();
     }
 
 }

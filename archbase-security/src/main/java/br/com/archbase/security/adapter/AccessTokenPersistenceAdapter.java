@@ -87,10 +87,10 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
                 .fetchFirst();
 
         if (result != null) {
-            log.debug("Token válido encontrado para usuário {}: expira em {}", 
+            log.debug("Token válido encontrado para usuário {}: expira em {}",
                     user.getEmail(), result.getExpirationDate());
         } else {
-            log.debug("Nenhum token válido encontrado para usuário {} (verificado contra {})", 
+            log.debug("Nenhum token válido encontrado para usuário {} (verificado contra {})",
                     user.getEmail(), now);
         }
 
@@ -160,17 +160,17 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
     public int markExpiredTokens() {
         LocalDateTime now = LocalDateTime.now();
         List<AccessTokenEntity> expiredTokens = findExpiredButNotMarkedTokens(now);
-        
+
         if (!expiredTokens.isEmpty()) {
             log.info("Marcando {} tokens como expirados", expiredTokens.size());
             expiredTokens.forEach(token -> {
                 token.setExpired(true);
-                log.debug("Token {} marcado como expirado (expirava em {})", 
+                log.debug("Token {} marcado como expirado (expirava em {})",
                         token.getId(), token.getExpirationDate());
             });
             accessTokenJpaRepository.saveAll(expiredTokens);
         }
-        
+
         return expiredTokens.size();
     }
 

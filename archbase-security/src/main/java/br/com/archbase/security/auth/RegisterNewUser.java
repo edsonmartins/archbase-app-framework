@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Data
 @Builder
 @AllArgsConstructor
@@ -26,4 +28,6 @@ public class RegisterNewUser {
   private Boolean accountLocked;
   private Boolean unlimitedAccessHours;
   private Boolean isAdministrator;
+  private String profileName;
+  private List<String> groupNames;
 }
