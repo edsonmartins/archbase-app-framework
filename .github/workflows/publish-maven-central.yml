@@ -1,0 +1,140 @@
+name: Publish to Maven Central
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: self-hosted
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Maven
+        uses: stCarolas/setup-maven@v4.5
+        with:
+          maven-version: '3.9.9'
+
+      - name: Configure Git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Update version in pom.xml
+        run: |
+          mvn versions:set -DnewVersion=${{ steps.get_version.outputs.VERSION }}
+
+      - name: Configure GPG
+        run: |
+          mkdir -p ~/.gnupg
+          chmod 700 ~/.gnupg
+          echo "pinentry-mode loopback" > ~/.gnupg/gpg.conf
+          echo "allow-loopback-pinentry" > ~/.gnupg/gpg-agent.conf
+
+      - name: Import GPG key
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 --decode > /tmp/private_key.asc
+          gpg --batch --pinentry-mode loopback --passphrase "${{ secrets.GPG_PASSPHRASE }}" --import /tmp/private_key.asc || true
+          rm -f /tmp/private_key.asc
+          gpg --list-keys || true
+
+      - name: Build and Publish to Maven Central
+        run: |
+          mvn clean deploy -Pmaven-central -DskipTests \
+            -s .maven-settings.xml.template
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_TOKEN: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body: |
+            ## 🚀 Archbase Framework v${{ steps.get_version.outputs.VERSION }}
+
+            ### Módulos publicados
+
+            - archbase-starter
+            - archbase-starter-core
+            - archbase-starter-security
+            - archbase-starter-multitenancy
+            - archbase-domain-driven-design
+            - archbase-domain-driven-design-spec
+            - archbase-query
+            - archbase-security
+            - archbase-multitenancy
+            - archbase-event-driven
+            - archbase-event-driven-spec
+            - archbase-workflow-process
+            - archbase-plugin-manager
+            - archbase-validation
+            - archbase-validation-ddd-model
+            - archbase-error-handling
+            - archbase-transformation
+            - archbase-resource-logger
+            - archbase-shared-kernel
+            - archbase-architecture
+            - archbase-codegen-maven-plugin
+            - archbase-annotation-processor
+            - archbase-semver-implementation
+
+            ### Installation
+
+            ```xml
+            <dependency>
+                <groupId>br.com.archbase</groupId>
+                <artifactId>archbase-starter</artifactId>
+                <version>${{ steps.get_version.outputs.VERSION }}</version>
+            </dependency>
+            ```
+
+            ### Documentation
+
+            Visit [https://java.archbase.dev](https://java.archbase.dev) for full documentation.
+
+            ### Migration from v1.x
+
+            See [V1 branch](https://github.com/edsonmartins/archbase-app-framework/tree/V1) for version 1.x documentation.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trigger docs deployment
+        run: |
+          echo "Documentation will be deployed automatically by workflow_run trigger"
+
+      - name: Cleanup workspace and system
+        if: always()
+        run: |
+          # Limpar diretório de trabalho do GitHub Actions
+          cd /opt/actions-runner-archbase-java/_work
+          rm -rf archbase-app-framework 2>/dev/null || true
+
+          # Limpar cache do Maven local (manter últimos 7 dias)
+          find ~/.m2/repository -type f -mtime +7 -delete 2>/dev/null || true
+
+          # Docker system prune
+          docker system prune -f
+
+          # Exibir uso de disco
+          echo "=== Uso de disco após limpeza ==="
+          df -h /

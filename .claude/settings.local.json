@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn clean:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(mvn:*)",
+      "Bash(java:*)",
+      "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn clean compile -DskipTests -pl archbase-error-handling)",
+      "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn clean compile -DskipTests -pl archbase-shared-kernel -X)",
+      "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn clean compile -DskipTests)",
+      "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn clean)",
+      "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn compile)",
+      "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn compile -pl archbase-shared-kernel)",
+      "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn clean compile -DskipTests --batch-mode)",
+      "Bash(/Users/edsonmartins/apache-maven-3.9.5/bin/mvn clean:*)",
+      "Bash(git mv:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git restore:*)",
+      "Bash(gpg:*)",
+      "Bash(git tag:*)",
+      "Bash(gh run list:*)",
+      "Bash(git show-ref:*)",
+      "Bash(curl:*)",
+      "Bash(python3:*)",
+      "Bash(mvn help:evaluate:*)",
+      "Bash(echo:*)",
+      "Bash(GITHUB_REF=\"refs/tags/v2.0.0-test.1\")",
+      "Bash(VERSION=\"$GITHUB_REF#refs/tags/v\")",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)"
+    ],
+    "deny": []
+  }
+}

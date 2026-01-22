@@ -1,18 +1,35 @@
-# Guia para Customização da Configuração de Segurança no Archbase
+# Guia de Segurança do Archbase
 
-Este documento descreve como sobrescrever a configuração de segurança padrão do Archbase com uma configuração personalizada para atender às necessidades específicas do seu projeto.
+Este documento aborda todos os aspectos de segurança do Archbase, incluindo:
+- Sistema de autenticação unificado com suporte a múltiplos contextos
+- Customização da configuração de segurança
+- Anotações de segurança disponíveis
+- Sistema de enriquecimento de respostas
+- Integração com lógica de negócio via delegates
 
 ## Visão Geral
 
-O Archbase oferece uma configuração de segurança padrão através da classe `DefaultArchbaseSecurityConfiguration`. Esta configuração inclui:
+O Archbase oferece um sistema completo de segurança que inclui:
 
-- Proteção CSRF desabilitada
+### 1. Sistema de Autenticação Unificado
+- Login flexível (email/telefone)
+- Login social (Google, Facebook, etc.)
+- Suporte a múltiplos contextos (STORE_APP, CUSTOMER_APP, DRIVER_APP, WEB_ADMIN)
+- Sistema de enriquecimento de respostas via `AuthenticationResponseEnricher`
+- Integração com lógica de negócio via `AuthenticationBusinessDelegate`
+
+### 2. Configuração de Segurança
+- Proteção CSRF configurável
 - Configuração de CORS
 - Filtro JWT para autenticação
 - Lista de endpoints públicos (whitelist)
 - Configuração básica de autorização
 
-Se você precisar personalizar esses comportamentos, pode criar sua própria configuração de segurança.
+### 3. Anotações de Segurança
+- `@HasPermission` - Controle baseado em Resource/Action
+- `@RequireProfile` - Controle baseado em profiles
+- `@RequireRole` - Controle baseado em roles customizadas
+- `@RequirePersona` - Controle baseado em personas de negócio
 
 ## Como Sobrescrever a Configuração Padrão
 
@@ -367,8 +384,406 @@ public class MinhaConfiguracaoSeguranca extends BaseArchbaseSecurityConfiguratio
 }
 ```
 
+---
+
+# Sistema de Autenticação Unificado
+
+O Archbase fornece um sistema de autenticação unificado que permite que aplicações customizem o processo de login e registro através de interfaces bem definidas.
+
+## AuthenticationBusinessDelegate
+
+Interface que permite que aplicações adicionem lógica de negócio específica durante autenticação:
+
+```java
+public interface AuthenticationBusinessDelegate {
+    
+    // Chamado após registro bem-sucedido
+    String onUserRegistered(User user, Map<String, Object> registrationData);
+    
+    // Enriquece resposta de autenticação com dados específicos
+    AuthenticationResponse enrichAuthenticationResponse(
+        AuthenticationResponse baseResponse, 
+        String context, 
+        HttpServletRequest request
+    );
+    
+    // Valida se um contexto é suportado
+    boolean supportsContext(String context);
+    
+    // Retorna lista de contextos suportados
+    List<String> getSupportedContexts();
+    
+    // Validações pré-autenticação
+    default void preAuthenticate(String email, String context) { }
+    
+    // Ações pós-autenticação
+    default void postAuthenticate(User user, String context) { }
+    
+    // Login social
+    default String onSocialLogin(String provider, Map<String, Object> providerData) {
+        throw new UnsupportedOperationException("Login social não implementado");
+    }
+}
+```
+
+### Implementação na Aplicação
+
+```java
+@Component
+@Primary
+public class MinhaAppAuthenticationDelegate implements AuthenticationBusinessDelegate {
+    
+    @Override
+    public String onUserRegistered(User user, Map<String, Object> registrationData) {
+        // Criar entidade de negócio (ex: UserApp)
+        UserApp userApp = UserApp.builder()
+            .securityUser(user)
+            .name((String) registrationData.get("name"))
+            .phone((String) registrationData.get("phone"))
+            .build();
+            
+        userApp = userAppService.save(userApp);
+        return userApp.getId();
+    }
+    
+    @Override
+    public AuthenticationResponse enrichAuthenticationResponse(
+            AuthenticationResponse baseResponse, 
+            String context, 
+            HttpServletRequest request) {
+        
+        // Enriquecer resposta baseado no contexto
+        switch (context) {
+            case "STORE_APP":
+                return enrichStoreResponse(baseResponse);
+            case "CUSTOMER_APP":
+                return enrichCustomerResponse(baseResponse);
+            default:
+                return baseResponse;
+        }
+    }
+}
+```
+
+## AuthenticationResponseEnricher
+
+Interface para enriquecer respostas de autenticação:
+
+```java
+public interface AuthenticationResponseEnricher {
+    
+    // Enriquece a resposta de autenticação
+    AuthenticationResponse enrich(
+        AuthenticationResponse baseResponse, 
+        String context, 
+        HttpServletRequest request
+    );
+    
+    // Verifica se suporta o contexto
+    default boolean supports(String context) { return true; }
+    
+    // Ordem de execução (menor = primeiro)
+    default int getOrder() { return 0; }
+}
+```
+
+## Endpoints de Autenticação
+
+### 1. Login Contextual
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "usuario@exemplo.com",
+  "password": "senha123",
+  "context": "STORE_APP",
+  "contextData": "{\"storeId\": \"123\"}"
+}
+```
+
+### 2. Login Flexível (Email ou Telefone)
+```http
+POST /api/v1/auth/login-flexible
+Content-Type: application/json
+
+{
+  "identifier": "usuario@exemplo.com ou 11999999999",
+  "password": "senha123",
+  "context": "CUSTOMER_APP"
+}
+```
+
+### 3. Login Social
+```http
+POST /api/v1/auth/login-social
+Content-Type: application/json
+
+{
+  "provider": "google",
+  "token": "token-do-google",
+  "context": "CUSTOMER_APP"
+}
+```
+
+### 4. Registro com Dados Adicionais
+```http
+POST /api/v1/auth/register
+Content-Type: application/json
+
+{
+  "name": "João Silva",
+  "email": "joao@exemplo.com",
+  "password": "senha123",
+  "role": "USER",
+  "additionalData": {
+    "phone": "+5511999999999",
+    "storeId": "123",
+    "cpf": "12345678900"
+  }
+}
+```
+
+### 5. Listar Contextos Suportados
+```http
+GET /api/v1/auth/contexts
+
+Response:
+{
+  "supportedContexts": ["STORE_APP", "CUSTOMER_APP", "DRIVER_APP", "WEB_ADMIN"],
+  "defaultContext": "WEB_ADMIN"
+}
+```
+
+---
+
+# Anotações de Segurança do Archbase
+
+O Archbase Security oferece um conjunto de anotações para controle de acesso granular em métodos e classes. Estas anotações são processadas através do Spring Security usando `AuthorizationManager` customizados.
+
+## Anotações Disponíveis
+
+### 1. @HasPermission (Existente)
+
+Controle baseado no sistema Resource/Action do Archbase:
+
+```java
+@HasPermission(resource = "USER", action = "CREATE")
+public User createUser(UserDto userDto) {
+    // Método protegido por permissão específica
+}
+```
+
+**Parâmetros:**
+- `resource` - Nome do recurso (ex: "USER", "PRODUCT", "ORDER")
+- `action` - Ação permitida (ex: "CREATE", "READ", "UPDATE", "DELETE")
+- `tenantId`, `companyId`, `projectId` - Contexto multi-tenant
+
+### 2. @RequireProfile
+
+Controle baseado em profiles do Archbase:
+
+```java
+@RequireProfile({"ADMIN", "MANAGER"})
+public void adminOnlyMethod() {
+    // Método acessível por usuários com profile ADMIN ou MANAGER
+}
+
+@RequireProfile(value = {"ADMIN", "FINANCE"}, requireAll = true)
+public void restrictedMethod() {
+    // Usuário deve ter AMBOS os profiles: ADMIN E FINANCE
+}
+```
+
+**Parâmetros:**
+- `value` - Array de profiles necessários
+- `requireAll` - Se true, usuário deve ter TODOS os profiles (AND). Se false, apenas UM (OR)
+- `resource`, `action` - Validação adicional de permissão se especificado
+- `allowSystemAdmin` - Permite bypass para administradores (default: true)
+- `requireActiveUser` - Verifica se usuário está ativo (default: true)
+
+### 3. @RequireRole
+
+Controle baseado em roles customizadas (extensível):
+
+```java
+@RequireRole("STORE_MANAGER")
+public void storeManagerMethod() {
+    // Método para gerentes de loja
+}
+
+@RequireRole(value = {"OWNER", "PARTNER"}, requirePlatformAdmin = true)
+public void platformAdminMethod() {
+    // Método que requer ser admin da plataforma E ter role OWNER ou PARTNER
+}
+```
+
+**Parâmetros:**
+- `value` - Array de roles necessárias
+- `requireAll` - Se true, usuário deve ter TODAS as roles (AND)
+- `requirePlatformAdmin` - Requer que seja admin da plataforma
+- `ownerOnly` - Permite acesso apenas para owners (não funcionários)
+- `context` - Contexto específico para validação condicional
+- `allowSystemAdmin` - Permite bypass para administradores
+
+### 4. @RequirePersona (Nova)
+
+Controle baseado em personas de negócio com suporte a contexto:
+
+```java
+@RequirePersona("CUSTOMER")
+public void customerOnlyMethod() {
+    // Método acessível apenas por clientes
+}
+
+@RequirePersona(value = "STORE_ADMIN", context = "STORE_APP")
+public void storeAdminMethod() {
+    // Método para admins de loja no contexto do app da loja
+}
+
+@RequirePersona(
+    value = {"DRIVER", "STORE_ADMIN"}, 
+    context = "DELIVERY_APP",
+    contextData = "{\"region\": \"SP\", \"activeOnly\": true}"
+)
+public void deliveryMethod() {
+    // Método para motoristas ou admins no app de delivery
+    // com dados de contexto específicos
+}
+```
+
+**Parâmetros:**
+- `value` - Array de personas necessárias
+- `requireAll` - Se true, usuário deve ter TODAS as personas
+- `context` - Contexto da aplicação ("STORE_APP", "CUSTOMER_APP", "DRIVER_APP", "WEB_ADMIN")
+- `contextData` - Dados de contexto como JSON para validações específicas
+- `ownerOnly` - Permite acesso apenas para proprietários
+- `resource`, `action` - Validação adicional de permissão
+- `allowSystemAdmin` - Permite bypass para administradores
+
+## Exemplos de Uso em Controllers
+
+```java
+@RestController
+@RequestMapping("/api/v1/products")
+public class ProductController {
+
+    @GetMapping
+    @RequireProfile("USER") // Qualquer usuário logado
+    public List<Product> listProducts() {
+        return productService.findAll();
+    }
+
+    @PostMapping
+    @HasPermission(resource = "PRODUCT", action = "CREATE")
+    public Product createProduct(@RequestBody ProductDto dto) {
+        return productService.create(dto);
+    }
+
+    @PutMapping("/{id}")
+    @RequirePersona(value = "STORE_ADMIN", context = "STORE_APP")
+    public Product updateProduct(@PathVariable String id, @RequestBody ProductDto dto) {
+        return productService.update(id, dto);
+    }
+
+    @DeleteMapping("/{id}")
+    @RequireRole(value = "STORE_OWNER", ownerOnly = true)
+    public void deleteProduct(@PathVariable String id) {
+        productService.delete(id);
+    }
+
+    @GetMapping("/reports")
+    @RequireProfile(value = {"ADMIN", "FINANCE"}, requireAll = true)
+    @HasPermission(resource = "REPORTS", action = "GENERATE")
+    public ProductReport generateReport() {
+        return reportService.generateProductReport();
+    }
+}
+```
+
+## Combinando Anotações
+
+As anotações podem ser combinadas para validações mais complexas:
+
+```java
+@RequireProfile("MANAGER")
+@HasPermission(resource = "FINANCIAL", action = "READ")
+public FinancialReport getFinancialReport() {
+    // Usuário deve ter profile MANAGER E permissão FINANCIAL:READ
+}
+```
+
+## Extensibilidade via Enrichers
+
+As anotações `@RequireRole` e `@RequirePersona` são extensíveis através do sistema de enrichers do Archbase. Aplicações podem implementar lógica customizada de validação baseada em:
+
+- Contexto da aplicação (STORE_APP, CUSTOMER_APP, etc.)
+- Dados específicos do domínio (store, region, etc.)
+- Regras de negócio complexas
+
+## Tratamento de Erros
+
+Quando o acesso é negado, as anotações lançam `AccessDeniedException` com mensagens customizáveis:
+
+```java
+@RequirePersona(value = "STORE_ADMIN", message = "Apenas administradores de loja podem acessar este recurso")
+public void restrictedMethod() {
+    // ...
+}
+```
+
+## Configuração
+
+As anotações são automaticamente configuradas através do `MethodSecurityConfig` e processadas pelos respectivos `AuthorizationManager`:
+
+- `CustomAuthorizationManager` - processa `@HasPermission`
+- `ProfileAuthorizationManager` - processa `@RequireProfile`
+- `RoleAuthorizationManager` - processa `@RequireRole`
+- `PersonaAuthorizationManager` - processa `@RequirePersona`
+
+---
+
+## Fluxo de Autenticação Completo
+
+```
+1. Cliente faz login com contexto
+   ↓
+2. ArchbaseAuthenticationController recebe request
+   ↓
+3. AuthenticationBusinessDelegate.preAuthenticate() (se existir)
+   ↓
+4. ArchbaseAuthenticationService.authenticate()
+   ↓
+5. AuthenticationBusinessDelegate.postAuthenticate() (se existir)
+   ↓
+6. AuthenticationResponseEnricher.enrich() (todos os enrichers)
+   ↓
+7. AuthenticationBusinessDelegate.enrichAuthenticationResponse() (se existir)
+   ↓
+8. Retorna resposta enriquecida ao cliente
+```
+
+## Migração de Sistema Legado
+
+Para migrar de um sistema de autenticação legado:
+
+1. **Implemente AuthenticationBusinessDelegate** na sua aplicação
+2. **Mova lógica de criação de UserApp** para `onUserRegistered()`
+3. **Mova lógica de enriquecimento** para `enrichAuthenticationResponse()`
+4. **Configure validações customizadas** em `preAuthenticate()` e `postAuthenticate()`
+5. **Remova controllers de autenticação duplicados** e use os do Archbase
+
 ## Considerações Finais
 
-A customização da configuração de segurança oferece grande flexibilidade, mas também traz responsabilidades. Certifique-se de entender completamente as implicações das alterações que você fizer na configuração de segurança.
+O sistema de segurança do Archbase oferece:
 
-Lembre-se que desabilitar mecanismos de segurança como CSRF deve ser feito com consciência dos riscos associados, e idealmente apenas para endpoints específicos onde essa proteção não é aplicável (como APIs RESTful sem estado).
+1. **Separação clara** entre infraestrutura (Archbase) e lógica de negócio (aplicação)
+2. **Extensibilidade** através de interfaces bem definidas
+3. **Suporte a múltiplos contextos** para diferentes tipos de aplicações
+4. **Flexibilidade** para customizar cada aspecto do processo de autenticação
+
+Certifique-se de:
+- Implementar corretamente as interfaces quando necessário
+- Entender as implicações de segurança das customizações
+- Manter a separação entre infraestrutura e negócio
+- Documentar contextos e personas específicas da sua aplicação

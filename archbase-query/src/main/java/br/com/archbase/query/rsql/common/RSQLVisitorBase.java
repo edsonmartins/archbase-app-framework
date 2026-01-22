@@ -94,7 +94,13 @@ public abstract class RSQLVisitorBase<R, A> implements RSQLVisitor<R, A> {
             } else if (targetType.equals(Character.class)) {
                 object = (!StringUtils.isEmpty(source) ? source.charAt(0) : null);
             } else if (targetType.equals(boolean.class) || targetType.equals(Boolean.class)) {
-                object = Boolean.valueOf(source);
+                String normalized = source.trim().toLowerCase();
+                if (normalized.equals("true") || normalized.equals("false")
+                    || normalized.equals("1") || normalized.equals("0")) {
+                    object = Boolean.valueOf(normalized.equals("true") || normalized.equals("1"));
+                } else {
+                    throw new IllegalArgumentException("Invalid boolean value: " + source);
+                }
             } else if (targetType.isEnum()) {
                 object = Enum.valueOf(targetType, source);
             } else {

@@ -60,4 +60,29 @@ public class ArchbaseUserService {
         // salva usuário
         repository.save(userEntity.get());
     }
+    
+    /**
+     * Busca usuário por email.
+     * 
+     * @param email Email do usuário
+     * @return Usuário encontrado
+     * @throws IllegalStateException se usuário não for encontrado
+     */
+    public User findByEmail(String email) {
+        Optional<UserEntity> userEntity = repository.findByEmail(email);
+        if (userEntity.isEmpty()) {
+            throw new IllegalStateException("Usuário não encontrado com email: " + email);
+        }
+        return userEntity.get().toDomain();
+    }
+    
+    /**
+     * Verifica se existe usuário com o email.
+     * 
+     * @param email Email a verificar
+     * @return true se existe
+     */
+    public boolean existsByEmail(String email) {
+        return repository.existsByEmail(email);
+    }
 }

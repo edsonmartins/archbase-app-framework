@@ -41,17 +41,22 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
     /**
      * Encontra todos os tokens válidos para um usuário
      * Corrigido: agora retorna apenas tokens não expirados E não revogados
+     * Adicionado: verificação da data de expiração real
      */
     @Transactional(readOnly = true)
     public List<AccessTokenEntity> findAllValidTokenByUser(UserEntity user) {
         QAccessTokenEntity accessToken = QAccessTokenEntity.accessTokenEntity;
 
         JPAQueryFactory queryFactory = new JPAQueryFactory(entityManager);
+        LocalDateTime now = LocalDateTime.now();
 
-        // Corrigida a lógica do predicado para AND em vez de OR
+        // Corrigida a lógica do predicado: flags + data de expiração
         BooleanExpression predicate = accessToken.user.id.eq(user.getId())
                 .and(accessToken.expired.eq(false))
-                .and(accessToken.revoked.eq(false));
+                .and(accessToken.revoked.eq(false))
+                .and(accessToken.expirationDate.after(now)); // ← FIX: Verificar data real
+
+        log.debug("Buscando tokens válidos para usuário {} após {}", user.getEmail(), now);
 
         return queryFactory.selectFrom(accessToken)
                 .where(predicate)
@@ -62,26 +67,39 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
     /**
      * Encontra um token válido para um usuário
      * Melhorado: agora ordena por data de expiração para pegar o mais recente
+     * Corrigido: verifica data de expiração real além das flags
      */
     @Transactional(readOnly = true)
     public AccessTokenEntity findValidTokenByUser(UserEntity user) {
         QAccessTokenEntity accessToken = QAccessTokenEntity.accessTokenEntity;
 
         JPAQueryFactory queryFactory = new JPAQueryFactory(entityManager);
+        LocalDateTime now = LocalDateTime.now();
 
         BooleanExpression predicate = accessToken.user.id.eq(user.getId())
                 .and(accessToken.expired.eq(false))
-                .and(accessToken.revoked.eq(false));
+                .and(accessToken.revoked.eq(false))
+                .and(accessToken.expirationDate.after(now)); // ← FIX: Verificar data real
 
-        return queryFactory.selectFrom(accessToken)
+        AccessTokenEntity result = queryFactory.selectFrom(accessToken)
                 .where(predicate)
                 .orderBy(accessToken.expirationDate.desc())
                 .fetchFirst();
+
+        if (result != null) {
+            log.debug("Token válido encontrado para usuário {}: expira em {}",
+                    user.getEmail(), result.getExpirationDate());
+        } else {
+            log.debug("Nenhum token válido encontrado para usuário {} (verificado contra {})",
+                    user.getEmail(), now);
+        }
+
+        return result;
     }
 
     /**
      * Encontra um token pelo valor
-     * Similar ao findTokenByValue, mas busca pelo valor do token
+     * Corrigido: agora retorna apenas tokens não expirados E não revogados
      *
      * @param tokenValue o valor do token JWT
      * @return AccessTokenEntity válido ou null se não encontrado/inválido
@@ -92,6 +110,7 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
 
         JPAQueryFactory queryFactory = new JPAQueryFactory(entityManager);
 
+        // Corrigido: adicionar filtros para expired=false e revoked=false
         BooleanExpression predicate = accessToken.token.eq(tokenValue)
                 .and(accessToken.expired.eq(false))
                 .and(accessToken.revoked.eq(false));
@@ -125,9 +144,34 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
         BooleanExpression predicate = accessToken.expirationDate.before(now)
                 .and(accessToken.expired.eq(false));
 
-        return queryFactory.selectFrom(accessToken)
+        List<AccessTokenEntity> result = queryFactory.selectFrom(accessToken)
                 .where(predicate)
                 .fetch();
+
+        log.debug("Encontrados {} tokens expirados mas não marcados (antes de {})", result.size(), now);
+        return result;
+    }
+
+    /**
+     * Marca automaticamente tokens expirados como expired=true
+     * Deve ser chamado periodicamente ou antes de buscar tokens válidos
+     */
+    @Transactional
+    public int markExpiredTokens() {
+        LocalDateTime now = LocalDateTime.now();
+        List<AccessTokenEntity> expiredTokens = findExpiredButNotMarkedTokens(now);
+
+        if (!expiredTokens.isEmpty()) {
+            log.info("Marcando {} tokens como expirados", expiredTokens.size());
+            expiredTokens.forEach(token -> {
+                token.setExpired(true);
+                log.debug("Token {} marcado como expirado (expirava em {})",
+                        token.getId(), token.getExpirationDate());
+            });
+            accessTokenJpaRepository.saveAll(expiredTokens);
+        }
+
+        return expiredTokens.size();
     }
 
     @Override

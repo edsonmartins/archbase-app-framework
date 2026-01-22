@@ -5,27 +5,28 @@
     <parent>
         <artifactId>archbase-app-framework</artifactId>
         <groupId>br.com.archbase</groupId>
-        <version>1.0.30</version>
+        <version>2.1.0-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>archbase-starter</artifactId>
+    <name>Archbase Starter</name>
 
     <dependencies>
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-starter-core</artifactId>
-            <version>1.0.30</version>
+            <version>2.1.0-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-starter-security</artifactId>
-            <version>1.0.30</version>
+            <version>2.1.0-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-starter-multitenancy</artifactId>
-            <version>1.0.30</version>
+            <version>2.1.0-SNAPSHOT</version>
         </dependency>
     </dependencies>
 

@@ -26,7 +26,6 @@ import java.util.List;
  * Todas as métricas disponíveis.
  */
 @Getter
-@RequiredArgsConstructor
 public enum Metric {
 
     SQUARE_METER("m²", "m2"), METER("m"), KILOGRAM("kg"), LITER("l"), UNIT("");

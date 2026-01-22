@@ -27,14 +27,9 @@ import jakarta.persistence.EntityManager;
  * propriedades ou sobrescrita por outra configuração com o nome 'customWebMvcConfigurer'.
  */
 @Configuration
-@EnableWebMvc
 @EnableTransactionManagement
 @EnableJpaAuditing(auditorAwareRef = "auditorAware")
-@ComponentScan(basePackages = {"br.com.archbase.ddd.infraestructure.aspect","br.com.archbase.multitenancy","br.com.archbase.security","${archbase.app.component.scan}","br.com.archbase.web.config"})
-@EntityScan(basePackages = {"br.com.archbase.security.persistence","${archbase.app.jpa.entities}" })
-@EnableJpaRepositories(
-        basePackages = {"br.com.archbase.security.repository", "${archbase.app.jpa.repositories}"},
-        repositoryBaseClass = CommonArchbaseJpaRepository.class)
+@Import(ArchbaseComponentScanConfiguration.class)
 @ConditionalOnMissingBean(name = "customWebMvcConfigurer")
 @ConditionalOnProperty(name = "archbase.web.mvc.enabled", havingValue = "true", matchIfMissing = true)
 public class ArchbaseServerMvcConfiguration implements WebMvcConfigurer, RepositoryRestConfigurer {

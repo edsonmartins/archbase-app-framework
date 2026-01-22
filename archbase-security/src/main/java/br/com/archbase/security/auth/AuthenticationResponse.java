@@ -27,5 +27,7 @@ public class AuthenticationResponse {
   private TokenType tokenType;
   @JsonProperty("user")
   private User user;
+  @JsonProperty("context")
+  private Object context;
 
 }
