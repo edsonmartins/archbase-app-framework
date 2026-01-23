@@ -1027,11 +1027,6 @@ userRepository.delete(user);
 
 ---
 
-**Nomenclatura de Groups**:
-   - `REALM_admin`, `CLIENT_app-financeiro_visualizar`, `GROUP_Financeiro`
-   - Clareza total, sem conflitos
----
-
 ## Recursos e Referências
 
 ### Documentação Oficial
