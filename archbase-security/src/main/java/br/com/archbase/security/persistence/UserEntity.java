@@ -83,6 +83,9 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     @Column(name = "APELIDO", nullable = true)
     private String nickname;
 
+    @Column(name = "EXTERNAL_ID", nullable = true, unique = true)
+    private String externalId; // ID externo para integração com sistemas terceiros (ex: Keycloak, LDAP, etc.)
+
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<AccessTokenEntity> tokens = new ArrayList<>();
 
@@ -91,7 +94,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     }
 
     @Builder
-    public UserEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleEntity accessSchedule, Set<UserGroupEntity> groups, ProfileEntity profile, byte[] avatar, String email, String nickname, List<AccessTokenEntity> tokens) {
+    public UserEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleEntity accessSchedule, Set<UserGroupEntity> groups, ProfileEntity profile, byte[] avatar, String email, String nickname, String externalId, List<AccessTokenEntity> tokens) {
         super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId, name, description);
         this.userName = userName;
         this.password = password;
@@ -109,6 +112,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
         this.avatar = avatar;
         this.email = email;
         this.nickname = nickname;
+        this.externalId = externalId;
         this.tokens = tokens;
     }
 
@@ -178,6 +182,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
                 .profile(this.profile != null ? this.profile.toDomain():null)
                 .avatar(this.getAvatar())
                 .nickname(this.getNickname())
+                .externalId(this.getExternalId())
                 .build();
     }
 
@@ -210,6 +215,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
                 .profile(ProfileEntity.fromDomain(user.getProfile()))
                 .avatar(user.getAvatar())
                 .nickname(user.getNickname())
+                .externalId(user.getExternalId())
                 .build();
 
         Set<UserGroupEntity> groups = user.getGroups() != null ? user.getGroups()
@@ -253,6 +259,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
                 .profile(this.profile != null ? this.profile.toDto(): null)
                 .avatar(this.getAvatar())
                 .nickname(this.getNickname())
+                .externalId(this.getExternalId())
                 .build();
     }
 

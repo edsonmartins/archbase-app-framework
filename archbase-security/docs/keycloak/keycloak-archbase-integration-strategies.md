@@ -149,7 +149,7 @@ Usuários são criados/atualizados no Archbase **no momento do login**, baseado 
 │  ┌──────────────────────────────────┐  │
 │  │   User Sync Service              │  │
 │  │   - Busca UserEntity por         │  │
-│  │     keycloakId (claim "sub")     │  │
+│  │     externalId (claim "sub")     │  │
 │  │   - Se não existe, cria          │  │
 │  │   - Atualiza dados (email, etc)  │  │
 │  │   - Sincroniza groups            │  │
@@ -171,7 +171,7 @@ Usuários são criados/atualizados no Archbase **no momento do login**, baseado 
 1. **Primeira requisição do usuário**
    - Token JWT validado
    - Claims extraídos
-   - UserEntity criado com keycloakId = claim "sub"
+   - UserEntity criado com externalId = claim "sub"
    - GroupEntity criados para cada role/group no token
    - Vínculos UserGroupEntity criados
    - Dados salvos em cache (5-15 min)
@@ -209,7 +209,7 @@ Usuários são criados/atualizados no Archbase **no momento do login**, baseado 
 
 #### Opção 1: Cache em Memória (Simples)
 ```
-Key: keycloakId
+Key: externalId
 Value: Timestamp da última sincronização
 TTL: 5-15 minutos
 ```
@@ -313,7 +313,7 @@ Um job agendado consulta periodicamente a **Keycloak Admin API** e sincroniza to
 
 3. **Comparação e Sincronização**
    - Para cada usuário do Keycloak:
-     - Busca correspondente no Archbase (por keycloakId)
+     - Busca correspondente no Archbase (por externalId)
      - Se não existe → cria UserEntity
      - Se existe → atualiza dados (email, etc)
      - Sincroniza groups
@@ -676,7 +676,7 @@ Combinação estratégica de **JIT Provisioning** (primário) com **Scheduled Sy
 │                                                               │
 │  ┌─────────────────────────────────────────────────────────┐ │
 │  │  Database (PostgreSQL/MySQL)                            │ │
-│  │  - UserEntity (keycloakId: unique)                      │ │
+│  │  - UserEntity (externalId: unique)                      │ │
 │  │  - GroupEntity (criados automaticamente)                │ │
 │  │  - UserGroupEntity (vínculos atualizados)               │ │
 │  │  - PermissionEntity (gestão manual)                     │ │
@@ -720,10 +720,10 @@ Combinação estratégica de **JIT Provisioning** (primário) com **Scheduled Sy
 
 2. Primeira requisição do dia ao Archbase
    → JWT Filter intercepta
-   → Extrai claim "sub" (keycloakId)
+   → Extrai claim "sub" (externalId)
    → Verifica cache: MISS (primeira vez no dia)
    → Dispara User Sync Service:
-      • Busca UserEntity por keycloakId
+      • Busca UserEntity por externalId
       • Atualiza email se mudou
       • Extrai roles do token
       • Extrai groups do token
@@ -1112,7 +1112,7 @@ userRepository.delete(user);
 
 ### Claims Relevantes para Sincronização
 
-- **`sub`**: ID único do usuário (use como keycloakId) ✅
+- **`sub`**: ID único do usuário (use como externalId) ✅
 - **`preferred_username`**: Nome de usuário
 - **`email`**: Email (pode não estar presente)
 - **`realm_access.roles`**: Realm roles do usuário
