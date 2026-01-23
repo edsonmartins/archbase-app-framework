@@ -734,9 +734,9 @@ archbase:
 
 ### Documentação Archbase
 
-- [Visão Geral das Entidades](../entities/overview.md)
-- [Sistema de Permissões](../entities/permission-entities.md)
-- [Arquitetura de Multi-Tenancy](../architecture/multi-tenancy.md)
+- [Visão Geral das Entidades](../../entities/overview.md)
+- [Sistema de Permissões](../../entities/permission-entities.md)
+- [Arquitetura de Multi-Tenancy](../../architecture/multi-tenancy.md)
 - [Guias de Configuração](./configuration.md)
 
 ### Documentação Keycloak
