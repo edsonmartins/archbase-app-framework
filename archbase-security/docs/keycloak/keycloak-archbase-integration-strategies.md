@@ -1001,12 +1001,10 @@ Desativa vínculos não presentes no token
 @Entity
 public class UserEntity {
     private Boolean accountDeactivated = false;
-    private LocalDateTime deactivatedAt;
 }
 
 // Quando usuário não existe mais no Keycloak
-user.setActive(true);
-user.setDeactivatedAt(LocalDateTime.now());
+user.setAccountDeactivated(true);
 ```
 **Prós:** Preserva histórico, auditoria, dados relacionados
 **Contras:** Tabela cresce
