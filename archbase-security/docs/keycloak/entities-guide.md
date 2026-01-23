@@ -344,18 +344,18 @@ Group: Financeiro
 │   ├── departamento: "Financeiro"
 │   ├── centro_custo: "1001"
 │   └── gestor: "maria.santos@exemplo.com.br"
-│
+  │
 ├── Role Mappings:
 │   ├── Realm Roles: [user]
 │   └── Client Roles (minha-aplicacao):
-│       ├── visualizar_relatorios
-│       ├── editar_relatorios
-│       └── exportar_dados
-│
+  │       ├── visualizar_relatorios
+  │       ├── editar_relatorios
+  │       └── exportar_dados
+  │
 └── Members:
-    ├── joao.silva@exemplo.com.br
-    ├── ana.costa@exemplo.com.br
-    └── pedro.oliveira@exemplo.com.br
+  ├── joao.silva@exemplo.com.br
+  ├── ana.costa@exemplo.com.br
+  └── pedro.oliveira@exemplo.com.br
 ```
 
 ### Groups vs Roles
@@ -579,14 +579,14 @@ Para banco de dados customizado:
 public class CustomUserStorageProvider implements UserStorageProvider,
         UserLookupProvider,
         CredentialInputValidator {
-    
+
     @Override
     public UserModel getUserByUsername(String username, RealmModel realm) {
         // Buscar no banco de dados externo
         User user = externalDatabase.findByUsername(username);
         return new UserAdapter(session, realm, model, user);
     }
-    
+
     @Override
     public boolean isValid(RealmModel realm, UserModel user, CredentialInput input) {
         // Validar senha no sistema externo

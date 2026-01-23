@@ -37,80 +37,80 @@ Esta análise foca em:
 
 ```mermaid
 classDiagram
-    class UserEntity {
-        +UUID id
-        +String userName
-        +String email
-        +Boolean isAdministrator
-        +ProfileEntity profile
-        +List~UserGroupEntity~ groups
-    }
+   class UserEntity {
+      +UUID id
+      +String userName
+      +String email
+      +Boolean isAdministrator
+      +ProfileEntity profile
+      +List~UserGroupEntity~ groups
+   }
 
-    class ProfileEntity {
-        +UUID id
-        +String code
-        +String name
-        +List~PermissionEntity~ permissions
-    }
+   class ProfileEntity {
+      +UUID id
+      +String code
+      +String name
+      +List~PermissionEntity~ permissions
+   }
 
-    class GroupEntity {
-        +UUID id
-        +String code
-        +String name
-        +List~UserEntity~ users
-        +List~PermissionEntity~ permissions
-    }
+   class GroupEntity {
+      +UUID id
+      +String code
+      +String name
+      +List~UserEntity~ users
+      +List~PermissionEntity~ permissions
+   }
 
-    class UserGroupEntity {
-        +UUID id
-        +UserEntity user
-        +GroupEntity group
-    }
+   class UserGroupEntity {
+      +UUID id
+      +UserEntity user
+      +GroupEntity group
+   }
 
-    class PermissionEntity {
-        +UUID id
-        +SecurityEntity security
-        +ActionEntity action
-        +String tenantId
-        +String companyId
-        +String projectId
-    }
+   class PermissionEntity {
+      +UUID id
+      +SecurityEntity security
+      +ActionEntity action
+      +String tenantId
+      +String companyId
+      +String projectId
+   }
 
-    class ActionEntity {
-        +UUID id
-        +String name
-        +ResourceEntity resource
-    }
+   class ActionEntity {
+      +UUID id
+      +String name
+      +ResourceEntity resource
+   }
 
-    class ResourceEntity {
-        +UUID id
-        +String name
-        +TipoRecurso type
-    }
+   class ResourceEntity {
+      +UUID id
+      +String name
+      +TipoRecurso type
+   }
 
-    UserEntity "1" -- "1" ProfileEntity : tem (principal)
-    UserEntity "1" -- "*" UserGroupEntity : pertence
-    GroupEntity "1" -- "*" UserGroupEntity : possui membros
-    ProfileEntity "1" -- "*" PermissionEntity : concedeu
-    GroupEntity "1" -- "*" PermissionEntity : concedeu
-    UserEntity "1" -- "*" PermissionEntity : concedeu (direto)
-    PermissionEntity "many" -- "1" ActionEntity : permite executar
-    ActionEntity "many" -- "1" ResourceEntity : pertence a
+   UserEntity "1" -- "1" ProfileEntity : tem (principal)
+   UserEntity "1" -- "*" UserGroupEntity : pertence
+   GroupEntity "1" -- "*" UserGroupEntity : possui membros
+   ProfileEntity "1" -- "*" PermissionEntity : concedeu
+   GroupEntity "1" -- "*" PermissionEntity : concedeu
+   UserEntity "1" -- "*" PermissionEntity : concedeu (direto)
+   PermissionEntity "many" -- "1" ActionEntity : permite executar
+   ActionEntity "many" -- "1" ResourceEntity : pertence a
 
-    note for UserEntity "Usuário pode ter: 
+   note for UserEntity "Usuário pode ter: 
 		- 1 Profile (principal)
 		- Múltiplos Groups
 		- Permissões diretas"
 
-    note for ProfileEntity "Profile = Papel funcional
+   note for ProfileEntity "Profile = Papel funcional
     Ex: ADMIN, OPERATOR
     1 por usuário"
 
-    note for GroupEntity "Group = Agrupamento organizacional
+   note for GroupEntity "Group = Agrupamento organizacional
     Ex: Equipe de Vendas
     Múltiplos por usuário"
 
-    note for PermissionEntity "SecurityEntity + Action
+   note for PermissionEntity "SecurityEntity + Action
     + Contexto (Tenant/Company/Project)"
 ```
 
