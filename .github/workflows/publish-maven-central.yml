@@ -92,6 +92,7 @@ jobs:
             - archbase-resource-logger
             - archbase-shared-kernel
             - archbase-architecture
+            - archbase-architecture-rules
             - archbase-codegen-maven-plugin
             - archbase-annotation-processor
             - archbase-semver-implementation
