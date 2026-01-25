@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>archbase-app-framework</artifactId>
+        <groupId>br.com.archbase</groupId>
+        <version>2.0.1</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>archbase-architecture-rules</artifactId>
+    <name>Archbase Architecture Rules</name>
+    <description>Architecture testing rules based on Taikai/ArchUnit for enforcing Archbase patterns</description>
+
+    <properties>
+        <taikai.version>1.48.0</taikai.version>
+        <archunit.version>1.4.0</archunit.version>
+    </properties>
+
+    <dependencies>
+        <!-- Taikai - ArchUnit extension -->
+        <dependency>
+            <groupId>com.enofex</groupId>
+            <artifactId>taikai</artifactId>
+            <version>${taikai.version}</version>
+        </dependency>
+
+        <!-- ArchUnit -->
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <version>${archunit.version}</version>
+        </dependency>
+
+        <!-- Archbase DDD Spec - for referencing base classes -->
+        <dependency>
+            <groupId>br.com.archbase</groupId>
+            <artifactId>archbase-domain-driven-design-spec</artifactId>
+            <version>${project.version}</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- Archbase Security - for HasPermission annotation -->
+        <dependency>
+            <groupId>br.com.archbase</groupId>
+            <artifactId>archbase-security</artifactId>
+            <version>${project.version}</version>
+            <scope>compile</scope>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Archbase Multitenancy - for tenant patterns -->
+        <dependency>
+            <groupId>br.com.archbase</groupId>
+            <artifactId>archbase-multitenancy</artifactId>
+            <version>${project.version}</version>
+            <scope>compile</scope>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Archbase Shared Kernel - for value objects -->
+        <dependency>
+            <groupId>br.com.archbase</groupId>
+            <artifactId>archbase-shared-kernel</artifactId>
+            <version>${project.version}</version>
+            <scope>compile</scope>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Spring Web - for controller annotations -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- Jakarta Persistence - for Entity annotation -->
+        <dependency>
+            <groupId>jakarta.persistence</groupId>
+            <artifactId>jakarta.persistence-api</artifactId>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- JUnit 5 -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+</project>
