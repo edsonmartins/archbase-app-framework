@@ -50,11 +50,7 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
 
     @Override
     public Optional<User> getUserByEmail(String email)  {
-        Optional<User> usuarioOptional = persistenceAdapter.getUserByEmail(email);
-        if(usuarioOptional.isEmpty()) {
-            throw new ArchbaseValidationException(String.format("Usuário com email %s não foi encontrado.",email));
-        }
-        return usuarioOptional;
+        return persistenceAdapter.getUserByEmail(email);
     }
     @Override
     public List<UserDto> findAll(List<String> ids) {
