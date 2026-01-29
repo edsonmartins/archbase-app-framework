@@ -72,7 +72,6 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     @JoinColumn(name = "PERFIL_ID")
     private ProfileEntity profile;
 
-    @Lob
     @StorageField
     @Column(name = "AVATAR")
     private byte[] avatar;

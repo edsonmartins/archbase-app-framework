@@ -78,11 +78,22 @@ public class ArchbaseUserService {
     
     /**
      * Verifica se existe usuário com o email.
-     * 
+     *
      * @param email Email a verificar
      * @return true se existe
      */
     public boolean existsByEmail(String email) {
         return repository.existsByEmail(email);
+    }
+
+    /**
+     * Verifica se existe usuário com o email IGNORANDO o filtro de tenant.
+     * Usado para descobrir tenants disponíveis para um email antes do login.
+     *
+     * @param email Email a verificar
+     * @return true se existe algum usuário com esse email em qualquer tenant
+     */
+    public boolean existsByEmailIgnoringTenant(String email) {
+        return repository.existsByEmailIgnoringTenant(email);
     }
 }
