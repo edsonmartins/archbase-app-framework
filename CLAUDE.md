@@ -71,6 +71,7 @@ Archbase is a multi-module Maven project built on Spring Boot 3.2.5 and Java 17.
 | `archbase-validation` | DDD-specific validation patterns |
 | `archbase-shared-kernel` | Common value objects (CPF, CNPJ, Email), converters |
 | `archbase-architecture` | Hexagonal, layered, and onion architecture patterns |
+| `archbase-hypersistence` | Advanced Hibernate types (JSON, arrays, ranges), optimized repositories |
 
 ### Core Architecture Patterns
 
@@ -111,6 +112,14 @@ Archbase is a multi-module Maven project built on Spring Boot 3.2.5 and Java 17.
    - Extension point discovery using annotations
    - Plugin lifecycle management with version resolution (semver)
 
+7. **Hypersistence Utils Integration**
+   - JSON column types for PostgreSQL (jsonb), MySQL (json), Oracle, and H2
+   - PostgreSQL array types (text[], int[], uuid[], etc.)
+   - PostgreSQL range types (daterange, int4range, numrange, etc.)
+   - Optimized repository methods: `persist()`, `merge()`, `update()`
+   - N+1 query detection with `SQLStatementCountAssertions`
+   - TSID (Time-Sorted ID) generator
+
 ### Module Dependencies
 
 **For Basic Applications:**
@@ -126,6 +135,14 @@ Archbase is a multi-module Maven project built on Spring Boot 3.2.5 and Java 17.
 <dependency>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-starter</artifactId>
+</dependency>
+```
+
+**For Advanced Persistence (JSON, Arrays, Ranges):**
+```xml
+<dependency>
+    <groupId>br.com.archbase</groupId>
+    <artifactId>archbase-starter-hypersistence</artifactId>
 </dependency>
 ```
 
@@ -187,6 +204,35 @@ public class YourSpecification extends ArchbaseSpecification<YourEntity> {
 }
 ```
 
+6. **JSON Column with Hypersistence:**
+```java
+import io.hypersistence.utils.hibernate.type.json.JsonType;
+import org.hibernate.annotations.Type;
+
+@Entity
+public class ProductEntity extends TenantPersistenceEntityBase<ProductEntity, String> {
+    @Type(JsonType.class)
+    @Column(columnDefinition = "jsonb")
+    private Map<String, Object> metadata;
+
+    @Type(JsonType.class)
+    @Column(columnDefinition = "jsonb")
+    private List<String> tags;
+}
+```
+
+7. **Optimized Repository with Hypersistence:**
+```java
+public interface ProductRepository
+    extends ArchbaseJpaRepository<ProductEntity, String, Long>,
+            ArchbaseHypersistenceRepository<ProductEntity, String> {
+}
+
+// Usage - persist() is more efficient than save() for new entities
+repository.persist(newEntity);  // No SELECT before INSERT
+repository.update(existingEntity);  // No SELECT before UPDATE
+```
+
 ### Configuration Properties
 
 ```properties
@@ -213,6 +259,13 @@ archbase.plugin.manager.scan-packages=your.plugins.packages
 # Workflow Engine
 archbase.workflow.engine.enabled=true
 archbase.workflow.engine.execution.mode=sync
+
+# Hypersistence Utils
+archbase.hypersistence.enabled=true
+archbase.hypersistence.json.enabled=true
+archbase.hypersistence.postgresql.array-types-enabled=true
+archbase.hypersistence.postgresql.range-types-enabled=true
+archbase.hypersistence.repository.enhanced-methods-enabled=false
 ```
 
 ### Testing Approach
@@ -232,3 +285,5 @@ archbase.workflow.engine.execution.mode=sync
 5. **Repository Methods**: Prefer RSQL filters over custom queries for better API consistency
 6. **Handler Discovery**: Use `@HandlerScan` to enable auto-discovery of `@CommandHandler`, `@EventHandler`, and `@QueryHandler` annotated methods
 7. **Specification Composition**: Specifications can be composed using `and()`, `or()`, and `not()` for complex queries
+8. **Hypersistence Types**: JSON types work with all databases; Array and Range types work only with PostgreSQL. Use `@Type(JsonType.class)` with `@Column(columnDefinition = "jsonb")` for JSON columns
+9. **Optimized Persistence**: Use `persist()` for new entities and `update()` for existing ones to avoid unnecessary SELECT queries before INSERT/UPDATE

@@ -93,6 +93,8 @@ jobs:
             - archbase-shared-kernel
             - archbase-architecture
             - archbase-architecture-rules
+            - archbase-hypersistence
+            - archbase-starter-hypersistence
             - archbase-codegen-maven-plugin
             - archbase-annotation-processor
             - archbase-semver-implementation

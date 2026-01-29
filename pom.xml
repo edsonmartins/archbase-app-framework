@@ -88,6 +88,8 @@
         <module>archbase-value-objects</module>
         <module>archbase-mapper</module>
         <module>archbase-architecture-rules</module>
+        <module>archbase-hypersistence</module>
+        <module>archbase-starter-hypersistence</module>
     </modules>
 
     <packaging>pom</packaging>
@@ -108,6 +110,7 @@
         <reflections.version>0.10.2</reflections.version>
         <json-unit-assertj.version>2.21.0</json-unit-assertj.version>
         <caelum-stella-core.version>2.1.6</caelum-stella-core.version>
+        <hypersistence-utils.version>3.9.0</hypersistence-utils.version>
         <maven-deploy-plugin.version>3.1.1</maven-deploy-plugin.version>
         <maven-compiler-plugin.version>3.12.1</maven-compiler-plugin.version>
         <maven-javadoc-plugin.version>3.6.3</maven-javadoc-plugin.version>
