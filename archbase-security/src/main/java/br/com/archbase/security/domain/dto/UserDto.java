@@ -35,9 +35,10 @@ public class UserDto extends SecurityDto {
 	protected byte[] avatar;
 	protected String email;
 	protected String nickname;
+	protected String externalId;
 
 	@Builder
-	public UserDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Set<ActionDto> actions, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleDto accessSchedule, List<UserGroupDto> groups, ProfileDto profile, byte[] avatar, String email, String nickname) {
+	public UserDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Set<ActionDto> actions, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleDto accessSchedule, List<UserGroupDto> groups, ProfileDto profile, byte[] avatar, String email, String nickname, String externalId) {
 		super(id, code, version, createEntityDate, updateEntityDate, createdByUser, lastModifiedByUser, name, description, actions);
 		this.userName = userName;
 		this.password = password;
@@ -55,6 +56,7 @@ public class UserDto extends SecurityDto {
 		this.avatar = avatar;
 		this.email = email;
 		this.nickname = nickname;
+		this.externalId = externalId;
 	}
 
 	public static UserDto fromDomain(User user) {
@@ -90,6 +92,7 @@ public class UserDto extends SecurityDto {
 				.profile(ProfileDto.fromDomain(user.getProfile()))
 				.avatar(user.getAvatar())
 				.nickname(user.getNickname())
+				.externalId(user.getExternalId())
 				.build();
 	}
 
@@ -122,6 +125,7 @@ public class UserDto extends SecurityDto {
 				.profile(this.profile != null ? this.profile.toDomain() : null)
 				.avatar(this.avatar)
 				.nickname(this.nickname)
+				.externalId(this.externalId)
 				.build();
 	}
 }

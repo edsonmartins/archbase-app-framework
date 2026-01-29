@@ -38,9 +38,10 @@ public class User extends Security<User, User> implements AggregateRoot<User, Id
     protected byte[] avatar;
     protected String email;
     protected String nickname;
+    protected String externalId; // ID externo para integração com sistemas terceiros (ex: Keycloak, LDAP, etc.)
 
     @Builder
-    public User(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, AccessSchedule accessSchedule, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessSchedule accessSchedule1, List<UserGroup> groups, Profile profile, byte[] avatar, String email, String nickname) {
+    public User(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, AccessSchedule accessSchedule, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessSchedule accessSchedule1, List<UserGroup> groups, Profile profile, byte[] avatar, String email, String nickname, String externalId) {
         super(id, code, version, updateEntityDate, createEntityDate, createdByUser, lastModifiedByUser, name, description, accessSchedule);
         this.userName = userName;
         this.password = password;
@@ -58,6 +59,7 @@ public class User extends Security<User, User> implements AggregateRoot<User, Id
         this.avatar = avatar;
         this.email = email;
         this.nickname = nickname;
+        this.externalId = externalId;
     }
 
     static class Validator extends AbstractArchbaseValidator<User> {

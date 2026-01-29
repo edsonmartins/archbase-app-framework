@@ -22,22 +22,44 @@ public class SecurityAdapter implements GetSecurityData {
     @Override
     public User getLoggedUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (!authentication.isAuthenticated()) {
+        if (authentication == null || !authentication.isAuthenticated()) {
             throw new ArchbaseValidationException("Usuário não autenticado.");
         }
         UserEntity principal = (UserEntity) authentication.getPrincipal();
         Optional<UserEntity> byId = userJpaRepository.findById(principal.getId());
-        return byId.get().toDomain();
+        return byId.orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado.")).toDomain();
     }
 
     @Override
     public Principal getPrincipal() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (!authentication.isAuthenticated()) {
+        if (authentication == null || !authentication.isAuthenticated()) {
             throw new ArchbaseValidationException("Usuário não autenticado.");
         }
         return (Principal) authentication.getPrincipal();
     }
 
+    /**
+     * Verifica se existe um usuário autenticado no contexto atual.
+     *
+     * @return true se existe um usuário autenticado
+     */
+    public boolean hasAuthenticatedUser() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.isAuthenticated()
+                && authentication.getPrincipal() instanceof UserEntity;
+    }
 
+    /**
+     * Retorna o usuário logado ou null se não houver usuário autenticado.
+     * Útil para cenários onde a autenticação é opcional.
+     *
+     * @return O usuário logado ou null
+     */
+    public User getLoggedUserOrNull() {
+        if (!hasAuthenticatedUser()) {
+            return null;
+        }
+        return getLoggedUser();
+    }
 }
