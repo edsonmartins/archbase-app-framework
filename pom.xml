@@ -5,12 +5,12 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.3</version>
+        <version>4.0.1</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-app-framework</artifactId>
-    <version>2.1.0</version>
+    <version>3.0.0</version>
     <name>archbase-app-framework</name>
     <description>Archbase Application Framework</description>
 
@@ -96,7 +96,7 @@
     <packaging>pom</packaging>
 
     <properties>
-        <java.version>17</java.version>
+        <java.version>21</java.version>
         <lombok.version>1.18.38</lombok.version>
         <joda-time.version>2.10.6</joda-time.version>
         <auto-service.version>1.1.1</auto-service.version>
@@ -111,7 +111,8 @@
         <reflections.version>0.10.2</reflections.version>
         <json-unit-assertj.version>2.21.0</json-unit-assertj.version>
         <caelum-stella-core.version>2.1.6</caelum-stella-core.version>
-        <hypersistence-utils.version>3.9.0</hypersistence-utils.version>
+        <hypersistence-utils.version>3.14.1</hypersistence-utils.version>
+        <querydsl.version>7.1</querydsl.version>
         <maven-deploy-plugin.version>3.1.1</maven-deploy-plugin.version>
         <maven-compiler-plugin.version>3.12.1</maven-compiler-plugin.version>
         <maven-javadoc-plugin.version>3.6.3</maven-javadoc-plugin.version>
@@ -202,7 +203,7 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-undertow</artifactId>
+            <artifactId>spring-boot-starter-jetty</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -280,14 +281,14 @@
             <scope>runtime</scope>
         </dependency>
         <dependency>
-            <groupId>com.querydsl</groupId>
+            <groupId>io.github.openfeign.querydsl</groupId>
             <artifactId>querydsl-core</artifactId>
-            <version>5.1.0</version>
+            <version>${querydsl.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.querydsl</groupId>
+            <groupId>io.github.openfeign.querydsl</groupId>
             <artifactId>querydsl-jpa</artifactId>
-            <version>5.1.0</version>
+            <version>${querydsl.version}</version>
             <classifier>jakarta</classifier>
         </dependency>
         <dependency>
@@ -296,20 +297,20 @@
             <version>1.0.1</version>
         </dependency>
         <dependency>
-            <groupId>com.querydsl</groupId>
+            <groupId>io.github.openfeign.querydsl</groupId>
             <artifactId>querydsl-apt</artifactId>
-            <version>5.1.0</version>
+            <version>${querydsl.version}</version>
             <classifier>jakarta</classifier>
         </dependency>
         <dependency>
-            <groupId>com.querydsl</groupId>
+            <groupId>io.github.openfeign.querydsl</groupId>
             <artifactId>querydsl-sql</artifactId>
-            <version>5.1.0</version>
+            <version>${querydsl.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.querydsl</groupId>
+            <groupId>io.github.openfeign.querydsl</groupId>
             <artifactId>querydsl-sql-codegen</artifactId>
-            <version>5.1.0</version>
+            <version>${querydsl.version}</version>
         </dependency>
         <dependency>
             <groupId>net.javacrumbs.json-unit</groupId>

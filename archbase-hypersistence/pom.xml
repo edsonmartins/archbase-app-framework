@@ -7,7 +7,7 @@
     <parent>
         <groupId>br.com.archbase</groupId>
         <artifactId>archbase-app-framework</artifactId>
-        <version>2.1.0</version>
+        <version>3.0.0</version>
     </parent>
 
     <artifactId>archbase-hypersistence</artifactId>
@@ -18,7 +18,7 @@
         <!-- Hypersistence Utils -->
         <dependency>
             <groupId>io.hypersistence</groupId>
-            <artifactId>hypersistence-utils-hibernate-63</artifactId>
+            <artifactId>hypersistence-utils-hibernate-71</artifactId>
             <version>${hypersistence-utils.version}</version>
         </dependency>
 
