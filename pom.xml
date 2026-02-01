@@ -5,7 +5,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.0.1</version>
+        <version>4.1.0-M1</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>br.com.archbase</groupId>
@@ -91,6 +91,7 @@
         <module>archbase-hypersistence</module>
         <module>archbase-starter-hypersistence</module>
         <module>archbase-starter-messaging</module>
+        <module>archbase-modular-monolith</module>
     </modules>
 
     <packaging>pom</packaging>
@@ -120,6 +121,7 @@
         <central-publishing-maven-plugin.version>0.4.0</central-publishing-maven-plugin.version>
         <maven-gpg-plugin.version>3.2.2</maven-gpg-plugin.version>
     </properties>
+
     <repositories>
         <repository>
             <id>spring-milestones</id>
@@ -289,7 +291,6 @@
             <groupId>io.github.openfeign.querydsl</groupId>
             <artifactId>querydsl-jpa</artifactId>
             <version>${querydsl.version}</version>
-            <classifier>jakarta</classifier>
         </dependency>
         <dependency>
             <groupId>com.tngtech.archunit</groupId>
@@ -300,7 +301,6 @@
             <groupId>io.github.openfeign.querydsl</groupId>
             <artifactId>querydsl-apt</artifactId>
             <version>${querydsl.version}</version>
-            <classifier>jakarta</classifier>
         </dependency>
         <dependency>
             <groupId>io.github.openfeign.querydsl</groupId>

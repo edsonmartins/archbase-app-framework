@@ -29,7 +29,7 @@ public class ProfileAuthorizationManager implements AuthorizationManager<MethodI
     private final ArchbaseSecurityService securityService;
     
     @Override
-    public AuthorizationDecision check(Supplier<Authentication> authentication, MethodInvocation methodInvocation) {
+    public AuthorizationDecision authorize(Supplier<? extends Authentication> authentication, MethodInvocation methodInvocation) {
         Method method = methodInvocation.getMethod();
         RequireProfile requireProfile = method.getAnnotation(RequireProfile.class);
         

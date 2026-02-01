@@ -30,10 +30,10 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- Spring Boot AOP -->
+        <!-- Spring Boot AspectJ (renamed from spring-boot-starter-aop in Spring Boot 4) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-aop</artifactId>
+            <artifactId>spring-boot-starter-aspectj</artifactId>
             <scope>compile</scope>
         </dependency>
 

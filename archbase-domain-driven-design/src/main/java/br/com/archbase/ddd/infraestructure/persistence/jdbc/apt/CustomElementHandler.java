@@ -12,6 +12,7 @@ import com.querydsl.sql.ColumnMetadata;
 import org.springframework.data.relational.core.mapping.Column;
 import org.springframework.data.relational.core.mapping.Table;
 
+import javax.annotation.processing.Messager;
 import javax.annotation.processing.RoundEnvironment;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
@@ -25,16 +26,19 @@ class CustomElementHandler extends TypeElementHandler {
 
     private final Elements elements;
     private final String defaultSchema;
+    private final Messager messager;
 
     public CustomElementHandler(Configuration configuration,
                                 ExtendedTypeFactory typeFactory,
                                 TypeMappings typeMappings,
                                 QueryTypeFactory queryTypeFactory,
                                 Elements elements,
-                                RoundEnvironment roundEnv) {
+                                RoundEnvironment roundEnv,
+                                Messager messager) {
         super(configuration, typeFactory, typeMappings, queryTypeFactory);
         this.elements = elements;
         this.defaultSchema = getDefaultSchema(roundEnv);
+        this.messager = messager;
     }
 
     private String getDefaultSchema(RoundEnvironment roundEnv) {
@@ -52,8 +56,8 @@ class CustomElementHandler extends TypeElementHandler {
     }
 
     @Override
-    public EntityType handleEntityType(TypeElement element) {
-        EntityType entityType = super.handleEntityType(element);
+    public EntityType handleEntityType(TypeElement element, Messager messager) {
+        EntityType entityType = super.handleEntityType(element, messager);
         updateModel(element, entityType);
         return entityType;
     }

@@ -2,7 +2,7 @@ package br.com.archbase.multitenancy;
 
 import br.com.archbase.ddd.context.ArchbaseTenantContext;
 import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
-import org.springframework.boot.autoconfigure.orm.jpa.HibernatePropertiesCustomizer;
+import org.springframework.boot.hibernate.autoconfigure.HibernatePropertiesCustomizer;
 import org.springframework.stereotype.Component;
 import org.springframework.util.ObjectUtils;
 import org.slf4j.Logger;

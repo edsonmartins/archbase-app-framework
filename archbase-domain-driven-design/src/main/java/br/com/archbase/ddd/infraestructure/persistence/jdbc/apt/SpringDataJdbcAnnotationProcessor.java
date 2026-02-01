@@ -44,7 +44,7 @@ public class SpringDataJdbcAnnotationProcessor extends AbstractQuerydslProcessor
 
     @Override
     protected TypeElementHandler createElementHandler(TypeMappings typeMappings, QueryTypeFactory queryTypeFactory) {
-        return new CustomElementHandler(conf, typeFactory, typeMappings, queryTypeFactory, processingEnv.getElementUtils(), roundEnv);
+        return new CustomElementHandler(conf, typeFactory, typeMappings, queryTypeFactory, processingEnv.getElementUtils(), roundEnv, processingEnv.getMessager());
     }
 
     @Override

@@ -17,5 +17,12 @@
         <spring-boot.repackage.skip>true</spring-boot.repackage.skip>
     </properties>
 
+    <dependencies>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
 
 </project>

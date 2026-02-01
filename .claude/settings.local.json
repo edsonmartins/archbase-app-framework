@@ -30,7 +30,18 @@
       "Bash(GITHUB_REF=\"refs/tags/v2.0.0-test.1\")",
       "Bash(VERSION=\"$GITHUB_REF#refs/tags/v\")",
       "Bash(git checkout:*)",
-      "Bash(git merge:*)"
+      "Bash(git merge:*)",
+      "WebFetch(domain:enofex.github.io)",
+      "WebSearch",
+      "Bash(tree:*)",
+      "Bash(xargs cat:*)",
+      "Bash(npm run build:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)",
+      "WebFetch(domain:www.kamilgrzybek.com)",
+      "WebFetch(domain:central.sonatype.com)",
+      "Bash(jar tf:*)"
     ],
     "deny": []
   }

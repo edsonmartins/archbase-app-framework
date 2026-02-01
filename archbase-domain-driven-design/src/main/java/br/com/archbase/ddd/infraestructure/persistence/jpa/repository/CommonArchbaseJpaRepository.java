@@ -37,7 +37,11 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.envers.repository.support.DefaultRevisionMetadata;
 import org.springframework.data.history.*;
-import org.springframework.data.jpa.repository.support.*;
+import org.springframework.data.jpa.repository.support.JpaEntityInformation;
+import org.springframework.data.jpa.repository.support.SimpleJpaRepository;
+import org.springframework.data.jpa.repository.support.Querydsl;
+import org.springframework.data.jpa.repository.support.QuerydslJpaPredicateExecutor;
+import org.springframework.data.jpa.repository.support.CrudMethodMetadata;
 import org.springframework.data.querydsl.EntityPathResolver;
 import org.springframework.data.querydsl.SimpleEntityPathResolver;
 import org.springframework.data.support.PageableExecutionUtils;
@@ -72,8 +76,8 @@ import static org.springframework.data.history.RevisionMetadata.RevisionType.*;
  * @author edsonmartins
  */
 @SuppressWarnings("all")
-public class CommonArchbaseJpaRepository<T, ID extends Serializable, N extends Number & Comparable<N>> extends QuerydslJpaRepository<T, ID>
-        implements ArchbaseCommonJpaRepository<T, ID, N> {
+public class CommonArchbaseJpaRepository<T, ID extends Serializable, N extends Number & Comparable<N>> extends SimpleJpaRepository<T, ID>
+        implements ArchbaseCommonJpaRepository<T, ID, N>, org.springframework.data.querydsl.QuerydslPredicateExecutor<T> {
 
     private final EntityPath<T> path;
     private final JPAQueryFactory jpaQueryFactory;
@@ -88,7 +92,7 @@ public class CommonArchbaseJpaRepository<T, ID extends Serializable, N extends N
 
     public CommonArchbaseJpaRepository(JpaEntityInformation<T, ID> entityInformation,
                                        EntityManager entityManager) throws SQLException {
-        super(entityInformation, entityManager, SimpleEntityPathResolver.INSTANCE);
+        super(entityInformation, entityManager);
         this.jpaQueryFactory = new JPAQueryFactory(HQLTemplates.DEFAULT, entityManager);
         this.path = SimpleEntityPathResolver.INSTANCE.createPath(entityInformation.getJavaType());
         SQLTemplates sqlTemplates = getSQLServerTemplates(entityManager.getEntityManagerFactory());
@@ -216,9 +220,8 @@ public class CommonArchbaseJpaRepository<T, ID extends Serializable, N extends N
     }
 
     @SuppressWarnings({"unchecked"})
-    @Override
     protected JPQLQuery<T> createQuery(Predicate... predicate) {
-        return (JPQLQuery<T>) super.createQuery(predicate);
+        return (JPQLQuery<T>) querydslPredicateExecutor.createQuery(predicate);
     }
 
     @Override
@@ -414,6 +417,49 @@ public class CommonArchbaseJpaRepository<T, ID extends Serializable, N extends N
     @Override
     public boolean exists(@NonNull Predicate predicate) {
         return querydslPredicateExecutor.exists(predicate);
+    }
+
+    @Override
+    @NonNull
+    public List<T> findAll(@NonNull Predicate predicate) {
+        Iterable<T> result = querydslPredicateExecutor.findAll(predicate);
+        return toList(result);
+    }
+
+    @Override
+    @NonNull
+    public List<T> findAll(@NonNull Predicate predicate, @NonNull org.springframework.data.domain.Sort sort) {
+        Iterable<T> result = querydslPredicateExecutor.findAll(predicate, sort);
+        return toList(result);
+    }
+
+    @Override
+    @NonNull
+    public List<T> findAll(@NonNull com.querydsl.core.types.OrderSpecifier<?>... orders) {
+        Iterable<T> result = querydslPredicateExecutor.findAll(orders);
+        return toList(result);
+    }
+
+    @Override
+    @NonNull
+    public List<T> findAll(@NonNull Predicate predicate, @NonNull com.querydsl.core.types.OrderSpecifier<?>... orders) {
+        Iterable<T> result = querydslPredicateExecutor.findAll(predicate, orders);
+        return toList(result);
+    }
+
+    private List<T> toList(Iterable<T> iterable) {
+        if (iterable instanceof List) {
+            return (List<T>) iterable;
+        }
+        List<T> list = new ArrayList<>();
+        iterable.forEach(list::add);
+        return list;
+    }
+
+    @Override
+    @NonNull
+    public <S extends T, R> R findBy(@NonNull Predicate predicate, @NonNull Function<org.springframework.data.repository.query.FluentQuery.FetchableFluentQuery<S>, R> queryFunction) {
+        return querydslPredicateExecutor.findBy(predicate, queryFunction);
     }
 
     private <P> JPQLQuery<P> createQuery(FactoryExpression<P> factoryExpression, Predicate predicate) {

@@ -5,7 +5,7 @@ import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.jdbc.core.convert.*;
-import org.springframework.data.jdbc.repository.QueryMappingConfiguration;
+import org.springframework.data.jdbc.core.convert.QueryMappingConfiguration;
 import org.springframework.data.jdbc.repository.support.JdbcRepositoryFactoryBean;
 import org.springframework.data.mapping.callback.EntityCallbacks;
 import org.springframework.data.relational.core.dialect.Dialect;
@@ -135,7 +135,7 @@ class ArchbaseJdbcRepositoryFactoryBean<T extends Repository<S, ID>, S, ID exten
                 SqlGeneratorSource sqlGeneratorSource = new SqlGeneratorSource(this.mappingContext, this.converter, this.dialect);
                 SqlParametersFactory sqlParametersFactory = new SqlParametersFactory(this.mappingContext, this.converter);
                 InsertStrategyFactory insertStrategyFactory = new InsertStrategyFactory(this.operations, this.dialect);
-                return new DefaultDataAccessStrategy(sqlGeneratorSource, this.mappingContext, this.converter, this.operations, sqlParametersFactory, insertStrategyFactory);
+                return new DefaultDataAccessStrategy(sqlGeneratorSource, this.mappingContext, this.converter, this.operations, sqlParametersFactory, insertStrategyFactory, this.queryMappingConfiguration);
             });
         }
 

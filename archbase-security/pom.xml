@@ -74,20 +74,22 @@
                             <groupId>io.github.openfeign.querydsl</groupId>
                             <artifactId>querydsl-apt</artifactId>
                             <version>${querydsl.version}</version>
-                            <classifier>jakarta</classifier>
-                            <exclusions>
-                                <exclusion>
-                                    <groupId>jakarta.persistence</groupId>
-                                    <artifactId>jakarta.persistence-api</artifactId>
-                                </exclusion>
-                            </exclusions>
                         </path>
                         <path>
                             <groupId>jakarta.persistence</groupId>
                             <artifactId>jakarta.persistence-api</artifactId>
-                            <version>3.1.0</version>
+                            <version>3.2.0</version>
+                        </path>
+                        <path>
+                            <groupId>jakarta.annotation</groupId>
+                            <artifactId>jakarta.annotation-api</artifactId>
+                            <version>3.0.0</version>
                         </path>
                     </annotationProcessorPaths>
+                    <annotationProcessors>
+                        <annotationProcessor>lombok.launch.AnnotationProcessorHider$AnnotationProcessor</annotationProcessor>
+                        <annotationProcessor>com.querydsl.apt.jpa.JPAAnnotationProcessor</annotationProcessor>
+                    </annotationProcessors>
                 </configuration>
             </plugin>
         </plugins>
