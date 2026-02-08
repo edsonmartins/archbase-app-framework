@@ -41,7 +41,9 @@
       "Bash(git stash:*)",
       "WebFetch(domain:www.kamilgrzybek.com)",
       "WebFetch(domain:central.sonatype.com)",
-      "Bash(jar tf:*)"
+      "Bash(jar tf:*)",
+      "Bash(jar -tf:*)",
+      "WebFetch(domain:repo.spring.io)"
     ],
     "deny": []
   }

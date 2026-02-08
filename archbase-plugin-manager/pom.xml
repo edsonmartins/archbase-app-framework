@@ -43,19 +43,16 @@
         <dependency>
             <groupId>org.eclipse.jetty</groupId>
             <artifactId>jetty-server</artifactId>
-            <version>11.0.0</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.eclipse.jetty</groupId>
             <artifactId>jetty-util</artifactId>
-            <version>11.0.0</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.eclipse.jetty</groupId>
             <artifactId>jetty-http</artifactId>
-            <version>11.0.0</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -64,8 +61,9 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>org.eclipse.jetty</groupId>
-            <artifactId>jetty-server</artifactId>
+            <groupId>io.undertow</groupId>
+            <artifactId>undertow-core</artifactId>
+            <version>2.3.18.Final</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
