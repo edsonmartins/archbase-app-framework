@@ -22,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.CredentialsExpiredException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -149,6 +150,9 @@ public class ArchbaseAuthenticationService {
             var refreshToken = jwtService.generateRefreshToken(user);
 
             return buildAuthenticationResponse(accessToken, refreshToken.token(), user);
+        } catch (CredentialsExpiredException e) {
+            log.warn("Credenciais expiradas para usuário: {}", request.getEmail());
+            throw e; // Re-lançar para tratamento específico no controller
         } catch (AuthenticationException e) {
             log.warn("Falha na autenticação", e);
             throw new BadCredentialsException("Login ou senha inválido", e);
@@ -416,6 +420,9 @@ public class ArchbaseAuthenticationService {
                     contextualRequest.getEmail());
             return enrichedResponse;
 
+        } catch (CredentialsExpiredException e) {
+            log.warn("Credenciais expiradas para usuário: {}", contextualRequest.getEmail());
+            throw e; // Re-lançar para tratamento específico no controller
         } catch (AuthenticationException e) {
             log.warn("Falha na autenticação contextual para usuário: {}", contextualRequest.getEmail(), e);
             throw new BadCredentialsException("Login ou senha inválido", e);
