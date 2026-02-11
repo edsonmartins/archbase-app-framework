@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.CredentialsExpiredException;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -40,6 +41,15 @@ public class ArchbaseAuthenticationController {
     ) {
         try {
             return ResponseEntity.ok(service.authenticate(request));
+        } catch (CredentialsExpiredException e) {
+            log.warn("Credenciais expiradas para usuário: {}", request.getEmail());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of(
+                    "error", "CREDENTIALS_EXPIRED",
+                    "message", "As credenciais do usuário expiraram. É necessário alterar a senha.",
+                    "requirePasswordChange", true,
+                    "email", request.getEmail()
+                ));
         } catch (BadCredentialsException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(e.getMessage());
         }
@@ -60,10 +70,19 @@ public class ArchbaseAuthenticationController {
             HttpServletRequest httpRequest) {
         try {
             AuthenticationResponse response = service.authenticateWithContext(
-                contextualRequest, 
+                contextualRequest,
                 httpRequest
             );
             return ResponseEntity.ok(response);
+        } catch (CredentialsExpiredException e) {
+            log.warn("Credenciais expiradas para usuário: {}", contextualRequest.getEmail());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of(
+                    "error", "CREDENTIALS_EXPIRED",
+                    "message", "As credenciais do usuário expiraram. É necessário alterar a senha.",
+                    "requirePasswordChange", true,
+                    "email", contextualRequest.getEmail()
+                ));
         } catch (BadCredentialsException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(e.getMessage());
         } catch (Exception e) {
@@ -198,7 +217,16 @@ public class ArchbaseAuthenticationController {
             }
             
             return ResponseEntity.ok(response);
-            
+
+        } catch (CredentialsExpiredException e) {
+            log.warn("Credenciais expiradas para usuário: {}", request.getIdentifier());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of(
+                    "error", "CREDENTIALS_EXPIRED",
+                    "message", "As credenciais do usuário expiraram. É necessário alterar a senha.",
+                    "requirePasswordChange", true,
+                    "identifier", request.getIdentifier()
+                ));
         } catch (BadCredentialsException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(Map.of("error", "Credenciais inválidas"));
@@ -208,7 +236,7 @@ public class ArchbaseAuthenticationController {
                 .body(Map.of("error", e.getMessage()));
         }
     }
-    
+
     /**
      * Login com provedor social (Google, Facebook, etc).
      */
