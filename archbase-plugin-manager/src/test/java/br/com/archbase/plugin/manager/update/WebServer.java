@@ -1,10 +1,8 @@
 package br.com.archbase.plugin.manager.update;
 
-import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.server.handler.DefaultHandler;
-import org.eclipse.jetty.server.handler.HandlerList;
 import org.eclipse.jetty.server.handler.ResourceHandler;
+import org.eclipse.jetty.util.resource.ResourceFactory;
 
 
 public class WebServer {
@@ -49,12 +47,10 @@ public class WebServer {
         server.setStopAtShutdown(true);
 
         ResourceHandler resourceHandler = new ResourceHandler();
-        resourceHandler.setResourceBase(resourceBase);
-        resourceHandler.setDirectoriesListed(true);
+        resourceHandler.setBaseResource(ResourceFactory.root().newResource(resourceBase));
+        resourceHandler.setDirAllowed(true);
 
-        HandlerList handlers = new HandlerList();
-        handlers.setHandlers(new Handler[]{resourceHandler, new DefaultHandler()});
-        server.setHandler(handlers);
+        server.setHandler(resourceHandler);
 
         server.start();
     }
