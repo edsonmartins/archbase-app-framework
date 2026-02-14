@@ -25,10 +25,10 @@ jobs:
         with:
           clean: true
 
-      - name: Setup JDK 17
+      - name: Setup JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Setup Maven
@@ -77,6 +77,11 @@ jobs:
         with:
           body: |
             ## 🚀 Archbase Framework v${{ steps.get_version.outputs.VERSION }}
+
+            ### What's New
+            - Migrated from Undertow to Jetty web server
+            - Java 21 required (Virtual Threads support)
+            - Enable Virtual Threads: `spring.threads.virtual.enabled=true`
 
             ### Módulos publicados
 
