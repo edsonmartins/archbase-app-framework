@@ -1,5 +1,6 @@
 package br.com.archbase.security.usecase;
 
+import br.com.archbase.security.domain.dto.SimpleUserDto;
 import br.com.archbase.security.domain.dto.UserDto;
 import br.com.archbase.security.domain.entity.User;
 
@@ -13,6 +14,10 @@ public interface UserUseCase {
     public Optional<UserDto> findGroupById(String id);
 
     public UserDto createUser(UserDto userDto);
+
+    String createSimpleUser(SimpleUserDto simpleUserDto);
+
+    String updateSimpleUser(SimpleUserDto simpleUserDto);
 
     public Optional<UserDto> updateUser(String id, UserDto userDto);
 
