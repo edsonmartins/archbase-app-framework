@@ -18,6 +18,7 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
 
 @Service
@@ -90,6 +91,7 @@ public class ArchbaseJwtService {
                 .setSubject(userDetails.getUsername())
                 .setIssuedAt(issuedAt)
                 .setExpiration(expiresAt)
+                .setId(UUID.randomUUID().toString()) // jti: garante unicidade mesmo se gerado no mesmo segundo
                 .signWith(getSignInKey(), SignatureAlgorithm.HS256)
                 .compact();
 
