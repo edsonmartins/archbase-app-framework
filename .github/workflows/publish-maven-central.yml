@@ -21,18 +21,18 @@ jobs:
           rm -rf * .[!.]* 2>/dev/null || true
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           clean: true
 
-      - name: Setup JDK 17
-        uses: actions/setup-java@v4
+      - name: Setup JDK 21
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Setup Maven
-        uses: stCarolas/setup-maven@v4.5
+        uses: stCarolas/setup-maven@07fbbe97d97ef44336b7382563d66743297e442f # v4.5
         with:
           maven-version: '3.9.9'
 
@@ -73,10 +73,15 @@ jobs:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
         with:
           body: |
             ## 🚀 Archbase Framework v${{ steps.get_version.outputs.VERSION }}
+
+            ### What's New
+            - Migrated from Undertow to Jetty web server
+            - Java 21 required (Virtual Threads support)
+            - Enable Virtual Threads: `spring.threads.virtual.enabled=true`
 
             ### Módulos publicados
 

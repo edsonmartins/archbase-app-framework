@@ -1,6 +1,5 @@
     package br.com.archbase.security.service;
 
-    import br.com.archbase.ddd.context.ArchbaseTenantContext;
     import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
     import br.com.archbase.security.adapter.ApiTokenPersistenceAdapter;
     import br.com.archbase.security.adapter.SecurityAdapter;
@@ -8,7 +7,6 @@
     import br.com.archbase.security.domain.entity.ApiToken;
     import br.com.archbase.security.persistence.ApiTokenEntity;
     import br.com.archbase.security.persistence.UserEntity;
-    import br.com.archbase.security.repository.ApiTokenNativeRepository;
     import br.com.archbase.security.repository.ApiTokenRepository;
     import br.com.archbase.security.repository.UserJpaRepository;
     import br.com.archbase.security.usecase.ApiTokenUseCase;
@@ -44,14 +42,11 @@
         @Autowired
         private ArchbaseEmailService emailService;
 
-        @Autowired
-        private ApiTokenNativeRepository apiTokenNativeRepository;
-
         public boolean activateToken(String token, String tenantId) {
             logger.info("Tentando ativar o token: {} para o tenantId: {}", token, tenantId);
 
-            // Use a consulta nativa
-            Optional<ApiTokenEntity> apiToken = apiTokenNativeRepository.findByTokenAndTenantId(token, tenantId);
+            // Usa QueryDSL via ApiTokenPersistenceAdapter
+            Optional<ApiTokenEntity> apiToken = apiTokenPersistenceAdapter.findByTokenAndTenantId(token, tenantId);
             if (apiToken.isPresent()) {
                 logger.info("Token encontrado: {}", token);
                 if (!apiToken.get().getActivated()) {
@@ -123,23 +118,24 @@
 
         @Override
         public void revokeToken(String token) {
-            Optional<ApiTokenEntity> apiToken = apiTokenRepository.findByToken(token);
+            Optional<ApiTokenEntity> apiToken = apiTokenPersistenceAdapter.findByToken(token);
             if (apiToken.isPresent()){
                 apiToken.get().setRevoked(true);
                 apiTokenRepository.save(apiToken.get());
+                logger.info("Token revogado com sucesso: {}", token);
+            } else {
+                logger.warn("Token não encontrado para revogação: {}", token);
             }
         }
 
         @Override
         public boolean validateToken(String token) {
-            return apiTokenRepository.findByToken(token)
-                    .map(t -> !t.getRevoked() && t.getExpirationDate().isAfter(LocalDateTime.now()))
-                    .orElse(false);
+            return apiTokenPersistenceAdapter.validateToken(token);
         }
 
         @Override
         public Optional<ApiToken> getApiToken(String token) {
-            Optional<ApiTokenEntity> optionalApiTokenEntity = apiTokenRepository.findByToken(token);
+            Optional<ApiTokenEntity> optionalApiTokenEntity = apiTokenPersistenceAdapter.findByToken(token);
             return optionalApiTokenEntity.map(ApiTokenEntity::toDomain);
         }
     }

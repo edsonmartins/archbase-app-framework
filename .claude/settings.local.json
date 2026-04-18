@@ -43,7 +43,15 @@
       "WebFetch(domain:central.sonatype.com)",
       "Bash(jar tf:*)",
       "Bash(jar -tf:*)",
-      "WebFetch(domain:repo.spring.io)"
+      "WebFetch(domain:repo.spring.io)",
+      "Bash(/usr/libexec/java_home -V 2>&1)",
+      "Bash(source ~/.sdkman/bin/sdkman-init.sh)",
+      "Bash(sdk use:*)",
+      "Bash(javac --version)",
+      "Bash(javac -help)",
+      "Bash(sdk list:*)",
+      "Bash(sdk install:*)",
+      "Bash(xargs ls:*)"
     ],
     "deny": []
   }

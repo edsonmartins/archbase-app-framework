@@ -47,7 +47,7 @@ public class WebServer {
         server.setStopAtShutdown(true);
 
         ResourceHandler resourceHandler = new ResourceHandler();
-        resourceHandler.setBaseResource(ResourceFactory.of(server).newResource(resourceBase));
+        resourceHandler.setBaseResource(ResourceFactory.root().newResource(resourceBase));
         resourceHandler.setDirAllowed(true);
 
         server.setHandler(resourceHandler);

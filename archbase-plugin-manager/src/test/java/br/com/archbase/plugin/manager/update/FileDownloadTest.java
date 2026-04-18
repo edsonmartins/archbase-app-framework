@@ -1,8 +1,9 @@
 package br.com.archbase.plugin.manager.update;
 
 import br.com.archbase.plugin.manager.PluginRuntimeException;
-import io.undertow.Undertow;
-import io.undertow.server.handlers.resource.PathResourceManager;
+import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.handler.ResourceHandler;
+import org.eclipse.jetty.util.resource.ResourceFactory;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -13,10 +14,8 @@ import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 
-import static io.undertow.Handlers.resource;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -26,7 +25,7 @@ import static org.junit.Assert.assertTrue;
 public class FileDownloadTest {
 
     private SimpleFileDownloader downloader;
-    private Undertow webserver;
+    private Server webserver;
     private Path updateRepoDir;
     private Path repoFile;
     private Path emptyFile;
@@ -44,7 +43,7 @@ public class FileDownloadTest {
     }
 
     @After
-    public void tearDown() {
+    public void tearDown() throws Exception {
         if (webserver != null) {
             webserver.stop();
         }
@@ -65,11 +64,13 @@ public class FileDownloadTest {
 
     @Test
     public void downloadHttp() throws Exception {
-        webserver = Undertow.builder()
-                .addHttpListener(5500, "localhost")
-                .setHandler(resource(new PathResourceManager(Paths.get(updateRepoDir.toAbsolutePath().toString()), 100))
-                        .setDirectoryListingEnabled(true))
-                .build();
+        webserver = new Server(5500);
+
+        ResourceHandler resourceHandler = new ResourceHandler();
+        resourceHandler.setDirAllowed(true);
+        resourceHandler.setBaseResource(ResourceFactory.root().newResource(updateRepoDir.toAbsolutePath()));
+
+        webserver.setHandler(resourceHandler);
         webserver.start();
 
         URL downloadUrl = new URL("http://localhost:5500/myfile");
