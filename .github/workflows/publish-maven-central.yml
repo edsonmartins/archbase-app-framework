@@ -51,17 +51,37 @@ jobs:
 
       - name: Configure GPG
         run: |
+          # Limpar configuração GPG anterior (self-hosted runner)
+          gpgconf --kill gpg-agent 2>/dev/null || true
+          rm -rf ~/.gnupg
+
           mkdir -p ~/.gnupg
           chmod 700 ~/.gnupg
           echo "pinentry-mode loopback" > ~/.gnupg/gpg.conf
           echo "allow-loopback-pinentry" > ~/.gnupg/gpg-agent.conf
+          chmod 600 ~/.gnupg/gpg.conf ~/.gnupg/gpg-agent.conf
 
       - name: Import GPG key
         run: |
           echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 --decode > /tmp/private_key.asc
-          gpg --batch --pinentry-mode loopback --passphrase "${{ secrets.GPG_PASSPHRASE }}" --import /tmp/private_key.asc || true
+          gpg --batch --pinentry-mode loopback --passphrase "${{ secrets.GPG_PASSPHRASE }}" --import /tmp/private_key.asc
           rm -f /tmp/private_key.asc
-          gpg --list-keys || true
+
+          # Verificar se a chave foi importada corretamente
+          echo "=== Chaves GPG importadas ==="
+          gpg --list-keys
+          gpg --list-secret-keys
+
+          # Verificar validade da chave
+          echo "=== Verificando validade da chave ==="
+          KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | head -1 | awk '{print $2}' | cut -d'/' -f2)
+          if [ -n "$KEY_ID" ]; then
+            echo "Key ID: $KEY_ID"
+            gpg --list-keys "$KEY_ID" 2>&1 | grep -E "(expires|expired)" || echo "Sem informação de expiração"
+          else
+            echo "ERRO: Nenhuma chave secreta encontrada!"
+            exit 1
+          fi
 
       - name: Build and Publish to Maven Central
         run: |
