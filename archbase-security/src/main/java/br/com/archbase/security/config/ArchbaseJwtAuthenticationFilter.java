@@ -13,6 +13,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -37,6 +38,9 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
     private final AccessTokenJpaRepository tokenRepository;
     private final ApiTokenService apiTokenService;
     private final AccessTokenPersistenceAdapter accessTokenPersistenceAdapter;
+
+    @Value("${archbase.app.tenant.default.id:}")
+    private String defaultTenantId;
 
     public static final String X_TENANT_ID = "X-TENANT-ID";
     public static final String X_COMPANY_ID = "X-COMPANY-ID";
@@ -71,8 +75,11 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
         if (tenantId != null && !tenantId.isEmpty()) {
             ArchbaseTenantContext.setTenantId(tenantId);
             log.info("TenantID definido no contexto: {}", tenantId);
+        } else if (defaultTenantId != null && !defaultTenantId.isEmpty()) {
+            ArchbaseTenantContext.setTenantId(defaultTenantId);
+            log.warn("TenantID não fornecido na requisição, utilizando tenant padrão: {}", defaultTenantId);
         } else {
-            log.warn("TenantID não fornecido na requisição");
+            log.warn("TenantID não fornecido na requisição e nenhum tenant padrão configurado (archbase.app.tenant.default.id)");
         }
 
         if (companyId != null && !companyId.isEmpty()) {
