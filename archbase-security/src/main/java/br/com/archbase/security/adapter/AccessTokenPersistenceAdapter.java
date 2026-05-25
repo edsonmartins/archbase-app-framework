@@ -175,12 +175,14 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
     }
 
     @Override
+    @Transactional(readOnly = true)
     public AccessTokenDto findById(String id) {
         Optional<AccessTokenEntity> byId = accessTokenJpaRepository.findById(id);
         return byId.map(AccessTokenEntity::toDto).orElse(null);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<AccessTokenDto> findAll(int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
         Page<AccessTokenEntity> result = accessTokenJpaRepository.findAll(pageable);
@@ -189,6 +191,7 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<AccessTokenDto> findAll(int page, int size, String[] sort) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(SortUtils.convertSortToJpa(sort)));
         Page<AccessTokenEntity> result = accessTokenJpaRepository.findAll(pageable);
@@ -197,6 +200,7 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<AccessTokenDto> findAll(List<String> ids) {
         List<AccessTokenEntity> result = accessTokenJpaRepository.findAllById(ids);
         return result.stream().map(AccessTokenEntity::toDto).toList();
