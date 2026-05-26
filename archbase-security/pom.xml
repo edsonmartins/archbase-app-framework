@@ -73,7 +73,7 @@
                         <path>
                             <groupId>io.github.openfeign.querydsl</groupId>
                             <artifactId>querydsl-apt</artifactId>
-                            <version>${querydsl.version}</version>
+                            <version>${openfeign-querydsl.version}</version>
                         </path>
                         <path>
                             <groupId>jakarta.persistence</groupId>
