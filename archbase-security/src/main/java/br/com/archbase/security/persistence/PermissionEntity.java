@@ -18,8 +18,8 @@ import java.time.LocalDateTime;
 @Setter
 @Table(name="SEGURANCA_PERMISSAO")
 @AttributeOverrides({
-        @AttributeOverride(name="id", column=@Column(name="ID_PERMISSAO")),
-        @AttributeOverride(name="code", column=@Column(name="CD_PERMISSAO"))
+        @AttributeOverride(name="id", column=@Column(name="ID_PERMISSAO", length = 40)),
+        @AttributeOverride(name="code", column=@Column(name="CD_PERMISSAO", length = 40))
 })
 public class PermissionEntity extends TenantPersistenceEntityBase {
 

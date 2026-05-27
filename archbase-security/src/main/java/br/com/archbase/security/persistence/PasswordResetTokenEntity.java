@@ -14,9 +14,9 @@ import lombok.Setter;
 @Setter
 @AttributeOverrides({
         @AttributeOverride(name="id",
-                column=@Column(name="ID_TOKEN")),
+                column=@Column(name="ID_TOKEN", length = 40)),
         @AttributeOverride(name="code",
-                column=@Column(name="CD_TOKEN"))
+                column=@Column(name="CD_TOKEN", length = 40))
 })
 public class PasswordResetTokenEntity extends TenantPersistenceEntityBase {
 

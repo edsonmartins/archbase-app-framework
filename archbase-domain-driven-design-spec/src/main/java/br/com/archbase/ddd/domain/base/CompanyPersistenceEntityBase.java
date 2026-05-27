@@ -19,24 +19,22 @@ import java.util.UUID;
 public class CompanyPersistenceEntityBase {
 
     @Id
-    @Column(name="ID")
+    @Column(name="ID", length = 40)
     protected String id;
 
-    @Column(name="CODE")
+    @Column(name="CODE", length = 40)
     protected String code;
 
     @Version
     @Column(name="VERSION")
     protected Long version;
 
-    @Temporal(TemporalType.TIMESTAMP)
     @Column(name="CREATION_DATE")
     protected LocalDateTime createEntityDate;
 
     @Column(name="CREATED_BY")
     protected String createdByUser;
 
-    @Temporal(TemporalType.TIMESTAMP)
     @Column(name="UPDATE_DATE")
     protected LocalDateTime updateEntityDate;
 

@@ -1,7 +1,8 @@
 package br.com.archbase.modulith.communication;
 
 import br.com.archbase.modulith.communication.contracts.IntegrationEvent;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,7 +33,7 @@ public class SimpleIntegrationEventBus implements IntegrationEventBus {
     private final String currentModule;
 
     public SimpleIntegrationEventBus(String currentModule) {
-        this(currentModule, Executors.newCachedThreadPool(), new ObjectMapper());
+        this(currentModule, Executors.newCachedThreadPool(), JsonMapper.builder().build());
     }
 
     public SimpleIntegrationEventBus(String currentModule, ExecutorService executor, ObjectMapper objectMapper) {

@@ -3,7 +3,6 @@ package br.com.archbase.security.service;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
@@ -13,7 +12,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
-import java.security.Key;
+import javax.crypto.SecretKey;
 import java.time.Instant;
 import java.util.Date;
 import java.util.HashMap;
@@ -87,12 +86,12 @@ public class ArchbaseJwtService {
         Date expiresAt = Date.from(now.plusMillis(expiration));
 
         String token = Jwts.builder()
-                .setClaims(extraClaims)
-                .setSubject(userDetails.getUsername())
-                .setIssuedAt(issuedAt)
-                .setExpiration(expiresAt)
-                .setId(UUID.randomUUID().toString()) // jti: garante unicidade mesmo se gerado no mesmo segundo
-                .signWith(getSignInKey(), SignatureAlgorithm.HS256)
+                .claims(extraClaims)
+                .subject(userDetails.getUsername())
+                .issuedAt(issuedAt)
+                .expiration(expiresAt)
+                .id(UUID.randomUUID().toString()) // jti: garante unicidade mesmo se gerado no mesmo segundo
+                .signWith(getSignInKey(), Jwts.SIG.HS256)
                 .compact();
 
         // Retorna o timestamp UTC em milissegundos
@@ -119,14 +118,14 @@ public class ArchbaseJwtService {
 
     private Claims extractAllClaims(String token) {
         return Jwts
-                .parserBuilder()
-                .setSigningKey(getSignInKey())
+                .parser()
+                .verifyWith(getSignInKey())
                 .build()
-                .parseClaimsJws(token)
-                .getBody();
+                .parseSignedClaims(token)
+                .getPayload();
     }
 
-    private Key getSignInKey() {
+    private SecretKey getSignInKey() {
         byte[] keyBytes = Decoders.BASE64.decode(secretKey);
         return Keys.hmacShaKeyFor(keyBytes);
     }

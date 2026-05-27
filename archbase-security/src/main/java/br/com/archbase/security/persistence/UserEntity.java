@@ -73,6 +73,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     private ProfileEntity profile;
 
     @StorageField
+    @Lob
     @Column(name = "AVATAR")
     private byte[] avatar;
 

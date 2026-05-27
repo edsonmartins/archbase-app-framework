@@ -18,9 +18,9 @@ import java.time.LocalDateTime;
 @Setter
 @AttributeOverrides({
         @AttributeOverride(name="id",
-                column=@Column(name="ID_RECURSO")),
+                column=@Column(name="ID_RECURSO", length = 40)),
         @AttributeOverride(name="code",
-                column=@Column(name="CD_RECURSO"))
+                column=@Column(name="CD_RECURSO", length = 40))
 })
 public class ResourceEntity extends TenantPersistenceEntityBase {
 

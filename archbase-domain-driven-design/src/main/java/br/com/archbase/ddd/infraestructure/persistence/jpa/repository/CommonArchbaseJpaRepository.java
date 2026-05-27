@@ -8,8 +8,9 @@ import br.com.archbase.ddd.infraestructure.exceptions.ArchbaseServiceException;
 import br.com.archbase.ddd.infraestructure.persistence.jpa.specification.SpecificationTranslator;
 import br.com.archbase.error.handling.ArchbaseRuntimeException;
 import br.com.archbase.query.rsql.jpa.ArchbaseRSQLJPASupport;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.EntityPath;
 import com.querydsl.core.types.FactoryExpression;
@@ -87,7 +88,7 @@ public class CommonArchbaseJpaRepository<T, ID extends Serializable, N extends N
     private final QuerydslPredicateExecutor<T> querydslPredicateExecutor;
     private final Querydsl querydsl;
     private SpecificationTranslator translator;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper = JsonMapper.builder().build();
 
 
     public CommonArchbaseJpaRepository(JpaEntityInformation<T, ID> entityInformation,
@@ -169,7 +170,7 @@ public class CommonArchbaseJpaRepository<T, ID extends Serializable, N extends N
             List var10000 = query.fetch();
             Objects.requireNonNull(countQuery);
             return PageableExecutionUtils.getPage(var10000, pageable, countQuery::fetchCount);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             return this.findAll(ArchbaseRSQLJPASupport.rsql(filter), pageable);
         }
     }

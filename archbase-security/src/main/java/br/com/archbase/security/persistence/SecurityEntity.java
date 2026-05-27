@@ -16,9 +16,9 @@ import java.time.LocalDateTime;
 @Setter
 @AttributeOverrides({
         @AttributeOverride(name="id",
-                column=@Column(name="ID_SEGURANCA")),
+                column=@Column(name="ID_SEGURANCA", length = 40)),
         @AttributeOverride(name="code",
-                column=@Column(name="CD_SEGURANCA"))
+                column=@Column(name="CD_SEGURANCA", length = 40))
 })
 public abstract class SecurityEntity extends TenantPersistenceEntityBase {
     @NotBlank

@@ -6,7 +6,8 @@ import br.com.archbase.modulith.communication.ModuleGateway;
 import br.com.archbase.modulith.communication.SimpleIntegrationEventBus;
 import br.com.archbase.modulith.communication.SimpleModuleGateway;
 import br.com.archbase.modulith.core.*;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -66,8 +67,9 @@ public class ModuleAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public ObjectMapper modulithObjectMapper() {
-        return new ObjectMapper()
-                .findAndRegisterModules();
+        return JsonMapper.builder()
+                .findAndAddModules(ModuleAutoConfiguration.class.getClassLoader())
+                .build();
     }
 
     @Bean

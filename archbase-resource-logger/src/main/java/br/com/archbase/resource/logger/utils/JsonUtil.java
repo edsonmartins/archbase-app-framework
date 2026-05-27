@@ -1,13 +1,13 @@
 package br.com.archbase.resource.logger.utils;
 
 import br.com.archbase.resource.logger.exceptions.ArchbaseResourceLoggerException;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JavaType;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JavaType;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import jakarta.annotation.Nonnull;
 import jakarta.annotation.Nullable;
-import java.io.IOException;
 import java.lang.reflect.Type;
 
 /**
@@ -15,7 +15,7 @@ import java.lang.reflect.Type;
  */
 public class JsonUtil {
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = JsonMapper.builder().build();
 
     private JsonUtil() {
     }
@@ -24,7 +24,7 @@ public class JsonUtil {
     public static String toJson(@Nullable Object object) {
         try {
             return object == null ? "null" : OBJECT_MAPPER.writeValueAsString(object);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new ArchbaseResourceLoggerException(e);
         }
     }
@@ -33,7 +33,7 @@ public class JsonUtil {
         JavaType javaType = OBJECT_MAPPER.constructType(type);
         try {
             return OBJECT_MAPPER.readValue(json, javaType);
-        } catch (IOException e) {
+        } catch (JacksonException e) {
             throw new ArchbaseResourceLoggerException(e);
         }
     }

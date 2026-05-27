@@ -17,9 +17,9 @@ import java.time.LocalDateTime;
 @Setter
 @AttributeOverrides({
         @AttributeOverride(name="id",
-                column=@Column(name="ID_USUARIO_GRUPO")),
+                column=@Column(name="ID_USUARIO_GRUPO", length = 40)),
         @AttributeOverride(name="code",
-                column=@Column(name="CD_USUARIO_GRUPO"))
+                column=@Column(name="CD_USUARIO_GRUPO", length = 40))
 })
 public class UserGroupEntity extends TenantPersistenceEntityBase {
 

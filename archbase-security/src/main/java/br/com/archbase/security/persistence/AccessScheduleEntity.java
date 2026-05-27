@@ -17,9 +17,9 @@ import java.util.stream.Collectors;
 @Setter
 @AttributeOverrides({
         @AttributeOverride(name="id",
-                column=@Column(name="ID_HORARIO_ACESSO")),
+                column=@Column(name="ID_HORARIO_ACESSO", length = 40)),
         @AttributeOverride(name="code",
-                column=@Column(name="CD_HORARIO_ACESSO"))
+                column=@Column(name="CD_HORARIO_ACESSO", length = 40))
 })
 public class AccessScheduleEntity extends TenantPersistenceEntityBase {
 
