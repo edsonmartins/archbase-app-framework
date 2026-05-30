@@ -119,6 +119,7 @@
         <maven-source-plugin.version>3.3.0</maven-source-plugin.version>
         <central-publishing-maven-plugin.version>0.4.0</central-publishing-maven-plugin.version>
         <maven-gpg-plugin.version>3.2.2</maven-gpg-plugin.version>
+        <bootui.version>0.1.0</bootui.version>
     </properties>
 
     <repositories>
@@ -157,6 +158,17 @@
             </releases>
         </pluginRepository>
     </pluginRepositories>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- BootUI: console de desenvolvimento embarcado (dev/local apenas) -->
+            <dependency>
+                <groupId>com.julien-dubois.bootui</groupId>
+                <artifactId>bootui-spring-boot-starter</artifactId>
+                <version>${bootui.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>

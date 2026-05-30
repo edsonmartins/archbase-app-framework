@@ -82,6 +82,9 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
                 "/swagger-ui/**",
                 "/swagger-ui.html",
                 "/webjars/**",
+                // BootUI: console de desenvolvimento (ativo apenas em dev/local; rejeita acesso não-loopback)
+                "/bootui",
+                "/bootui/**",
                 // Outros caminhos
                 "/actuator/**",
                 "/api/files/**",

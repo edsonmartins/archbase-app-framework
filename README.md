@@ -234,6 +234,44 @@ WorkflowEngine executor = new WorkflowEngine(workflow);
 executor.execute(context);
 ```
 
+### Console de Desenvolvimento (BootUI)
+
+Todo projeto que usa o Archbase já inclui automaticamente o [BootUI](https://github.com/jdubois/boot-ui),
+um console de desenvolvimento embarcado. Ele vem transitivamente via `archbase-starter-core`, portanto
+**não é necessário declarar nenhuma dependência adicional**.
+
+O console expõe mais de 20 painéis (health, métricas, beans, configurações, loggers, tasks agendadas,
+repositórios, cache, segurança, traces, log streaming etc.) acessíveis em:
+
+```
+http://localhost:8080/bootui
+```
+
+Por segurança, o BootUI:
+
+- ativa-se apenas em modo `AUTO` — com os profiles `dev`/`local` ativos ou com o Spring Boot DevTools no
+  classpath. Em `prod`/`production` ele se desativa automaticamente;
+- rejeita requisições que não venham de `localhost` (loopback);
+- mascara valores sensíveis de configuração.
+
+Em aplicações com `archbase-security`, o caminho `/bootui/**` já está liberado na whitelist padrão.
+
+Para rodar com o console habilitado:
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+Controle explícito via propriedades (opcional):
+
+```properties
+bootui.enabled=AUTO            # AUTO | ON | OFF
+bootui.enabled-profiles=dev,local
+bootui.disabled-profiles=prod,production
+bootui.expose-values=MASKED    # MASKED | METADATA_ONLY | FULL
+bootui.read-only=false
+```
+
 ## Documentação
 
 Para documentação completa e detalhada, visite:
