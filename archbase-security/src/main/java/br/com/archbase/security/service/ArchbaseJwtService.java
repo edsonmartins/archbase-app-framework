@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
 import javax.crypto.SecretKey;
+import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.Date;
 import java.util.HashMap;
@@ -23,6 +24,13 @@ import java.util.function.Function;
 @Service
 @Slf4j
 public class ArchbaseJwtService {
+
+    /**
+     * Claim que carrega o tenant do usuário no token (isolamento tenant↔token). O token é assinado,
+     * então este claim é a fonte de verdade do tenant — não pode ser forjado pelo cliente, e não
+     * depende de re-consultar o banco (que já estaria filtrado pelo tenant do header).
+     */
+    public static final String TENANT_CLAIM = "tenantId";
 
     @Value("${archbase.security.jwt.secret-key}")
     private String secretKey;
@@ -58,6 +66,30 @@ public class ArchbaseJwtService {
         return claimsResolver.apply(claims);
     }
 
+    /**
+     * Extrai o tenant do claim {@value #TENANT_CLAIM} do token. Retorna {@code null} se o token
+     * não tiver o claim (token legado, emitido antes desta mudança) ou não for um JWT válido.
+     */
+    public String extractTenantId(String token) {
+        try {
+            Object value = extractClaim(token, claims -> claims.get(TENANT_CLAIM));
+            return value != null ? value.toString() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Obtém o tenantId do {@link UserDetails} via {@code getTenantId()} (reflection), se houver. */
+    private String resolveTenantId(UserDetails userDetails) {
+        try {
+            Method method = userDetails.getClass().getMethod("getTenantId");
+            Object value = method.invoke(userDetails);
+            return value != null ? value.toString() : null;
+        } catch (ReflectiveOperationException e) {
+            return null;
+        }
+    }
+
     public TokenResult generateToken(UserDetails userDetails) {
         return generateToken(new HashMap<>(), userDetails);
     }
@@ -80,13 +112,20 @@ public class ArchbaseJwtService {
             UserDetails userDetails,
             long expiration
     ) {
+        // Embute o tenant do usuário como claim (fonte de verdade do tenant), salvo se já informado.
+        Map<String, Object> claims = new HashMap<>(extraClaims);
+        String tenantId = resolveTenantId(userDetails);
+        if (tenantId != null && !tenantId.isEmpty()) {
+            claims.putIfAbsent(TENANT_CLAIM, tenantId);
+        }
+
         // Usando UTC explicitamente
         Instant now = Instant.now();
         Date issuedAt = Date.from(now);
         Date expiresAt = Date.from(now.plusMillis(expiration));
 
         String token = Jwts.builder()
-                .claims(extraClaims)
+                .claims(claims)
                 .subject(userDetails.getUsername())
                 .issuedAt(issuedAt)
                 .expiration(expiresAt)

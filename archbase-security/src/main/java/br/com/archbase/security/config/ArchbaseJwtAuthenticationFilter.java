@@ -134,7 +134,38 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
             log.error("Erro ao processar autenticação: {}", e.getMessage(), e);
         }
 
+        // Isolamento tenant↔token: o tenant do token (claim assinado) é a fonte de verdade.
+        // Se o X-TENANT-ID do header divergir, rejeita com 403 (impede acesso cross-tenant).
+        // Tokens legados (sem o claim) mantêm o comportamento anterior (fallback pelo header).
+        String jwtForTenant = resolveJwtForTenant(authHeader, tokenParam);
+        if (jwtForTenant != null && SecurityContextHolder.getContext().getAuthentication() != null) {
+            String tokenTenant = jwtService.extractTenantId(jwtForTenant);
+            if (tokenTenant != null && !tokenTenant.isEmpty()) {
+                if (tenantId != null && !tenantId.isEmpty() && !tenantId.equals(tokenTenant)) {
+                    log.warn("Acesso cross-tenant NEGADO: usuario={}, tenantDoToken={}, X-TENANT-ID={}, {} {}",
+                            SecurityContextHolder.getContext().getAuthentication().getName(),
+                            tokenTenant, tenantId, request.getMethod(), request.getRequestURI());
+                    response.sendError(HttpServletResponse.SC_FORBIDDEN,
+                            "X-TENANT-ID não corresponde ao tenant do token");
+                    return;
+                }
+                // Fonte de verdade: alinha o contexto ao tenant do token.
+                ArchbaseTenantContext.setTenantId(tokenTenant);
+            }
+        }
+
         filterChain.doFilter(request, response);
+    }
+
+    /** Retorna o JWT (Bearer ou via URL) para extração do claim de tenant; {@code null} para API token (UUID). */
+    private String resolveJwtForTenant(String authHeader, String tokenParam) {
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            return authHeader.substring(7);
+        }
+        if (tokenParam != null && !isValidUUID(tokenParam)) {
+            return tokenParam;
+        }
+        return null;
     }
 
     private void processJwtToken(String token, HttpServletRequest request) {
