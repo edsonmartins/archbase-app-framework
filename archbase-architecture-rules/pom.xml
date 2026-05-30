@@ -14,8 +14,8 @@
     <description>Architecture testing rules based on Taikai/ArchUnit for enforcing Archbase patterns</description>
 
     <properties>
-        <taikai.version>1.48.0</taikai.version>
-        <archunit.version>1.4.0</archunit.version>
+        <taikai.version>1.63.0</taikai.version>
+        <archunit.version>1.4.2</archunit.version>
     </properties>
 
     <dependencies>

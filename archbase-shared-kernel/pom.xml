@@ -8,7 +8,7 @@
         <version>3.0.0</version>
     </parent>
     <properties>
-        <javaparser-core.version>3.25.10</javaparser-core.version>
+        <javaparser-core.version>3.28.1</javaparser-core.version>
         <archbase-domain-driven-design-spec.version>${archbase-security.version}</archbase-domain-driven-design-spec.version>
         <archbase-security.version>${archbase-validation.version}</archbase-security.version>
         <archbase-validation.version>1.0.2</archbase-validation.version>

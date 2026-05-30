@@ -13,10 +13,6 @@
     <name>Archbase Test Utilities</name>
     <description>Test utilities and helpers for Archbase applications</description>
 
-    <properties>
-        <spring-security-test.version>6.1.5</spring-security-test.version>
-    </properties>
-
     <dependencies>
         <!-- Spring Boot Test -->
         <dependency>

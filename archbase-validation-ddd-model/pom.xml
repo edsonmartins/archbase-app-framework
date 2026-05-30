@@ -12,7 +12,7 @@
     <artifactId>archbase-validation-ddd-model</artifactId>
     <name>Archbase DDD Model Validation</name>
     <properties>
-        <archunit.version>1.0.1</archunit.version>
+        <archunit.version>1.4.2</archunit.version>
     </properties>
 
     <dependencies>
