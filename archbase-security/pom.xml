@@ -16,7 +16,7 @@
         <dependency>
             <groupId>org.objenesis</groupId>
             <artifactId>objenesis</artifactId>
-            <version>1.0</version>
+            <version>3.5</version>
             <scope>test</scope>
         </dependency>
         <dependency>
