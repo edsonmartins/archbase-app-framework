@@ -219,20 +219,34 @@ class AbstractExtensionFinderTest {
             return name;
         }
 
-        public Map<String, Class<?>> loadClasses(List<JavaFileObject> classes) throws IOException {
-            // Sort generated ".class" by lastModified field
-            classes.sort(Comparator.comparingLong(JavaFileObject::getLastModified));
+        private final Map<String, byte[]> classBytes = new HashMap<>();
 
-            // Load classes
-            Map<String, Class<?>> loadedClasses = new HashMap<>(classes.size());
+        public Map<String, Class<?>> loadClasses(List<JavaFileObject> classes) throws IOException {
+            // Register all compiled bytes first so dependencies (e.g. an implemented
+            // interface) can be resolved on demand, regardless of definition order.
             for (JavaFileObject clazz : classes) {
-                String className = getClassName(clazz);
-                byte[] data = ByteStreams.toByteArray(clazz.openInputStream());
-                Class<?> loadedClass = defineClass(className, data, 0, data.length);
-                loadedClasses.put(className, loadedClass);
+                classBytes.put(getClassName(clazz), ByteStreams.toByteArray(clazz.openInputStream()));
+            }
+
+            Map<String, Class<?>> loadedClasses = new HashMap<>(classes.size());
+            for (String className : classBytes.keySet()) {
+                try {
+                    loadedClasses.put(className, loadClass(className));
+                } catch (ClassNotFoundException e) {
+                    throw new IOException(e);
+                }
             }
 
             return loadedClasses;
+        }
+
+        @Override
+        protected Class<?> findClass(String name) throws ClassNotFoundException {
+            byte[] data = classBytes.get(name);
+            if (data == null) {
+                throw new ClassNotFoundException(name);
+            }
+            return defineClass(name, data, 0, data.length);
         }
 
     }
