@@ -6,7 +6,7 @@ import org.springframework.beans.factory.support.AbstractAutowireCapableBeanFact
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 
-import javax.annotation.PostConstruct;
+import jakarta.annotation.PostConstruct;
 import java.nio.file.Path;
 
 public class SpringArchbasePluginManager extends DefaultArchbasePluginManager implements ApplicationContextAware {
