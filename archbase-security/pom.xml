@@ -20,6 +20,11 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-shared-kernel</artifactId>
             <version>3.0.0</version>

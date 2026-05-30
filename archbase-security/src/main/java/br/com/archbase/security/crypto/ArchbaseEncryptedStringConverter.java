@@ -1,7 +1,6 @@
 package br.com.archbase.security.crypto;
 
 import jakarta.persistence.AttributeConverter;
-import org.springframework.stereotype.Component;
 
 /**
  * Converter JPA reutilizável para cifrar campos String em repouso com AES-GCM.
@@ -16,7 +15,6 @@ import org.springframework.stereotype.Component;
  * <p>Para campos cujo legado é outro algoritmo (ex.: AES-ECB), migre os dados para GCM antes de
  * usar este converter, ou use um converter específico com a leitura legada apropriada.
  */
-@Component
 public class ArchbaseEncryptedStringConverter implements AttributeConverter<String, String> {
 
     /** Marcador de versão para valores cifrados em AES-GCM. */

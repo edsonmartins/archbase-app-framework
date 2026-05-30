@@ -2,9 +2,6 @@ package br.com.archbase.security.crypto;
 
 import java.util.Base64;
 
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-
 import br.com.archbase.security.util.CryptoUtil;
 
 /**
@@ -18,12 +15,11 @@ import br.com.archbase.security.util.CryptoUtil;
  * configurada não for Base64 válido de 16/24/32 bytes, usamos o Base64 dos seus bytes crus
  * (aceita também uma string crua de 32 chars = 256 bits).
  */
-@Service
 public class ArchbaseCryptoService {
 
     private final String base64Key;
 
-    public ArchbaseCryptoService(@Value("${archbase.security.crypto.key:}") String configuredKey) {
+    public ArchbaseCryptoService(String configuredKey) {
         this.base64Key = normalizeToBase64Key(configuredKey);
     }
 

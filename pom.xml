@@ -90,6 +90,7 @@
         <module>archbase-architecture-rules</module>
         <module>archbase-hypersistence</module>
         <module>archbase-starter-hypersistence</module>
+        <module>archbase-starter-flyway</module>
         <module>archbase-starter-messaging</module>
         <module>archbase-modular-monolith</module>
     </modules>
