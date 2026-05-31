@@ -177,6 +177,11 @@ public class ArchbaseAuthenticationService {
         } catch (AuthenticationException e) {
             log.warn("Falha na autenticação", e);
             throw new BadCredentialsException("Login ou senha inválido", e);
+        } finally {
+            // Limpa o tenant resolvido acima do thread do pool. Sem isto, num login que falha
+            // (BadCredentials / "usuário não encontrado"), o postHandle do interceptor é pulado e o
+            // tenant vaza para a próxima requisição servida pelo mesmo thread (ThreadLocal herdável).
+            ArchbaseTenantContext.clear();
         }
     }
 
