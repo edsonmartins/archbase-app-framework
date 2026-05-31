@@ -68,6 +68,7 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
                 "/api/v1/auth/**","/api/v1/apiToken/activate",
                 "/api/v1/assistente-virtual/webhook",
                 // Swagger UI v3 (OpenAPI)
+                "/v3/api-docs",
                 "/v3/api-docs/**",
                 "/v3/api-docs.yaml",
                 "/swagger-ui/**",
