@@ -90,6 +90,19 @@ public class ArchbaseAuthenticationController {
         }
     }
 
+    /**
+     * Lista os tenants disponíveis para um email (pré-login).
+     * Quando um mesmo email pertence a múltiplos tenants, o frontend usa este
+     * endpoint para exibir o seletor de tenant antes de chamar /authenticate.
+     * Endpoint pré-autenticação (coberto pelo whitelist /api/v1/auth/**).
+     */
+    @GetMapping("/tenants")
+    @Operation(summary = "Listar tenants para um email",
+               description = "Retorna os tenants disponíveis para login com o email informado")
+    public ResponseEntity<List<TenantLoginOption>> tenantsForEmail(@RequestParam("email") String email) {
+        return ResponseEntity.ok(service.findTenantsByEmail(email));
+    }
+
     @PostMapping("/refresh-token")
     public ResponseEntity<?> refreshToken(@RequestBody RefreshTokenRequest refreshToken) {
         try {

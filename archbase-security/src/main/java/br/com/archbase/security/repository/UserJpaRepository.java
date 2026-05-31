@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 
@@ -28,4 +29,21 @@ public interface UserJpaRepository extends ArchbaseCommonJpaRepository<UserEntit
      */
     @Query(value = "SELECT CASE WHEN COUNT(*) > 0 THEN true ELSE false END FROM SEGURANCA WHERE TP_SEGURANCA = 'USUARIO' AND EMAIL = :email", nativeQuery = true)
     boolean existsByEmailIgnoringTenant(@Param("email") String email);
+
+    /**
+     * Lista os tenants disponíveis para um email IGNORANDO o filtro de tenant.
+     * Queries nativas ignoram o @Filter do Hibernate, portanto enxergam todos os tenants.
+     * Usado para descobrir os tenants disponíveis para um email antes do login.
+     *
+     * @param email Email do usuário
+     * @return Projeções (tenantId, nome, descricao) de cada usuário com esse email em qualquer tenant
+     */
+    @Query(value = "SELECT TENANT_ID AS tenantId, NOME AS nome, DESCRICAO AS descricao FROM SEGURANCA WHERE TP_SEGURANCA = 'USUARIO' AND EMAIL = :email AND TENANT_ID IS NOT NULL", nativeQuery = true)
+    List<TenantLoginOptionProjection> findTenantsByEmailIgnoringTenant(@Param("email") String email);
+
+    interface TenantLoginOptionProjection {
+        String getTenantId();
+        String getNome();
+        String getDescricao();
+    }
 }

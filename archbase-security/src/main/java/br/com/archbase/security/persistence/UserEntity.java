@@ -118,7 +118,12 @@ public class UserEntity extends SecurityEntity implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return null; // Implementation depends on the roles and permissions logic
+        // Authorization is delegated to Profile/Group/Role managers (see
+        // ProfileAuthorizationManager, RoleAuthorizationManager). Spring Security 7
+        // (Boot 4) rejects null here with NPE in
+        // DaoAuthenticationProvider.createSuccessAuthentication when wrapping in
+        // LinkedHashSet, so return an empty collection instead of null.
+        return Collections.emptyList();
     }
 
     @Override
