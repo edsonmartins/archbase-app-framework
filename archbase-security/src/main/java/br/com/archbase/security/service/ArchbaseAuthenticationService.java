@@ -122,7 +122,7 @@ public class ArchbaseAuthenticationService {
                 // Query nativa: ignora o @Filter, então enxerga todos os tenants.
                 var opts = repository.findTenantsByEmailIgnoringTenant(request.getEmail());
                 if (opts.size() == 1) {
-                    tenant = opts.get(0).getTenantId();
+                    tenant = (String) opts.get(0)[0];
                 } else if (opts.size() > 1) {
                     // Múltiplos tenants: o frontend deve exibir o seletor de tenant.
                     throw new ArchbaseValidationException("Selecione o tenant para efetuar login");
@@ -555,9 +555,9 @@ public class ArchbaseAuthenticationService {
     public List<TenantLoginOption> findTenantsByEmail(String email) {
         return repository.findTenantsByEmailIgnoringTenant(email).stream()
                 .map(opt -> TenantLoginOption.builder()
-                        .tenantId(opt.getTenantId())
-                        .nome(opt.getNome())
-                        .descricao(opt.getDescricao())
+                        .tenantId(opt[0] != null ? opt[0].toString() : null)
+                        .nome(opt[1] != null ? opt[1].toString() : null)
+                        .descricao(opt[2] != null ? opt[2].toString() : null)
                         .build())
                 .collect(Collectors.toList());
     }

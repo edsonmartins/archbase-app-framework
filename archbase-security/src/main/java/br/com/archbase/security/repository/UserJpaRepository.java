@@ -36,14 +36,11 @@ public interface UserJpaRepository extends ArchbaseCommonJpaRepository<UserEntit
      * Usado para descobrir os tenants disponíveis para um email antes do login.
      *
      * @param email Email do usuário
-     * @return Projeções (tenantId, nome, descricao) de cada usuário com esse email em qualquer tenant
+     * @return Linhas {@code [tenantId, nome, descricao]} de cada usuário com esse email em qualquer tenant.
+     *         Retorna {@code Object[]} (mapeado por índice no serviço) em vez de projeção de interface:
+     *         no Postgres o alias não-quotado é rebaixado para minúsculas e o matching por nome da
+     *         projeção falha (erro 500). Object[] mapeia por posição e é imune a isso.
      */
-    @Query(value = "SELECT TENANT_ID AS tenantId, NOME AS nome, DESCRICAO AS descricao FROM SEGURANCA WHERE TP_SEGURANCA = 'USUARIO' AND EMAIL = :email AND TENANT_ID IS NOT NULL", nativeQuery = true)
-    List<TenantLoginOptionProjection> findTenantsByEmailIgnoringTenant(@Param("email") String email);
-
-    interface TenantLoginOptionProjection {
-        String getTenantId();
-        String getNome();
-        String getDescricao();
-    }
+    @Query(value = "SELECT TENANT_ID, NOME, DESCRICAO FROM SEGURANCA WHERE TP_SEGURANCA = 'USUARIO' AND EMAIL = :email AND TENANT_ID IS NOT NULL", nativeQuery = true)
+    List<Object[]> findTenantsByEmailIgnoringTenant(@Param("email") String email);
 }
