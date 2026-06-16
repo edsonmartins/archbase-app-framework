@@ -21,6 +21,10 @@ public class TestApplication {
     private final UpdateManager updateManager;
 
     public TestApplication() {
+        this(null);
+    }
+
+    public TestApplication(Path repositoriesJson) {
         Path pluginsPath;
         try {
             pluginsPath = Files.createTempDirectory("plugins");
@@ -29,7 +33,9 @@ public class TestApplication {
         }
 
         archbasePluginManager = new DefaultArchbasePluginManager(pluginsPath);
-        updateManager = new UpdateManager(archbasePluginManager);
+        updateManager = repositoriesJson == null
+                ? new UpdateManager(archbasePluginManager)
+                : new UpdateManager(archbasePluginManager, repositoriesJson);
     }
 
     public void start() {

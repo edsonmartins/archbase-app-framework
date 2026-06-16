@@ -72,8 +72,10 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     @JoinColumn(name = "PERFIL_ID")
     private ProfileEntity profile;
 
+    // @Lob removido: no PostgreSQL Dialect do Hibernate 6, @Lob byte[] mapeia para
+    // OID (large object table separada) em vez de bytea inline — incompatível com
+    // colunas declaradas como bytea. Sem @Lob, byte[] vira bytea naturalmente.
     @StorageField
-    @Lob
     @Column(name = "AVATAR")
     private byte[] avatar;
 

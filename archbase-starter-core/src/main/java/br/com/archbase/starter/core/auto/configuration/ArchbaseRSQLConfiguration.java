@@ -1,6 +1,8 @@
 package br.com.archbase.starter.core.auto.configuration;
 
 import br.com.archbase.query.rsql.jpa.ArchbaseRSQLJPASupport;
+import br.com.archbase.query.rsql.common.RSQLCommonSupport;
+import jakarta.annotation.PreDestroy;
 import jakarta.persistence.EntityManager;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.ApplicationContext;
@@ -14,6 +16,11 @@ public class ArchbaseRSQLConfiguration {
     @ConditionalOnProperty(name = "archbase.rsql.enabled", matchIfMissing = true)
     public ArchbaseRSQLJPASupport rsqlSupport(ApplicationContext applicationContext) {
         return new ArchbaseRSQLJPASupport(applicationContext.getBeansOfType(EntityManager.class));
+    }
+
+    @PreDestroy
+    public void clearRsqlGlobalState() {
+        RSQLCommonSupport.clear();
     }
 
 }

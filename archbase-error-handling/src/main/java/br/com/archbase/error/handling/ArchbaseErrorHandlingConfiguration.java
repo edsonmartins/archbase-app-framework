@@ -17,7 +17,7 @@ import java.util.List;
 @Configuration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @EnableConfigurationProperties(ArchbaseErrorHandlingProperties.class)
-@ConditionalOnProperty(value = "error.handling.enabled", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "archbase.error.handling", name = "enabled", matchIfMissing = true)
 @PropertySource("classpath:/error-handling-defaults.properties")
 public class ArchbaseErrorHandlingConfiguration {
     @Bean

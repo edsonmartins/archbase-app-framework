@@ -54,107 +54,108 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
         final String authHeader = request.getHeader("Authorization");
         final String tokenParam = request.getParameter("token");
 
-        // Log de diagnóstico - URL e método
-        log.info("Requisição recebida: {} {}", request.getMethod(), request.getRequestURI());
-
-        // Log de diagnóstico - headers completos
-        logAllHeaders(request);
-
-        String tenantId = request.getHeader(X_TENANT_ID);
-        if (tenantId == null || tenantId.isEmpty()) {
-            tenantId = request.getParameter(X_TENANT_ID);
-        }
-        log.info("TenantID recebido: {}", tenantId);
-
-        String companyId = request.getHeader(X_COMPANY_ID);
-        if (companyId == null || companyId.isEmpty()) {
-            companyId = request.getParameter(X_COMPANY_ID);
-        }
-        log.info("CompanyID recebido: {}", companyId);
-
-        if (tenantId != null && !tenantId.isEmpty()) {
-            ArchbaseTenantContext.setTenantId(tenantId);
-            log.info("TenantID definido no contexto: {}", tenantId);
-        } else if (defaultTenantId != null && !defaultTenantId.isEmpty()) {
-            ArchbaseTenantContext.setTenantId(defaultTenantId);
-            log.warn("TenantID não fornecido na requisição, utilizando tenant padrão: {}", defaultTenantId);
-        } else {
-            log.warn("TenantID não fornecido na requisição e nenhum tenant padrão configurado (archbase.app.tenant.default.id)");
-        }
-
-        if (companyId != null && !companyId.isEmpty()) {
-            ArchbaseTenantContext.setCompanyId(companyId);
-            log.info("CompanyID definido no contexto: {}", companyId);
-        }
-
         try {
-            // Log de diagnóstico - token
-            log.info("Authorization header: {}", authHeader);
-            log.info("Token parameter: {}", tokenParam);
+            log.debug("Requisição recebida: {} {}", request.getMethod(), request.getRequestURI());
+            logAllHeaders(request);
+
+            String tenantId = request.getHeader(X_TENANT_ID);
+            if (tenantId == null || tenantId.isEmpty()) {
+                tenantId = request.getParameter(X_TENANT_ID);
+            }
+            log.debug("TenantID recebido: {}", tenantId);
+
+            String companyId = request.getHeader(X_COMPANY_ID);
+            if (companyId == null || companyId.isEmpty()) {
+                companyId = request.getParameter(X_COMPANY_ID);
+            }
+            log.debug("CompanyID recebido: {}", companyId);
+
+            if (tenantId != null && !tenantId.isEmpty()) {
+                ArchbaseTenantContext.setTenantId(tenantId);
+                log.debug("TenantID definido no contexto: {}", tenantId);
+            } else if (defaultTenantId != null && !defaultTenantId.isEmpty()) {
+                ArchbaseTenantContext.setTenantId(defaultTenantId);
+                log.debug("TenantID não fornecido na requisição, utilizando tenant padrão: {}", defaultTenantId);
+            } else {
+                log.debug("TenantID não fornecido na requisição e nenhum tenant padrão configurado (archbase.app.tenant.default.id)");
+            }
+
+            if (companyId != null && !companyId.isEmpty()) {
+                ArchbaseTenantContext.setCompanyId(companyId);
+                log.debug("CompanyID definido no contexto: {}", companyId);
+            }
+
+            log.debug("Authorization header presente: {}", authHeader != null);
+            log.debug("Token parameter presente: {}", tokenParam != null);
 
             // Processar header de autorização
             if (authHeader != null) {
                 if (authHeader.startsWith("Bearer ")) {
                     // Token JWT (usuário/senha)
                     String token = authHeader.substring(7);
-                    log.info("Processando Bearer token: {}", maskToken(token));
+                    log.debug("Processando Bearer token: {}", maskToken(token));
                     processJwtToken(token, request);
                 } else if (isValidUUID(authHeader)) {
                     // Token API (UUID direto)
-                    log.info("Processando API token (UUID): {}", maskUUID(authHeader));
+                    log.debug("Processando API token (UUID): {}", maskUUID(authHeader));
                     processApiToken(authHeader, request);
                 } else {
-                    log.warn("Formato de autorização não reconhecido: {}", authHeader);
+                    log.warn("Formato de autorização não reconhecido: {}", maskAuthHeader(authHeader));
                 }
             }
             // Se não tem header, tenta pegar token JWT da URL
             else if (tokenParam != null) {
                 if (isValidUUID(tokenParam)) {
-                    log.info("Processando API token da URL (UUID): {}", maskUUID(tokenParam));
+                    log.debug("Processando API token da URL (UUID): {}", maskUUID(tokenParam));
                     processApiToken(tokenParam, request);
                 } else {
-                    log.info("Processando JWT token da URL: {}", maskToken(tokenParam));
+                    log.debug("Processando JWT token da URL: {}", maskToken(tokenParam));
                     processJwtToken(tokenParam, request);
                 }
             } else {
-                log.warn("Nenhum token de autenticação encontrado na requisição");
+                log.debug("Nenhum token de autenticação encontrado na requisição");
             }
 
             // Log de diagnóstico - autenticação
             if (SecurityContextHolder.getContext().getAuthentication() != null) {
-                log.info("Usuário autenticado: {}, Autoridades: {}",
+                log.debug("Usuário autenticado: {}, Autoridades: {}",
                         SecurityContextHolder.getContext().getAuthentication().getName(),
                         SecurityContextHolder.getContext().getAuthentication().getAuthorities());
             } else {
-                log.warn("Nenhuma autenticação definida após processamento de token");
+                log.debug("Nenhuma autenticação definida após processamento de token");
             }
 
+            // Isolamento tenant↔token: o tenant do token (claim assinado) é a fonte de verdade.
+            // Se o X-TENANT-ID do header divergir, rejeita com 403 (impede acesso cross-tenant).
+            // Tokens legados (sem o claim) mantêm o comportamento anterior (fallback pelo header).
+            String jwtForTenant = resolveJwtForTenant(authHeader, tokenParam);
+            if (jwtForTenant != null && SecurityContextHolder.getContext().getAuthentication() != null) {
+                String tokenTenant = jwtService.extractTenantId(jwtForTenant);
+                if (tokenTenant != null && !tokenTenant.isEmpty()) {
+                    if (tenantId != null && !tenantId.isEmpty() && !tenantId.equals(tokenTenant)) {
+                        log.warn("Acesso cross-tenant NEGADO: usuario={}, tenantDoToken={}, X-TENANT-ID={}, {} {}",
+                                SecurityContextHolder.getContext().getAuthentication().getName(),
+                                tokenTenant, tenantId, request.getMethod(), request.getRequestURI());
+                        response.sendError(HttpServletResponse.SC_FORBIDDEN,
+                                "X-TENANT-ID não corresponde ao tenant do token");
+                        return;
+                    }
+                    // Fonte de verdade: alinha o contexto ao tenant do token.
+                    ArchbaseTenantContext.setTenantId(tokenTenant);
+                }
+            }
+
+            filterChain.doFilter(request, response);
+        } catch (ServletException | IOException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             // Log detalhado, mas sem interromper o fluxo de filtros
             log.error("Erro ao processar autenticação: {}", e.getMessage(), e);
+        } finally {
+            ArchbaseTenantContext.clear();
         }
-
-        // Isolamento tenant↔token: o tenant do token (claim assinado) é a fonte de verdade.
-        // Se o X-TENANT-ID do header divergir, rejeita com 403 (impede acesso cross-tenant).
-        // Tokens legados (sem o claim) mantêm o comportamento anterior (fallback pelo header).
-        String jwtForTenant = resolveJwtForTenant(authHeader, tokenParam);
-        if (jwtForTenant != null && SecurityContextHolder.getContext().getAuthentication() != null) {
-            String tokenTenant = jwtService.extractTenantId(jwtForTenant);
-            if (tokenTenant != null && !tokenTenant.isEmpty()) {
-                if (tenantId != null && !tenantId.isEmpty() && !tenantId.equals(tokenTenant)) {
-                    log.warn("Acesso cross-tenant NEGADO: usuario={}, tenantDoToken={}, X-TENANT-ID={}, {} {}",
-                            SecurityContextHolder.getContext().getAuthentication().getName(),
-                            tokenTenant, tenantId, request.getMethod(), request.getRequestURI());
-                    response.sendError(HttpServletResponse.SC_FORBIDDEN,
-                            "X-TENANT-ID não corresponde ao tenant do token");
-                    return;
-                }
-                // Fonte de verdade: alinha o contexto ao tenant do token.
-                ArchbaseTenantContext.setTenantId(tokenTenant);
-            }
-        }
-
-        filterChain.doFilter(request, response);
     }
 
     /** Retorna o JWT (Bearer ou via URL) para extração do claim de tenant; {@code null} para API token (UUID). */
@@ -172,33 +173,33 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             // Extrai o email do usuário
             String userEmail = jwtService.extractUsername(token);
-            log.info("Email extraído do JWT: {}", userEmail);
+            log.debug("Email extraído do JWT: {}", userEmail);
 
             if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 // Busca detalhes do usuário
-                log.info("Buscando detalhes do usuário: {}", userEmail);
+                log.debug("Buscando detalhes do usuário: {}", userEmail);
                 UserDetails userDetails = userDetailsService.loadUserByUsername(userEmail);
-                log.info("Usuário encontrado: {}, Autoridades: {}", userDetails.getUsername(), userDetails.getAuthorities());
+                log.debug("Usuário encontrado: {}, Autoridades: {}", userDetails.getUsername(), userDetails.getAuthorities());
 
                 // Verifica se o token existe no banco e é válido
                 AccessTokenEntity tokenEntity = accessTokenPersistenceAdapter.findTokenByValue(token);
-                log.info("Token encontrado no banco: {}", tokenEntity != null);
+                log.debug("Token encontrado no banco: {}", tokenEntity != null);
 
                 boolean isTokenValid = false;
 
                 if (tokenEntity != null) {
                     isTokenValid = !tokenEntity.isExpired() && !tokenEntity.isRevoked();
-                    log.info("Token válido: {}, Expirado: {}, Revogado: {}",
+                    log.debug("Token válido: {}, Expirado: {}, Revogado: {}",
                             isTokenValid, tokenEntity.isExpired(), tokenEntity.isRevoked());
                 }
 
                 // Valida o token JWT
                 boolean isJwtValid = jwtService.isTokenValid(token, userDetails);
-                log.info("JWT válido: {}", isJwtValid);
+                log.debug("JWT válido: {}", isJwtValid);
 
                 if (isJwtValid && isTokenValid) {
                     setAuthentication(userDetails, request);
-                    log.info("Autenticação JWT bem-sucedida para usuário: {}", userEmail);
+                    log.debug("Autenticação JWT bem-sucedida para usuário: {}", userEmail);
                 } else {
                     log.warn("Token JWT inválido para usuário: {}, JWT válido: {}, Token válido: {}",
                             userEmail, isJwtValid, isTokenValid);
@@ -212,26 +213,26 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
     private void processApiToken(String token, HttpServletRequest request) {
         try {
             boolean isValid = apiTokenService.validateToken(token);
-            log.info("API Token válido: {}", isValid);
+            log.debug("API Token válido: {}", isValid);
 
             if (isValid) {
                 Optional<ApiToken> apiToken = apiTokenService.getApiToken(token);
-                log.info("API Token encontrado: {}", apiToken.isPresent());
+                log.debug("API Token encontrado: {}", apiToken.isPresent());
 
                 if (apiToken.isPresent()) {
                     boolean isActivated = apiToken.get().isActivated();
-                    log.info("API Token ativo: {}", isActivated);
+                    log.debug("API Token ativo: {}", isActivated);
 
                     if (isActivated) {
                         String userEmail = apiToken.get().getUser().getEmail();
-                        log.info("Email do usuário do API Token: {}", userEmail);
+                        log.debug("Email do usuário do API Token: {}", userEmail);
 
                         UserDetails userDetails = userDetailsService.loadUserByUsername(userEmail);
-                        log.info("Usuário encontrado: {}, Autoridades: {}",
+                        log.debug("Usuário encontrado: {}, Autoridades: {}",
                                 userDetails.getUsername(), userDetails.getAuthorities());
 
                         setAuthentication(userDetails, request);
-                        log.info("Autenticação API Token bem-sucedida para usuário: {}", userEmail);
+                        log.debug("Autenticação API Token bem-sucedida para usuário: {}", userEmail);
                     } else {
                         log.warn("API Token está inativo: {}", maskUUID(token));
                     }
@@ -254,7 +255,7 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
         );
         authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
         SecurityContextHolder.getContext().setAuthentication(authToken);
-        log.info("Autenticação definida no SecurityContext: {}", userDetails.getUsername());
+        log.debug("Autenticação definida no SecurityContext: {}", userDetails.getUsername());
     }
 
     private boolean isValidUUID(String token) {
@@ -271,7 +272,10 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
      * Registra todos os headers da requisição para diagnóstico
      */
     private void logAllHeaders(HttpServletRequest request) {
-        log.info("--- Headers da requisição ---");
+        if (!log.isDebugEnabled()) {
+            return;
+        }
+        log.debug("--- Headers da requisição ---");
         Enumeration<String> headerNames = request.getHeaderNames();
         while (headerNames.hasMoreElements()) {
             String headerName = headerNames.nextElement();
@@ -282,9 +286,9 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
                 headerValue = maskAuthHeader(headerValue);
             }
 
-            log.info("Header: {} = {}", headerName, headerValue);
+            log.debug("Header: {} = {}", headerName, headerValue);
         }
-        log.info("---------------------------");
+        log.debug("---------------------------");
     }
 
     /**

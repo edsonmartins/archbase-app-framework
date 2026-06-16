@@ -74,6 +74,15 @@ public class RSQLCommonSupport {
         return conversionService;
     }
 
+    public static void clear() {
+        entityManagerMap.clear();
+        managedTypeMap.clear();
+        propertyRemapping.clear();
+        valueTypeMap.clear();
+        propertyWhitelist.clear();
+        propertyBlacklist.clear();
+    }
+
     public static void addConverter(Converter<?, ?> converter) {
         conversionService.addConverter(converter);
     }

@@ -12,5 +12,11 @@
     <artifactId>archbase-workflow-process</artifactId>
     <name>Archbase Workflow Process</name>
 
+    <dependencies>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+    </dependencies>
 
 </project>
