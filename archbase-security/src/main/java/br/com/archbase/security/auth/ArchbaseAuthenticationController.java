@@ -86,7 +86,13 @@ public class ArchbaseAuthenticationController {
         } catch (BadCredentialsException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(e.getMessage());
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erro interno do servidor");
+            log.error("Erro interno no login para usuario {}: {}", contextualRequest.getEmail(), e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "error", "INTERNAL_ERROR",
+                    "message", "Erro interno do servidor",
+                    "detail", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()
+                ));
         }
     }
 
@@ -112,7 +118,9 @@ public class ArchbaseAuthenticationController {
         } catch (ArchbaseValidationException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            log.error("Erro ao renovar token: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "INTERNAL_ERROR", "detail", e.getMessage()));
         }
     }
 
@@ -125,7 +133,9 @@ public class ArchbaseAuthenticationController {
         } catch (ArchbaseValidationException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            log.error("Erro ao enviar email de reset de senha para {}: {}", email, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "INTERNAL_ERROR", "detail", e.getMessage()));
         }
     }
 
@@ -137,7 +147,9 @@ public class ArchbaseAuthenticationController {
         } catch (ArchbaseValidationException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            log.error("Erro ao resetar senha: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "INTERNAL_ERROR", "detail", e.getMessage()));
         }
     }
     
