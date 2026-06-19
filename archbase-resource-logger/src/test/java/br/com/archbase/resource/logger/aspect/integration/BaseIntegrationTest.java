@@ -5,7 +5,7 @@ import br.com.archbase.resource.logger.aspect.integration.spring_boot_applicatio
 import br.com.archbase.resource.logger.aspect.integration.spring_boot_application.ControllerLoggerConsumerApplication;
 import br.com.archbase.resource.logger.aspect.integration.spring_boot_application.UserResource;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest(

@@ -15,24 +15,22 @@ import java.util.UUID;
 public class PersistenceEntityBase {
 
     @Id
-    @Column(name="ID")
+    @Column(name="ID", length = 40)
     protected String id;
 
-    @Column(name="CODIGO")
+    @Column(name="CODIGO", length = 40)
     protected String code;
 
     @Version
     @Column(name="VERSAO")
     protected Long version;
 
-    @Temporal(TemporalType.TIMESTAMP)
     @Column(name="DH_CRIACAO")
     protected LocalDateTime createEntityDate;
 
     @Column(name="USUARIO_CRIOU")
     protected String createdByUser;
 
-    @Temporal(TemporalType.TIMESTAMP)
     @Column(name="DH_ATUALIZACAO")
     protected LocalDateTime updateEntityDate;
 

@@ -2,7 +2,7 @@ package br.com.archbase.error.handling.handler;
 
 import br.com.archbase.error.handling.ArchbaseApiErrorResponse;
 import br.com.archbase.error.handling.ArchbaseErrorHandlingProperties;
-import com.mysema.commons.lang.Assert;
+import org.springframework.util.Assert;
 import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;

@@ -5,7 +5,7 @@
     <parent>
         <artifactId>archbase-app-framework</artifactId>
         <groupId>br.com.archbase</groupId>
-        <version>2.1.18</version>
+        <version>3.0.0</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -14,8 +14,8 @@
     <description>Architecture testing rules based on Taikai/ArchUnit for enforcing Archbase patterns</description>
 
     <properties>
-        <taikai.version>1.48.0</taikai.version>
-        <archunit.version>1.4.0</archunit.version>
+        <taikai.version>1.63.0</taikai.version>
+        <archunit.version>1.4.2</archunit.version>
     </properties>
 
     <dependencies>

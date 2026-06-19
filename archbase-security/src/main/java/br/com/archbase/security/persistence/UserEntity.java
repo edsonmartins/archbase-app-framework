@@ -72,6 +72,9 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     @JoinColumn(name = "PERFIL_ID")
     private ProfileEntity profile;
 
+    // @Lob removido: no PostgreSQL Dialect do Hibernate 6, @Lob byte[] mapeia para
+    // OID (large object table separada) em vez de bytea inline — incompatível com
+    // colunas declaradas como bytea. Sem @Lob, byte[] vira bytea naturalmente.
     @StorageField
     @Column(name = "AVATAR")
     private byte[] avatar;
@@ -117,7 +120,12 @@ public class UserEntity extends SecurityEntity implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return null; // Implementation depends on the roles and permissions logic
+        // Authorization is delegated to Profile/Group/Role managers (see
+        // ProfileAuthorizationManager, RoleAuthorizationManager). Spring Security 7
+        // (Boot 4) rejects null here with NPE in
+        // DaoAuthenticationProvider.createSuccessAuthentication when wrapping in
+        // LinkedHashSet, so return an empty collection instead of null.
+        return Collections.emptyList();
     }
 
     @Override

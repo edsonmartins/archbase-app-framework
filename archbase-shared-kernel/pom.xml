@@ -5,13 +5,11 @@
     <parent>
         <artifactId>archbase-app-framework</artifactId>
         <groupId>br.com.archbase</groupId>
-        <version>2.1.18</version>
+        <version>3.0.0</version>
     </parent>
     <properties>
-        <javaparser-core.version>3.25.10</javaparser-core.version>
-        <archbase-domain-driven-design-spec.version>${archbase-security.version}</archbase-domain-driven-design-spec.version>
-        <archbase-security.version>${archbase-validation.version}</archbase-security.version>
-        <archbase-validation.version>1.0.2</archbase-validation.version>
+        <javaparser-core.version>3.28.1</javaparser-core.version>
+        <archbase-domain-driven-design-spec.version>${project.version}</archbase-domain-driven-design-spec.version>
     </properties>
     <modelVersion>4.0.0</modelVersion>
 
@@ -43,6 +41,51 @@
             <artifactId>archbase-domain-driven-design-spec</artifactId>
             <version>${archbase-domain-driven-design-spec.version}</version>
             <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.persistence</groupId>
+            <artifactId>jakarta.persistence-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.validation</groupId>
+            <artifactId>jakarta.validation-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.hibernate.orm</groupId>
+            <artifactId>hibernate-envers</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>javax.money</groupId>
+            <artifactId>money-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.javamoney.moneta</groupId>
+            <artifactId>moneta-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.data</groupId>
+            <artifactId>spring-data-commons</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
         </dependency>
     </dependencies>
 

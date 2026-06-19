@@ -1,5 +1,6 @@
 package br.com.archbase.security.service;
 
+import br.com.archbase.ddd.context.ArchbaseTenantContext;
 import br.com.archbase.security.adapter.AccessTokenPersistenceAdapter;
 import br.com.archbase.security.adapter.PasswordResetTokenPersistenceAdapter;
 import br.com.archbase.security.auth.*;
@@ -113,6 +114,26 @@ public class ArchbaseAuthenticationService {
     @Transactional
     public AuthenticationResponse authenticate(AuthenticationRequest request) {
         try {
+            // Resolver o tenant ANTES da autenticação, de modo que o
+            // authenticationManager.authenticate e o findByEmail subsequente
+            // resolvam DENTRO do tenant correto (o @Filter de tenant é aplicado).
+            String tenant = request.getTenantId();
+            if (tenant == null || tenant.isBlank()) {
+                // Query nativa: ignora o @Filter, então enxerga todos os tenants.
+                var opts = repository.findTenantsByEmailIgnoringTenant(request.getEmail());
+                if (opts.size() == 1) {
+                    tenant = (String) opts.get(0)[0];
+                } else if (opts.size() > 1) {
+                    // Múltiplos tenants: o frontend deve exibir o seletor de tenant.
+                    throw new ArchbaseValidationException("Selecione o tenant para efetuar login");
+                }
+                // Se vazio: mantém tenant nulo (caminho existente de "usuário não encontrado").
+            }
+
+            if (tenant != null && !tenant.isBlank()) {
+                ArchbaseTenantContext.setTenantId(tenant);
+            }
+
             authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
                             request.getEmail(),
@@ -156,6 +177,11 @@ public class ArchbaseAuthenticationService {
         } catch (AuthenticationException e) {
             log.warn("Falha na autenticação", e);
             throw new BadCredentialsException("Login ou senha inválido", e);
+        } finally {
+            // Limpa o tenant resolvido acima do thread do pool. Sem isto, num login que falha
+            // (BadCredentials / "usuário não encontrado"), o postHandle do interceptor é pulado e o
+            // tenant vaza para a próxima requisição servida pelo mesmo thread (ThreadLocal herdável).
+            ArchbaseTenantContext.clear();
         }
     }
 
@@ -521,6 +547,24 @@ public class ArchbaseAuthenticationService {
      */
     public boolean existsByEmail(String email) {
         return repository.existsByEmail(email);
+    }
+
+    /**
+     * Lista os tenants disponíveis para um email (pré-login).
+     * Utiliza query nativa que ignora o @Filter de tenant, enxergando todos os tenants.
+     * Se o email não possuir usuários, retorna lista vazia.
+     *
+     * @param email Email a consultar
+     * @return Lista de tenants disponíveis para login com esse email
+     */
+    public List<TenantLoginOption> findTenantsByEmail(String email) {
+        return repository.findTenantsByEmailIgnoringTenant(email).stream()
+                .map(opt -> TenantLoginOption.builder()
+                        .tenantId(opt[0] != null ? opt[0].toString() : null)
+                        .nome(opt[1] != null ? opt[1].toString() : null)
+                        .descricao(opt[2] != null ? opt[2].toString() : null)
+                        .build())
+                .collect(Collectors.toList());
     }
 
     /**

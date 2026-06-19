@@ -1,6 +1,7 @@
 package br.com.archbase.error.handling;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
@@ -13,7 +14,7 @@ class ApiErrorResponseSerializationTest {
 
     @Test
     void testSerialization() throws IOException {
-        ObjectMapper objectMapper = new ObjectMapper();
+        ObjectMapper objectMapper = JsonMapper.builder().build();
         String json = objectMapper.writeValueAsString(new ArchbaseApiErrorResponse(HttpStatus.BAD_GATEWAY, "TEST_CODE", "Test message"));
         assertThatJson(json).and(
                 jsonAssert -> jsonAssert.node("code").isEqualTo("TEST_CODE"),
@@ -25,7 +26,7 @@ class ApiErrorResponseSerializationTest {
 
     @Test
     void testSerializationWithFieldError() throws IOException {
-        ObjectMapper objectMapper = new ObjectMapper();
+        ObjectMapper objectMapper = JsonMapper.builder().build();
         ArchbaseApiErrorResponse response = new ArchbaseApiErrorResponse(HttpStatus.BAD_GATEWAY, "TEST_CODE", "Test message");
         response.addFieldError(new ArchbaseApiFieldError("FIELD_ERROR_CODE", "testField", "Test Field Message", "bad"));
         String json = objectMapper.writeValueAsString(response);
@@ -42,7 +43,7 @@ class ApiErrorResponseSerializationTest {
 
     @Test
     void testSerializationWithFieldErrorWithNullRejectedValue() throws IOException {
-        ObjectMapper objectMapper = new ObjectMapper();
+        ObjectMapper objectMapper = JsonMapper.builder().build();
         ArchbaseApiErrorResponse response = new ArchbaseApiErrorResponse(HttpStatus.BAD_GATEWAY, "TEST_CODE", "Test message");
         response.addFieldError(new ArchbaseApiFieldError("FIELD_ERROR_CODE", "testField", "Test Field Message", null));
         String json = objectMapper.writeValueAsString(response);
@@ -59,7 +60,7 @@ class ApiErrorResponseSerializationTest {
 
     @Test
     void testSerializationWithGlobalError() throws IOException {
-        ObjectMapper objectMapper = new ObjectMapper();
+        ObjectMapper objectMapper = JsonMapper.builder().build();
         ArchbaseApiErrorResponse response = new ArchbaseApiErrorResponse(HttpStatus.BAD_GATEWAY, "TEST_CODE", "Test message");
         response.addGlobalError(new ArchbaseApiGlobalError("GLOBAL_ERROR_CODE", "Test Global Message"));
         String json = objectMapper.writeValueAsString(response);
@@ -74,7 +75,7 @@ class ApiErrorResponseSerializationTest {
 
     @Test
     void testSerializationWithErrorProperty() throws IOException {
-        ObjectMapper objectMapper = new ObjectMapper();
+        ObjectMapper objectMapper = JsonMapper.builder().build();
         ArchbaseApiErrorResponse response = new ArchbaseApiErrorResponse(HttpStatus.BAD_GATEWAY, "TEST_CODE", "Test message");
         response.addErrorProperty("property1", "stringValue");
         response.addErrorProperty("property2", 15);
@@ -90,7 +91,7 @@ class ApiErrorResponseSerializationTest {
 
     @Test
     void testSerializationWithErrorPropertyThatIsNull() throws IOException {
-        ObjectMapper objectMapper = new ObjectMapper();
+        ObjectMapper objectMapper = JsonMapper.builder().build();
         ArchbaseApiErrorResponse response = new ArchbaseApiErrorResponse(HttpStatus.BAD_GATEWAY, "TEST_CODE", "Test message");
         response.addErrorProperty("property1", null);
         String json = objectMapper.writeValueAsString(response);

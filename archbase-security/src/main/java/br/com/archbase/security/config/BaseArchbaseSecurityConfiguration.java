@@ -5,7 +5,6 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
@@ -24,14 +23,12 @@ public abstract class BaseArchbaseSecurityConfiguration implements ArchbaseSecur
     @Override
     public void configure(HttpSecurity http) throws Exception {
         List<String> whiteListUrls = getWhiteListUrls();
-        AntPathRequestMatcher[] matchers = whiteListUrls.stream()
-                .map(AntPathRequestMatcher::new)
-                .toArray(AntPathRequestMatcher[]::new);
+        String[] patterns = whiteListUrls.toArray(String[]::new);
 
-        http.csrf().disable()
+        http.csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> {
-                    auth.requestMatchers(matchers).permitAll();
+                    auth.requestMatchers(patterns).permitAll();
                     auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
                     try {
                         configureAuthorizationRules(http);

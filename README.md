@@ -1,12 +1,12 @@
 # Archbase Framework
 
 [![Maven Central](https://img.shields.io/maven-central/v/br.com.archbase/archbase-starter.svg?style=flat-square)](https://central.sonatype.com/search?q=g:br.com.archbase)
-[![Java](https://img.shields.io/badge/Java-17-orange.svg?style=flat-square)](https://openjdk.org/projects/jdk/17/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.6-brightgreen.svg?style=flat-square)](https://spring.io/projects/spring-boot)
+[![Java](https://img.shields.io/badge/Java-25-orange.svg?style=flat-square)](https://openjdk.org/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.0-brightgreen.svg?style=flat-square)](https://spring.io/projects/spring-boot)
 
-**Archbase** é um framework Java para aplicações empresariais construído sobre Spring Boot 3.5.6 e Java 17. Implementa Domain-Driven Design (DDD) com Onion Architecture, oferecendo uma base sólida e modular para aplicações complexas.
+**Archbase** é um framework Java para aplicações empresariais construído sobre Spring Boot 4.1.0 e Java 25. Implementa Domain-Driven Design (DDD) com Onion Architecture, oferecendo uma base sólida e modular para aplicações complexas.
 
-> **Versão 2.0.0** - Veja as [notas de release](CHANGELOG.md) para informações sobre atualizações.
+> **Versão 3.0.0** - Veja as [notas de release](CHANGELOG.md) para informações sobre atualizações.
 
 ## Características
 
@@ -27,7 +27,7 @@
 <dependency>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-starter</artifactId>
-    <version>2.0.0</version>
+    <version>3.0.0</version>
 </dependency>
 ```
 
@@ -38,21 +38,21 @@ Ou use módulos específicos:
 <dependency>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-starter-core</artifactId>
-    <version>2.0.0</version>
+    <version>3.0.0</version>
 </dependency>
 
 <!-- Para segurança -->
 <dependency>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-starter-security</artifactId>
-    <version>2.0.0</version>
+    <version>3.0.0</version>
 </dependency>
 
 <!-- Para multi-tenancy -->
 <dependency>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-starter-multitenancy</artifactId>
-    <version>2.0.0</version>
+    <version>3.0.0</version>
 </dependency>
 ```
 
@@ -63,8 +63,9 @@ archbase:
   security:
     enabled: true
     jwt:
-      secret: sua-chave-secreta-minimo-32-caracteres
-      expiration: 86400000  # 24 horas
+      secret-key: sua-chave-base64-minimo-32-bytes
+      token-expiration: 86400000  # 24 horas
+      refresh-expiration: 604800000  # 7 dias
 
   multitenancy:
     enabled: true
@@ -232,6 +233,44 @@ Workflow workflow = Workflow.builder()
 
 WorkflowEngine executor = new WorkflowEngine(workflow);
 executor.execute(context);
+```
+
+### Console de Desenvolvimento (BootUI)
+
+Todo projeto que usa o Archbase já inclui automaticamente o [BootUI](https://github.com/jdubois/boot-ui),
+um console de desenvolvimento embarcado. Ele vem transitivamente via `archbase-starter-core`, portanto
+**não é necessário declarar nenhuma dependência adicional**.
+
+O console expõe mais de 20 painéis (health, métricas, beans, configurações, loggers, tasks agendadas,
+repositórios, cache, segurança, traces, log streaming etc.) acessíveis em:
+
+```
+http://localhost:8080/bootui
+```
+
+Por segurança, o BootUI:
+
+- ativa-se apenas em modo `AUTO` — com os profiles `dev`/`local` ativos ou com o Spring Boot DevTools no
+  classpath. Em `prod`/`production` ele se desativa automaticamente;
+- rejeita requisições que não venham de `localhost` (loopback);
+- mascara valores sensíveis de configuração.
+
+Em aplicações com `archbase-security`, o caminho `/bootui/**` já está liberado na whitelist padrão.
+
+Para rodar com o console habilitado:
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+Controle explícito via propriedades (opcional):
+
+```properties
+bootui.enabled=AUTO            # AUTO | ON | OFF
+bootui.enabled-profiles=dev,local
+bootui.disabled-profiles=prod,production
+bootui.expose-values=MASKED    # MASKED | METADATA_ONLY | FULL
+bootui.read-only=false
 ```
 
 ## Documentação

@@ -54,3 +54,6 @@ nb-configuration.xml
 release.properties
 pom.xml.releaseBackup
 pom.xml.tag
+
+# Plugin manager runtime downloads
+archbase-plugin-manager/downloads/

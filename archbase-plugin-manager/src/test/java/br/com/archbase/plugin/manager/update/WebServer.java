@@ -53,6 +53,7 @@ public class WebServer {
         server.setHandler(resourceHandler);
 
         server.start();
+        port = server.getURI().getPort();
     }
 
     public void shutdown() {

@@ -24,9 +24,9 @@ import java.util.Date;
 @Setter
 @AttributeOverrides({
         @AttributeOverride(name="id",
-                column=@Column(name="ID_TOKEN")),
+                column=@Column(name="ID_TOKEN", length = 40)),
         @AttributeOverride(name="code",
-                column=@Column(name="CD_TOKEN"))
+                column=@Column(name="CD_TOKEN", length = 40))
 })
 public class AccessTokenEntity extends TenantPersistenceEntityBase {
 
@@ -50,7 +50,6 @@ public class AccessTokenEntity extends TenantPersistenceEntityBase {
   @Column(name="TEMPO_EXPIRACAO")
   private Long expirationTime;
 
-  @Temporal(TemporalType.TIMESTAMP)
   @Column(name="DH_EXPIRACAO")
   private LocalDateTime expirationDate;
 

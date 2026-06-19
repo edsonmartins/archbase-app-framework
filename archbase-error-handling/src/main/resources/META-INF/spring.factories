@@ -1,4 +1,4 @@
 org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
   br.com.archbase.error.handling.ArchbaseErrorHandlingConfiguration
-org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc=\
+org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc=\
   br.com.archbase.error.handling.ArchbaseErrorHandlingConfiguration

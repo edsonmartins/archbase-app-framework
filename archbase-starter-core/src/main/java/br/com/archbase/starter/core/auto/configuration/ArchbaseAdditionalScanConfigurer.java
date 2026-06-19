@@ -1,17 +1,30 @@
 package br.com.archbase.starter.core.auto.configuration;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.context.EnvironmentAware;
+import org.springframework.context.annotation.ClassPathBeanDefinitionScanner;
 import org.springframework.context.annotation.ImportBeanDefinitionRegistrar;
 import org.springframework.core.env.Environment;
 import org.springframework.core.type.AnnotationMetadata;
+import org.springframework.core.type.filter.AnnotationTypeFilter;
 import org.springframework.util.StringUtils;
 
 /**
- * Registrar que loga packages adicionais configurados via propriedades
+ * Registrar que configura automaticamente component scan, entity scan e repository scan
+ * para packages adicionais definidos via propriedades.
+ *
+ * Propriedades suportadas:
+ * - archbase.app.component.scan: packages para component scan (separados por vírgula)
+ * - archbase.app.jpa.entities: packages para entity scan (separados por vírgula)
+ * - archbase.app.jpa.repositories: packages para repository scan (separados por vírgula)
+ *
  * Compatible with Spring Boot 3.5.3+
  */
 public class ArchbaseAdditionalScanConfigurer implements ImportBeanDefinitionRegistrar, EnvironmentAware {
+
+    private static final Logger logger = LoggerFactory.getLogger(ArchbaseAdditionalScanConfigurer.class);
 
     private Environment environment;
 
@@ -22,63 +35,64 @@ public class ArchbaseAdditionalScanConfigurer implements ImportBeanDefinitionReg
 
     @Override
     public void registerBeanDefinitions(AnnotationMetadata importingClassMetadata, BeanDefinitionRegistry registry) {
-        // Log dos packages adicionais configurados
-        logAdditionalPackages();
-        
-        // Para uma implementação completa, seria necessário registrar dinamicamente
-        // Por agora, vamos apenas informar ao usuário como adicionar os packages
-        informUserAboutAdditionalConfiguration();
+        registerComponentScan(registry);
+        registerEntityScan(registry);
+        registerRepositoryScan(registry);
     }
 
-    private void logAdditionalPackages() {
-        String componentScan = environment.getProperty("archbase.app.component.scan");
-        String entities = environment.getProperty("archbase.app.jpa.entities");
-        String repositories = environment.getProperty("archbase.app.jpa.repositories");
-        
-        if (StringUtils.hasText(componentScan)) {
-            System.out.println("Archbase: Component scan adicional detectado: " + componentScan);
+    private void registerComponentScan(BeanDefinitionRegistry registry) {
+        String componentScanProperty = environment.getProperty("archbase.app.component.scan");
+        if (!StringUtils.hasText(componentScanProperty)) {
+            return;
         }
-        if (StringUtils.hasText(entities)) {
-            System.out.println("Archbase: Entity packages adicionais detectados: " + entities);
-        }
-        if (StringUtils.hasText(repositories)) {
-            System.out.println("Archbase: Repository packages adicionais detectados: " + repositories);
+
+        String[] packages = StringUtils.commaDelimitedListToStringArray(componentScanProperty);
+        ClassPathBeanDefinitionScanner scanner = new ClassPathBeanDefinitionScanner(registry);
+
+        for (String pkg : packages) {
+            String trimmed = pkg.trim();
+            if (StringUtils.hasText(trimmed)) {
+                int count = scanner.scan(trimmed);
+                logger.info("Archbase: Component scan registrado automaticamente em '{}' ({} beans encontrados)", trimmed, count);
+            }
         }
     }
 
-    private void informUserAboutAdditionalConfiguration() {
-        String componentScan = environment.getProperty("archbase.app.component.scan");
-        String entities = environment.getProperty("archbase.app.jpa.entities");
-        String repositories = environment.getProperty("archbase.app.jpa.repositories");
-        
-        if (StringUtils.hasText(componentScan) || StringUtils.hasText(entities) || StringUtils.hasText(repositories)) {
-            System.out.println("================================================================================");
-            System.out.println("ARCHBASE FRAMEWORK - CONFIGURAÇÃO ADICIONAL NECESSÁRIA");
-            System.out.println("================================================================================");
-            
-            if (StringUtils.hasText(componentScan)) {
-                System.out.println("Para ativar component scan em: " + componentScan);
-                System.out.println("Adicione na sua classe @SpringBootApplication:");
-                System.out.println("@ComponentScan(basePackages = {\"" + componentScan + "\"})");
-                System.out.println();
+    private void registerEntityScan(BeanDefinitionRegistry registry) {
+        String entitiesProperty = environment.getProperty("archbase.app.jpa.entities");
+        if (!StringUtils.hasText(entitiesProperty)) {
+            return;
+        }
+
+        String[] packages = StringUtils.commaDelimitedListToStringArray(entitiesProperty);
+        ClassPathBeanDefinitionScanner entityScanner = new ClassPathBeanDefinitionScanner(registry, false);
+        entityScanner.addIncludeFilter(new AnnotationTypeFilter(jakarta.persistence.Entity.class));
+        entityScanner.addIncludeFilter(new AnnotationTypeFilter(jakarta.persistence.MappedSuperclass.class));
+        entityScanner.addIncludeFilter(new AnnotationTypeFilter(jakarta.persistence.Embeddable.class));
+
+        for (String pkg : packages) {
+            String trimmed = pkg.trim();
+            if (StringUtils.hasText(trimmed)) {
+                int count = entityScanner.scan(trimmed);
+                logger.info("Archbase: Entity scan registrado automaticamente em '{}' ({} entidades encontradas)", trimmed, count);
             }
-            
-            if (StringUtils.hasText(entities)) {
-                System.out.println("Para ativar entity scan em: " + entities);
-                System.out.println("Adicione na sua classe de configuração:");
-                System.out.println("@EntityScan(basePackages = {\"" + entities + "\"})");
-                System.out.println();
+        }
+    }
+
+    private void registerRepositoryScan(BeanDefinitionRegistry registry) {
+        String repositoriesProperty = environment.getProperty("archbase.app.jpa.repositories");
+        if (!StringUtils.hasText(repositoriesProperty)) {
+            return;
+        }
+
+        // Repositórios JPA são registrados via ArchbaseDynamicJpaRepositoryConfigurer
+        // que usa o mecanismo correto do Spring Data JPA
+        String[] packages = StringUtils.commaDelimitedListToStringArray(repositoriesProperty);
+        for (String pkg : packages) {
+            String trimmed = pkg.trim();
+            if (StringUtils.hasText(trimmed)) {
+                logger.info("Archbase: Repository package '{}' será registrado via ArchbaseDynamicJpaRepositoryConfigurer", trimmed);
             }
-            
-            if (StringUtils.hasText(repositories)) {
-                System.out.println("Para ativar repository scan em: " + repositories);
-                System.out.println("Adicione na sua classe de configuração:");
-                System.out.println("@EnableJpaRepositories(basePackages = {\"" + repositories + "\"})");
-                System.out.println();
-            }
-            
-            System.out.println("Essas configurações são necessárias devido às mudanças no Spring Boot 3.5.3");
-            System.out.println("================================================================================");
         }
     }
 }

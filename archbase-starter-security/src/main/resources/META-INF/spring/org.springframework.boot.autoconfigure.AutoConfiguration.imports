@@ -1,1 +1,2 @@
 br.com.archbase.starter.security.auto.configuration.ArchbaseSecurityAutoConfiguration
+br.com.archbase.starter.security.auto.configuration.ArchbaseCryptoAutoConfiguration

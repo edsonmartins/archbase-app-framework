@@ -16,9 +16,9 @@ import java.time.LocalDateTime;
 @Setter
 @AttributeOverrides({
         @AttributeOverride(name="id",
-                column=@Column(name="ID_INTERVALO_ACESSO")),
+                column=@Column(name="ID_INTERVALO_ACESSO", length = 40)),
         @AttributeOverride(name="code",
-                column=@Column(name="CD_INTERVALO_ACESSO"))
+                column=@Column(name="CD_INTERVALO_ACESSO", length = 40))
 })
 public class AccessIntervalEntity extends TenantPersistenceEntityBase {
 

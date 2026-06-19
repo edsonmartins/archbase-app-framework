@@ -23,9 +23,9 @@ import java.time.LocalDateTime;
 @Table(name="SEGURANCA_TOKEN_API")
 @AttributeOverrides({
         @AttributeOverride(name="id",
-                column=@Column(name="ID_TOKEN_API")),
+                column=@Column(name="ID_TOKEN_API", length = 40)),
         @AttributeOverride(name="code",
-                column=@Column(name="CD_TOKEN_API"))
+                column=@Column(name="CD_TOKEN_API", length = 40))
 })
 public class ApiTokenEntity extends TenantPersistenceEntityBase {
 

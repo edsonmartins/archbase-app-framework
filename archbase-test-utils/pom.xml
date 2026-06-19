@@ -5,17 +5,13 @@
     <parent>
         <artifactId>archbase-app-framework</artifactId>
         <groupId>br.com.archbase</groupId>
-        <version>2.1.18</version>
+        <version>3.0.0</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>archbase-test-utils</artifactId>
     <name>Archbase Test Utilities</name>
     <description>Test utilities and helpers for Archbase applications</description>
-
-    <properties>
-        <spring-security-test.version>6.1.5</spring-security-test.version>
-    </properties>
 
     <dependencies>
         <!-- Spring Boot Test -->

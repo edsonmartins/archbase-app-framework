@@ -1,26 +1,29 @@
 package br.com.archbase.plugin.manager.update.util;
 
+import br.com.archbase.plugin.manager.plugin.PluginZip;
 import br.com.archbase.plugin.manager.update.PluginInfo;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
-import java.io.FileWriter;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
+import java.io.BufferedWriter;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
 
 public class TestPluginsFixture {
 
     private static final String PLUGINS_JSON_FILE = "plugins.json";
 
-    public static void setup() {
-        FileWriter writer;
+    public static void setup(Path downloadRoot) {
+        Path pluginsJson = downloadRoot.resolve(PLUGINS_JSON_FILE);
         try {
-            writer = new FileWriter("downloads/" + PLUGINS_JSON_FILE);
+            Files.createDirectories(downloadRoot);
+            createPluginZip(downloadRoot, "archbase-demo-plugin1/1.0.0/plugin1-1.0.0.zip", "welcome-plugin", "1.0.0");
+            createPluginZip(downloadRoot, "archbase-demo-plugin2/1.0.0/plugin2-1.0.0.zip", "hello-plugin", "1.0.0");
         } catch (IOException e) {
-            throw new RuntimeException("Falha ao criar gravador para arquivo de manifesto de plug-ins", e);
+            throw new RuntimeException("Falha ao criar arquivos de plug-ins de teste", e);
         }
 
         Gson gson = new GsonBuilder().setPrettyPrinting().create();
@@ -51,11 +54,19 @@ public class TestPluginsFixture {
         p2.releases = Collections.singletonList(p2r1);
 
         String json = gson.toJson(plugins);
-        try {
+        try (BufferedWriter writer = Files.newBufferedWriter(pluginsJson, StandardCharsets.UTF_8)) {
             writer.write(json);
-            writer.close();
         } catch (IOException e) {
             throw new RuntimeException("Falha ao gravar o manifesto de plug-ins no sistema de arquivos", e);
         }
+    }
+
+    private static void createPluginZip(Path downloadRoot, String relativePath, String pluginId, String version) throws IOException {
+        Path zipPath = downloadRoot.resolve(relativePath);
+        Files.createDirectories(zipPath.getParent());
+        new PluginZip.Builder(zipPath, pluginId)
+                .pluginVersion(version)
+                .pluginClass(NopPlugin.class.getName())
+                .build();
     }
 }

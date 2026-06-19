@@ -31,7 +31,7 @@ public class PersonaAuthorizationManager implements AuthorizationManager<MethodI
     private final ArchbaseSecurityService securityService;
     
     @Override
-    public AuthorizationDecision check(Supplier<Authentication> authentication, MethodInvocation methodInvocation) {
+    public AuthorizationDecision authorize(Supplier<? extends Authentication> authentication, MethodInvocation methodInvocation) {
         Method method = methodInvocation.getMethod();
         RequirePersona requirePersona = method.getAnnotation(RequirePersona.class);
         

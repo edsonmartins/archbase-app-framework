@@ -9,33 +9,34 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.io.FileWriter;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.List;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Collections;
 
 import static org.junit.Assert.assertEquals;
 
 public class UpdateIntegrationTest {
 
     private WebServer webServer;
+    private Path repositoryJson;
 
     @Before
     public void setup() throws Exception {
-        TestPluginsFixture.setup();
+        Path downloadRoot = Files.createTempDirectory("archbase-plugin-repository");
+        TestPluginsFixture.setup(downloadRoot);
 
-        FileWriter writer = new FileWriter("repositories.json");
+        webServer = new WebServer()
+                .setPort(0)
+                .setResourceBase(downloadRoot.toAbsolutePath().toString());
+        webServer.start();
 
         Gson gson = new GsonBuilder().setPrettyPrinting().create();
-        List<UpdateRepository> repositories = new ArrayList<UpdateRepository>();
-        repositories.add(new DefaultUpdateRepository("localhost", new URL("http://localhost:8081/")));
-
-        String json = gson.toJson(repositories);
-        writer.write(json);
-        writer.close();
-
-        webServer = new WebServer();
-        webServer.start();
+        UpdateRepository repository = new DefaultUpdateRepository("localhost", new URL("http://localhost:" + webServer.getPort() + "/"));
+        String json = gson.toJson(Collections.singletonList(repository));
+        repositoryJson = Files.createTempFile("archbase-plugin-repositories", ".json");
+        Files.writeString(repositoryJson, json, StandardCharsets.UTF_8);
     }
 
     @After
@@ -45,7 +46,7 @@ public class UpdateIntegrationTest {
 
     @Test
     public void assertUpdateCreatesPlugins() {
-        TestApplication subject = new TestApplication();
+        TestApplication subject = new TestApplication(repositoryJson);
         subject.start();
 
         assertEquals("Não espere nenhum plug-in carregado no início ", 0, subject.getPluginManager().getPlugins().size());
