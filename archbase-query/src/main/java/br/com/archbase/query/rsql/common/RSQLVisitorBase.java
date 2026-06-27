@@ -1,5 +1,6 @@
 package br.com.archbase.query.rsql.common;
 
+import br.com.archbase.query.rsql.parser.ast.ComparisonOperator;
 import br.com.archbase.query.rsql.parser.ast.RSQLVisitor;
 import lombok.Setter;
 import lombok.SneakyThrows;
@@ -38,6 +39,10 @@ public abstract class RSQLVisitorBase<R, A> implements RSQLVisitor<R, A> {
     protected static Map<Class<?>, List<String>> propertyWhitelist;
     @Setter
     protected static Map<Class<?>, List<String>> propertyBlacklist;
+    @Setter
+    protected static Map<Class<?>, Map<String, Set<ComparisonOperator>>> operatorWhitelist;
+    @Setter
+    protected static Map<Class<?>, Map<String, Set<ComparisonOperator>>> operatorBlacklist;
     @Setter
     protected static ConfigurableConversionService defaultConversionService;
 
@@ -126,6 +131,34 @@ public abstract class RSQLVisitorBase<R, A> implements RSQLVisitor<R, A> {
 
         if (propertyBlacklist != null && propertyBlacklist.containsKey(type) && propertyBlacklist.get(type).contains(name)) {
             throw new IllegalArgumentException("Propriedade " + type.getName() + "." + name + " está na lista negra");
+        }
+    }
+
+    /**
+     * Controle de acesso por operador. Permite declarar, por propriedade, quais operadores RSQL
+     * podem ser aplicados — por exemplo, proibir {@code =like=}/{@code =ilike=} em colunas sem índice
+     * (vetor comum de DoS/varredura). Quando não há configuração para a propriedade, todos os
+     * operadores continuam permitidos (comportamento padrão, sem quebra).
+     *
+     * @param type tipo gerenciado que declara a propriedade
+     * @param name nome da propriedade (leaf)
+     * @param op   operador de comparação aplicado
+     */
+    protected void operatorAccessControl(Class type, String name, ComparisonOperator op) {
+        if (operatorWhitelist != null) {
+            Map<String, Set<ComparisonOperator>> byField = operatorWhitelist.get(type);
+            Set<ComparisonOperator> allowed = (byField != null) ? byField.get(name) : null;
+            if (allowed != null && !allowed.contains(op)) {
+                throw new IllegalArgumentException("Operador " + op.getSymbol() + " não permitido para a propriedade " + type.getName() + "." + name);
+            }
+        }
+
+        if (operatorBlacklist != null) {
+            Map<String, Set<ComparisonOperator>> byField = operatorBlacklist.get(type);
+            Set<ComparisonOperator> denied = (byField != null) ? byField.get(name) : null;
+            if (denied != null && denied.contains(op)) {
+                throw new IllegalArgumentException("Operador " + op.getSymbol() + " está na lista negra para a propriedade " + type.getName() + "." + name);
+            }
         }
     }
 

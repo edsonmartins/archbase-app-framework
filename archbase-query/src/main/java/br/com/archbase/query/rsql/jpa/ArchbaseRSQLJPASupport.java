@@ -3,6 +3,7 @@ package br.com.archbase.query.rsql.jpa;
 import br.com.archbase.query.rsql.common.RSQLCommonSupport;
 import br.com.archbase.query.rsql.common.RSQLCustomPredicate;
 import br.com.archbase.query.rsql.common.RSQLOperators;
+import br.com.archbase.query.rsql.common.RSQLOrBypassAnalyzer;
 import br.com.archbase.query.rsql.parser.RSQLParser;
 import br.com.archbase.query.rsql.parser.ast.ComparisonOperator;
 import br.com.archbase.query.rsql.parser.ast.Node;
@@ -86,6 +87,7 @@ public class ArchbaseRSQLJPASupport extends RSQLCommonSupport {
                     supportedOperators.addAll(customPredicates.stream().map(RSQLCustomPredicate::getOperator).filter(Objects::nonNull).collect(Collectors.toSet()));
                 }
                 Node rsql = new RSQLParser(supportedOperators).parse(rsqlQuery);
+                RSQLOrBypassAnalyzer.assertNotBypassable(rsql, getProtectedSelectors().get(root.getJavaType()));
                 return rsql.accept(new ArchbaseRSQLJPAPredicateConverter(cb, propertyPathMapper, customPredicates), root);
             } else
                 return null;

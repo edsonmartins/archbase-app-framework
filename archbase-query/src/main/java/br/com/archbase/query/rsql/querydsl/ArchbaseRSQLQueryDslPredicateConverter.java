@@ -105,6 +105,7 @@ public class ArchbaseRSQLQueryDslPredicateConverter extends RSQLVisitorBase<Bool
         ComparisonOperator op = node.getOperator();
         ArchbaseRSQLQueryDslContext holder = findPropertyPath(mapPropertyPath(node.getSelector()), path);
         Attribute attribute = holder.getAttribute();
+        operatorAccessControl(attribute.getDeclaringType().getJavaType(), attribute.getName(), op);
         String property = holder.getPropertyPath();
         Path entityClass = holder.getEntityClass();
         Class type = attribute.getJavaType();

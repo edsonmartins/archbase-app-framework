@@ -129,6 +129,7 @@ public class ArchbaseRSQLJPAPredicateConverter extends RSQLVisitorBase<Predicate
         ArchbaseRSQLJPAContext holder = findPropertyPath(mapPropertyPath(node.getSelector()), root);
         Path attrPath = holder.getPath();
         Attribute attribute = holder.getAttribute();
+        operatorAccessControl(attribute.getDeclaringType().getJavaType(), attribute.getName(), op);
         Class type = attribute.getJavaType();
         if (attribute.getPersistentAttributeType() == PersistentAttributeType.ELEMENT_COLLECTION) {
             type = getElementCollectionGenericType(type, attribute);
