@@ -64,6 +64,7 @@
         <module>archbase-validation</module>
         <module>archbase-domain-driven-design</module>
         <module>archbase-query</module>
+        <module>archbase-query-contract</module>
         <module>archbase-codegen-maven-plugin</module>
         <module>archbase-transformation</module>
         <module>archbase-validation-ddd-model</module>
