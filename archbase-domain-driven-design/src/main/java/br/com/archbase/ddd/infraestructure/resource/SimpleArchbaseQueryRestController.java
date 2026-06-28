@@ -4,6 +4,7 @@ import br.com.archbase.ddd.domain.contracts.AggregateRoot;
 import br.com.archbase.ddd.domain.contracts.Identifier;
 import br.com.archbase.ddd.domain.contracts.Repository;
 import br.com.archbase.ddd.infraestructure.service.SimpleArchbaseService;
+import br.com.archbase.query.rsql.jpa.ArchbasePageableGuard;
 import br.com.archbase.query.rsql.jpa.SortUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -73,6 +74,7 @@ public abstract class SimpleArchbaseQueryRestController<T extends AggregateRoot<
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     public Page<T> findAll(@RequestParam("page") int page, @RequestParam("size") int size) {
+        size = ArchbasePageableGuard.clampSize(size);
         Pageable pageable = PageRequest.of(page, size);
         Page<T> result = getService().findAll(page, size);
         Page<T> concretePage = this.createConcretePage(result.getContent(), pageable, result.getTotalElements());
@@ -95,6 +97,7 @@ public abstract class SimpleArchbaseQueryRestController<T extends AggregateRoot<
     @ResponseBody
     public Page<T> findAll(@RequestParam("page") int page, @RequestParam("size") int size,
                            @RequestParam("sort") String[] sort) {
+        size = ArchbasePageableGuard.clampSize(size);
         Pageable pageable = PageRequest.of(page, size, Sort.by(SortUtils.convertSortToJpa(sort)));
         Page<T> result = getService().findAll(page, size, sort);
         Page<T> concretePage = this.createConcretePage(result.getContent(), pageable, result.getTotalElements());
@@ -137,6 +140,7 @@ public abstract class SimpleArchbaseQueryRestController<T extends AggregateRoot<
     @ResponseBody
     public Page<T> find(@RequestParam(value = "filter", required = true) String filter, @RequestParam(value = "page", required = true) int page,
                         @RequestParam(value = "size", required = true) int size) {
+        size = ArchbasePageableGuard.clampSize(size);
         Pageable pageable = PageRequest.of(page, size);
         Page<T> result = getService().find(filter, page, size);
         Page<T> concretePage = this.createConcretePage(result.getContent(), pageable, result.getTotalElements());
@@ -163,6 +167,7 @@ public abstract class SimpleArchbaseQueryRestController<T extends AggregateRoot<
     public Page<T> find(@RequestParam(value = "filter", required = true) String filter, @RequestParam(value = "page", required = true) int page,
                         @RequestParam(value = "size", required = true) int size,
                         @RequestParam(value = "sort", required = true) String[] sort) {
+        size = ArchbasePageableGuard.clampSize(size);
         Pageable pageable = PageRequest.of(page, size, Sort.by(SortUtils.convertSortToJpa(sort)));
         Page<T> result = getRepository().findAll(filter, pageable);
         Page<T> concretePage = this.createConcretePage(result.getContent(), pageable, result.getTotalElements());

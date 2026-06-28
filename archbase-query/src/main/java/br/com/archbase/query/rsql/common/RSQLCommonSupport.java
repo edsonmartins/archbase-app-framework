@@ -1,6 +1,7 @@
 package br.com.archbase.query.rsql.common;
 
 import br.com.archbase.query.rsql.parser.RSQLParser;
+import br.com.archbase.query.rsql.parser.ast.ComparisonOperator;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.convert.converter.Converter;
@@ -13,9 +14,12 @@ import org.springframework.util.StringUtils;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.metamodel.ManagedType;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
@@ -30,6 +34,10 @@ public class RSQLCommonSupport {
     private static final Map<Class, Class> valueTypeMap = new ConcurrentHashMap<>();
     private static final Map<Class<?>, List<String>> propertyWhitelist = new ConcurrentHashMap<>();
     private static final Map<Class<?>, List<String>> propertyBlacklist = new ConcurrentHashMap<>();
+    private static final Map<Class<?>, Map<String, Set<ComparisonOperator>>> operatorWhitelist = new ConcurrentHashMap<>();
+    private static final Map<Class<?>, Map<String, Set<ComparisonOperator>>> operatorBlacklist = new ConcurrentHashMap<>();
+    private static final Map<Class<?>, Set<String>> protectedSelectors = new ConcurrentHashMap<>();
+    private static volatile int maxPageSize = 1000;
     private static final ConfigurableConversionService conversionService = new DefaultConversionService();
 
     public RSQLCommonSupport() {
@@ -70,6 +78,31 @@ public class RSQLCommonSupport {
         return propertyBlacklist;
     }
 
+    public static Map<Class<?>, Map<String, Set<ComparisonOperator>>> getOperatorWhitelist() {
+        return operatorWhitelist;
+    }
+
+    public static Map<Class<?>, Map<String, Set<ComparisonOperator>>> getOperatorBlacklist() {
+        return operatorBlacklist;
+    }
+
+    public static Map<Class<?>, Set<String>> getProtectedSelectors() {
+        return protectedSelectors;
+    }
+
+    public static int getMaxPageSize() {
+        return maxPageSize;
+    }
+
+    /**
+     * Define o tamanho máximo de página aceito pelos endpoints de consulta. Valores menores ou
+     * iguais a zero desativam o limite. Padrão: {@code 1000}.
+     */
+    public static void setMaxPageSize(int value) {
+        log.info("Definindo tamanho máximo de página para {}", value);
+        maxPageSize = value;
+    }
+
     public static ConfigurableConversionService getConversionService() {
         return conversionService;
     }
@@ -81,6 +114,9 @@ public class RSQLCommonSupport {
         valueTypeMap.clear();
         propertyWhitelist.clear();
         propertyBlacklist.clear();
+        operatorWhitelist.clear();
+        operatorBlacklist.clear();
+        protectedSelectors.clear();
     }
 
     public static void addConverter(Converter<?, ?> converter) {
@@ -111,6 +147,42 @@ public class RSQLCommonSupport {
 
     public static void addPropertyBlacklist(Class<?> entityClass, String property) {
         propertyBlacklist.computeIfAbsent(entityClass, entityClazz -> new ArrayList<>()).add(property);
+    }
+
+    /**
+     * Declara a lista de operadores permitidos para uma propriedade. Quando definida, qualquer
+     * operador fora desta lista é rejeitado para a propriedade. Útil, por exemplo, para liberar
+     * apenas {@code ==} em uma coluna e bloquear {@code =like=}.
+     */
+    public static void addOperatorWhitelist(Class<?> entityClass, String property, ComparisonOperator... operators) {
+        operatorWhitelist
+                .computeIfAbsent(entityClass, c -> new ConcurrentHashMap<>())
+                .computeIfAbsent(property, p -> new LinkedHashSet<>())
+                .addAll(Arrays.asList(operators));
+    }
+
+    /**
+     * Declara operadores proibidos para uma propriedade (ex.: bloquear {@code =like=}/{@code =ilike=}
+     * em uma coluna sem índice). Operadores não listados continuam permitidos.
+     */
+    public static void addOperatorBlacklist(Class<?> entityClass, String property, ComparisonOperator... operators) {
+        operatorBlacklist
+                .computeIfAbsent(entityClass, c -> new ConcurrentHashMap<>())
+                .computeIfAbsent(property, p -> new LinkedHashSet<>())
+                .addAll(Arrays.asList(operators));
+    }
+
+    /**
+     * Declara seletores "protegidos" (ex.: {@code tenantId}, campos de autorização) que não podem
+     * ser anulados por uma expressão {@code OR} no filtro RSQL. Enquanto nenhum seletor for
+     * registrado para a entidade, a análise de bypass é um no-op (sem mudança de comportamento).
+     *
+     * @see RSQLOrBypassAnalyzer
+     */
+    public static void addProtectedSelector(Class<?> entityClass, String... selectors) {
+        protectedSelectors
+                .computeIfAbsent(entityClass, c -> ConcurrentHashMap.newKeySet())
+                .addAll(Arrays.asList(selectors));
     }
 
     public static MultiValueMap<String, String> toMultiValueMap(final String rsqlQuery) {
@@ -162,6 +234,8 @@ public class RSQLCommonSupport {
         RSQLVisitorBase.setPropertyRemapping(getPropertyRemapping());
         RSQLVisitorBase.setPropertyWhitelist(getPropertyWhitelist());
         RSQLVisitorBase.setPropertyBlacklist(getPropertyBlacklist());
+        RSQLVisitorBase.setOperatorWhitelist(getOperatorWhitelist());
+        RSQLVisitorBase.setOperatorBlacklist(getOperatorBlacklist());
         RSQLVisitorBase.setDefaultConversionService(getConversionService());
         log.info("RSQLCommonSupport {} foi inicializado");
     }
