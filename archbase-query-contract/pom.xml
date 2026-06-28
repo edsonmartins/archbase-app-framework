@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>archbase-app-framework</artifactId>
+        <groupId>br.com.archbase</groupId>
+        <version>3.0.0</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>archbase-query-contract</artifactId>
+    <name>Archbase Query Contract</name>
+    <description>
+        Ponte opcional entre a camada de contrato/governança da biblioteca rsql-jpa-search
+        (io.github.ggomarighetti) e o motor RSQL do Archbase. Fornece um RsqlBackendAdapter que
+        compila a requisição validada para uma JPA Specification usando o ArchbaseRSQLJPASupport,
+        ganhando a governança (allowlist de campo/operador, validação, paging) sem trocar o motor.
+    </description>
+
+    <properties>
+        <rsql-jpa-search.version>2.0.0</rsql-jpa-search.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>br.com.archbase</groupId>
+            <artifactId>archbase-query</artifactId>
+            <version>3.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.ggomarighetti</groupId>
+            <artifactId>rsql-jpa-search-core</artifactId>
+            <version>${rsql-jpa-search.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>
