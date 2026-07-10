@@ -75,8 +75,11 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     // @Lob removido: no PostgreSQL Dialect do Hibernate 6, @Lob byte[] mapeia para
     // OID (large object table separada) em vez de bytea inline — incompatível com
     // colunas declaradas como bytea. Sem @Lob, byte[] vira bytea naturalmente.
+    // length: sem ele o MySQL cria VARBINARY(255) — nenhuma imagem cabe; com 16MB o
+    // Hibernate gera MEDIUMBLOB no MySQL (o PostgreSQL ignora length em bytea).
+    // Bancos já criados precisam de: ALTER TABLE seguranca MODIFY COLUMN avatar MEDIUMBLOB NULL;
     @StorageField
-    @Column(name = "AVATAR")
+    @Column(name = "AVATAR", length = 16777215)
     private byte[] avatar;
 
     @Column(name = "EMAIL", nullable = true)
