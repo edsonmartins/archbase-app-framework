@@ -80,8 +80,11 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     @JoinColumn(name = "PERFIL_ID")
     private ProfileEntity profile;
 
+    // length: sem ele o MySQL cria VARBINARY(255) — nenhuma imagem cabe; com 16MB o
+    // Hibernate gera MEDIUMBLOB no MySQL (o PostgreSQL ignora length em bytea).
+    // Bancos já criados precisam de: ALTER TABLE seguranca MODIFY COLUMN avatar MEDIUMBLOB NULL;
     @StorageField
-    @Column(name = "AVATAR")
+    @Column(name = "AVATAR", length = 16777215)
     private byte[] avatar;
 
     @Column(name = "EMAIL", nullable = true)
