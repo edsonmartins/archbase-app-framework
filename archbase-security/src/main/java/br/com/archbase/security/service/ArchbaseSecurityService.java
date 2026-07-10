@@ -22,12 +22,13 @@ public class ArchbaseSecurityService {
     private PermissionJpaRepository permissionRepository;
 
     public boolean hasPermission(Authentication authentication, String action, String resource, String tenantId, String companyId, String projectId) {
-        if (((UserEntity) authentication.getPrincipal()).getIsAdministrator() &&  ((UserEntity) authentication.getPrincipal()).isEnabled()){
+        UserEntity userEntity = (UserEntity) authentication.getPrincipal();
+        if (userEntity.getIsAdministrator() && userEntity.isEnabled()){
             return  true;
         }
-        String userId = ((UserEntity) authentication.getPrincipal()).getId();
-        List<PermissionEntity> permissions = permissionRepository.findBySecurityIdAndActionNameAndResourceName(
-                userId, action, resource);
+        Set<String> securityIds = collectSecurityIds(userEntity);
+        List<PermissionEntity> permissions = permissionRepository.findBySecurityIdsAndActionNameAndResourceName(
+                securityIds, action, resource);
 
         if (permissions.stream().anyMatch(PermissionEntity::allowAllTenantsAndCompaniesAndProjects)){
             return true;
@@ -83,6 +84,30 @@ public class ArchbaseSecurityService {
             log.error("Erro ao buscar permissões para usuário {}: {}", user.getEmail(), e.getMessage(), e);
             return Collections.emptyList();
         }
+    }
+
+    /**
+     * Coleta todos os IDs de segurança relacionados ao usuário (usuário, grupos e perfil).
+     */
+    private Set<String> collectSecurityIds(UserEntity user) {
+        Set<String> ids = new HashSet<>();
+
+        if (user.getId() != null) {
+            ids.add(user.getId());
+        }
+
+        if (user.getGroups() != null) {
+            user.getGroups().stream()
+                    .filter(ug -> ug.getGroup() != null && ug.getGroup().getId() != null)
+                    .map(ug -> ug.getGroup().getId())
+                    .forEach(ids::add);
+        }
+
+        if (user.getProfile() != null && user.getProfile().getId() != null) {
+            ids.add(user.getProfile().getId());
+        }
+
+        return ids;
     }
 
     /**
