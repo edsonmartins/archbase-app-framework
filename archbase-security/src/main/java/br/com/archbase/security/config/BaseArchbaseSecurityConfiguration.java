@@ -1,5 +1,6 @@
 package br.com.archbase.security.config;
 
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -38,8 +39,16 @@ public abstract class BaseArchbaseSecurityConfiguration implements ArchbaseSecur
                 })
                 .sessionManagement(session -> session.sessionCreationPolicy(STATELESS))
                 .addFilterBefore(getJwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class)
-                // Adicione o tratamento de exceção para capturar detalhes de erros de acesso
+                // Tratamento de exceção com semântica HTTP correta:
+                // - authenticationEntryPoint → 401 quando NÃO há autenticação (token ausente,
+                //   inválido, expirado ou REVOGADO). Antes, sem entry point, o Spring caía no fluxo
+                //   de acesso-negado e devolvia 403 para token revogado — o que impedia o cliente de
+                //   distinguir "faça refresh/login" (401) de "sem permissão" (403).
+                // - accessDeniedHandler → 403 quando HÁ autenticação mas falta permissão.
                 .exceptionHandling(handling -> handling
+                        .authenticationEntryPoint((request, response, authException) ->
+                                response.sendError(HttpServletResponse.SC_UNAUTHORIZED,
+                                        "Não autenticado: token ausente, inválido ou revogado"))
                         .accessDeniedHandler(getAccessDeniedHandler()));
     }
 
