@@ -88,6 +88,21 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     @Column(name = "EXTERNAL_ID", nullable = true, unique = true)
     private String externalId; // ID externo para integração com sistemas terceiros (ex: Keycloak, LDAP, etc.)
 
+    // ===== MFA / 2FA (TOTP) =====
+
+    /** Segundo fator TOTP habilitado para este usuário. */
+    @Column(name = "BO_MFA_HABILITADO", length = 1)
+    @Convert(converter = BooleanToSNConverter.class)
+    private Boolean mfaEnabled;
+
+    /** Segredo TOTP (Base32) cifrado em repouso (AES-GCM via ArchbaseCryptoService). */
+    @Column(name = "MFA_SECRET", length = 255)
+    private String mfaSecret;
+
+    /** Códigos de recuperação (hash bcrypt, um por linha), consumidos ao usar. */
+    @Column(name = "MFA_RECOVERY_CODES", length = 2048)
+    private String mfaRecoveryCodes;
+
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<AccessTokenEntity> tokens = new ArrayList<>();
 
