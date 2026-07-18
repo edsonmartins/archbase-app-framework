@@ -59,6 +59,10 @@ public class ArchbaseAuthenticationService {
     @Autowired
     private AuthenticationBusinessDelegate businessDelegate;
 
+    // MFA/2FA - opcional; ausente ou desabilitado para o usuário ⇒ fluxo de login inalterado.
+    @Autowired(required = false)
+    private br.com.archbase.security.mfa.MfaService mfaService;
+
     @Transactional
     public void register(RegisterNewUser request) {
         Optional<UserEntity> byEmail = repository.findByEmail(request.getEmail());
@@ -144,6 +148,16 @@ public class ArchbaseAuthenticationService {
             var user = repository.findByEmail(request.getEmail())
                     .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
 
+            // Segundo fator (MFA): senha conferiu, mas falta o TOTP. Não emite tokens ainda —
+            // devolve um desafio; o cliente completa em POST /auth/mfa/verify.
+            if (mfaService != null && mfaService.isMfaEnabled(user)) {
+                log.debug("MFA requerido para usuário {}, emitindo desafio", user.getEmail());
+                return AuthenticationResponse.builder()
+                        .mfaRequired(true)
+                        .challengeToken(jwtService.generateMfaChallengeToken(user).token())
+                        .build();
+            }
+
             // Marcar tokens expirados antes de buscar tokens válidos
             int expiredCount = accessTokenPersistenceAdapter.markExpiredTokens();
             if (expiredCount > 0) {
@@ -181,6 +195,43 @@ public class ArchbaseAuthenticationService {
             // Limpa o tenant resolvido acima do thread do pool. Sem isto, num login que falha
             // (BadCredentials / "usuário não encontrado"), o postHandle do interceptor é pulado e o
             // tenant vaza para a próxima requisição servida pelo mesmo thread (ThreadLocal herdável).
+            ArchbaseTenantContext.clear();
+        }
+    }
+
+    /**
+     * Completa o login em duas etapas (MFA): valida o token de desafio (emitido pelo
+     * {@link #authenticate}) e o código do segundo fator (TOTP ou código de recuperação);
+     * se ambos conferem, emite os tokens reais. O desafio carrega o tenant como claim.
+     *
+     * @throws BadCredentialsException se o desafio for inválido/expirado ou o código não conferir
+     */
+    @Transactional
+    public AuthenticationResponse completeMfaAuthentication(String challengeToken, String code) {
+        try {
+            if (challengeToken == null || !jwtService.isMfaChallengeToken(challengeToken)) {
+                throw new BadCredentialsException("Desafio de MFA inválido ou expirado");
+            }
+            String tenant = jwtService.extractTenantId(challengeToken);
+            if (tenant != null && !tenant.isBlank()) {
+                ArchbaseTenantContext.setTenantId(tenant);
+            }
+            String email = jwtService.extractUsername(challengeToken);
+            var user = repository.findByEmail(email)
+                    .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
+
+            if (mfaService == null || !mfaService.verificar(user, code)) {
+                throw new BadCredentialsException("Código de verificação inválido");
+            }
+
+            // Segundo fator confirmado — emite tokens novos (revoga os antigos).
+            accessTokenPersistenceAdapter.markExpiredTokens();
+            revokeAllUserTokens(user);
+            var jwtToken = jwtService.generateToken(user);
+            var accessToken = saveUserToken(user, jwtToken);
+            var refreshToken = jwtService.generateRefreshToken(user);
+            return buildAuthenticationResponse(accessToken, refreshToken.token(), user);
+        } finally {
             ArchbaseTenantContext.clear();
         }
     }
@@ -412,6 +463,12 @@ public class ArchbaseAuthenticationService {
 
             // 2. Autenticação básica usando lógica existente
             AuthenticationResponse baseResponse = authenticate(contextualRequest.toBasicRequest());
+
+            // 2b. MFA pendente: devolve o desafio direto, sem pós-processar/enriquecer
+            // (baseResponse ainda não tem usuário nem tokens).
+            if (Boolean.TRUE.equals(baseResponse.getMfaRequired())) {
+                return baseResponse;
+            }
 
             // 3. Pós-autenticação: ações customizadas via delegate
             if (businessDelegate != null && contextualRequest.getContext() != null) {

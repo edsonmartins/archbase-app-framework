@@ -56,6 +56,19 @@ public class ArchbaseAuthenticationController {
     }
 
     /**
+     * Passo 2 do login com MFA: recebe o token de desafio (emitido quando a senha conferiu e o
+     * usuário tem MFA) + o código do segundo fator, e devolve os tokens reais se ambos conferem.
+     */
+    @PostMapping("/mfa/verify")
+    public ResponseEntity<?> verifyMfa(@RequestBody MfaVerifyRequest request) {
+        try {
+            return ResponseEntity.ok(service.completeMfaAuthentication(request.challengeToken(), request.code()));
+        } catch (BadCredentialsException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(e.getMessage());
+        }
+    }
+
+    /**
      * Endpoint de autenticação contextual com suporte a enrichers.
      * Permite que aplicações personalizem a resposta de autenticação
      * baseada no contexto (STORE_APP, CUSTOMER_APP, etc.).

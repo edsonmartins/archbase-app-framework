@@ -107,6 +107,31 @@ public class ArchbaseJwtService {
         return buildToken(new HashMap<>(), userDetails, refreshExpiration);
     }
 
+    /** Claim que marca um token de desafio de MFA (não serve como access token). */
+    public static final String MFA_PURPOSE_CLAIM = "mfa";
+    public static final String MFA_CHALLENGE_VALUE = "challenge";
+    /** Validade do token de desafio de MFA (5 minutos). */
+    private static final long MFA_CHALLENGE_EXPIRATION = 5 * 60 * 1000L;
+
+    /**
+     * Token curto de desafio emitido quando a senha confere mas o usuário tem MFA: carrega
+     * {@code mfa=challenge} e nunca é persistido em access_token, logo o filtro JWT não o
+     * aceita como credencial (findTokenByValue = null). Só o {@code /auth/mfa/verify} o consome.
+     */
+    public TokenResult generateMfaChallengeToken(UserDetails userDetails) {
+        return buildToken(Map.of(MFA_PURPOSE_CLAIM, MFA_CHALLENGE_VALUE), userDetails, MFA_CHALLENGE_EXPIRATION);
+    }
+
+    /** Verdadeiro se o token é um desafio de MFA válido (claim correto + não expirado). */
+    public boolean isMfaChallengeToken(String token) {
+        try {
+            Object purpose = extractClaim(token, claims -> claims.get(MFA_PURPOSE_CLAIM));
+            return MFA_CHALLENGE_VALUE.equals(purpose) && !isTokenExpired(token);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private TokenResult buildToken(
             Map<String, Object> extraClaims,
             UserDetails userDetails,
