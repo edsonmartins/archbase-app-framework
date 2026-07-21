@@ -33,6 +33,7 @@ public class ArchbaseUserService {
 
         // atualiza a senha
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.markPasswordChanged();
 
         // salva usuário
         repository.save(user);
@@ -56,6 +57,7 @@ public class ArchbaseUserService {
 
         // atualiza a senha
         userEntity.get().setPassword(passwordEncoder.encode(request.getNewPassword()));
+        userEntity.get().markPasswordChanged();
 
         // salva usuário
         repository.save(userEntity.get());
