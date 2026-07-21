@@ -45,6 +45,24 @@ jobs:
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
+      # O corpo da release vem da mensagem da tag anotada. Antes era um texto fixo no
+      # workflow, que ficou anunciando a migração para Spring Boot 4.1 em todo release
+      # desde a 3.0.0 — inclusive nos que não tinham nada a ver com isso.
+      - name: Extract tag message for release notes
+        id: tag_message
+        run: |
+          # O checkout em cima de uma tag pode vir raso; garante o objeto da tag anotada.
+          git fetch --tags --force --depth=1 2>/dev/null || true
+          MESSAGE=$(git tag -l --format='%(contents)' "${GITHUB_REF#refs/tags/}")
+          if [ -z "$MESSAGE" ]; then
+            MESSAGE="Release v${{ steps.get_version.outputs.VERSION }}"
+          fi
+          {
+            echo 'MESSAGE<<GH_EOF'
+            echo "$MESSAGE"
+            echo 'GH_EOF'
+          } >> $GITHUB_OUTPUT
+
       - name: Update version in pom.xml
         run: |
           mvn versions:set -DnewVersion=${{ steps.get_version.outputs.VERSION }}
@@ -99,42 +117,11 @@ jobs:
             ## 🚀 Archbase Framework v${{ steps.get_version.outputs.VERSION }}
 
             > Linha de manutenção 2.1.x (Spring Boot 3.5, Java 21). A linha atual é a 3.x —
-            > veja a release mais recente para as novidades.
+            > veja a [release mais recente](https://github.com/edsonmartins/archbase-app-framework/releases/latest).
 
-            ### Nesta linha
-            - Spring Boot 3.5 / Jetty / Java 21 (Virtual Threads)
-            - Enable Virtual Threads: `spring.threads.virtual.enabled=true`
+            ${{ steps.tag_message.outputs.MESSAGE }}
 
-            ### Módulos publicados
-
-            - archbase-starter
-            - archbase-starter-core
-            - archbase-starter-security
-            - archbase-starter-multitenancy
-            - archbase-domain-driven-design
-            - archbase-domain-driven-design-spec
-            - archbase-query
-            - archbase-security
-            - archbase-multitenancy
-            - archbase-event-driven
-            - archbase-event-driven-spec
-            - archbase-workflow-process
-            - archbase-plugin-manager
-            - archbase-validation
-            - archbase-validation-ddd-model
-            - archbase-error-handling
-            - archbase-transformation
-            - archbase-resource-logger
-            - archbase-shared-kernel
-            - archbase-architecture
-            - archbase-architecture-rules
-            - archbase-hypersistence
-            - archbase-starter-hypersistence
-            - archbase-codegen-maven-plugin
-            - archbase-annotation-processor
-            - archbase-semver-implementation
-
-            ### Installation
+            ### Instalação
 
             ```xml
             <dependency>
@@ -144,13 +131,11 @@ jobs:
             </dependency>
             ```
 
-            ### Documentation
+            ### Documentação
 
-            Visit [https://java.archbase.dev](https://java.archbase.dev) for full documentation.
-
-            ### Migration from v1.x
-
-            See [V1 branch](https://github.com/edsonmartins/archbase-app-framework/tree/V1) for version 1.x documentation.
+            [https://java.archbase.dev](https://java.archbase.dev)
+          # Acrescenta ao corpo acima a lista de PRs e commits desde a release anterior.
+          generate_release_notes: true
           draft: false
           prerelease: false
           # Sem isto, o action-gh-release marca a release recém-criada como "Latest".
