@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.CredentialsExpiredException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -50,6 +51,19 @@ public class ArchbaseAuthenticationController {
                     "requirePasswordChange", true,
                     "email", request.getEmail()
                 ));
+        } catch (BadCredentialsException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(e.getMessage());
+        }
+    }
+
+    /**
+     * Passo 2 do login com MFA: recebe o token de desafio (emitido quando a senha conferiu e o
+     * usuário tem MFA) + o código do segundo fator, e devolve os tokens reais se ambos conferem.
+     */
+    @PostMapping("/mfa/verify")
+    public ResponseEntity<?> verifyMfa(@RequestBody MfaVerifyRequest request) {
+        try {
+            return ResponseEntity.ok(service.completeMfaAuthentication(request.challengeToken(), request.code()));
         } catch (BadCredentialsException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(e.getMessage());
         }
@@ -113,6 +127,21 @@ public class ArchbaseAuthenticationController {
     public ResponseEntity<?> refreshToken(@RequestBody RefreshTokenRequest refreshToken) {
         try {
             return ResponseEntity.ok(service.refreshToken(refreshToken));
+        } catch (CredentialsExpiredException e) {
+            log.warn("Refresh negado, credenciais expiradas: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of(
+                    "error", "CREDENTIALS_EXPIRED",
+                    "message", "As credenciais do usuário expiraram. É necessário alterar a senha.",
+                    "requirePasswordChange", true
+                ));
+        } catch (DisabledException e) {
+            log.warn("Refresh negado, conta desativada ou bloqueada: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of(
+                    "error", "ACCOUNT_DISABLED",
+                    "message", "Conta desativada ou bloqueada."
+                ));
         } catch (JwtException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(e.getMessage());
         } catch (ArchbaseValidationException e) {

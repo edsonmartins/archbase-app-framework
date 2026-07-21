@@ -2,9 +2,11 @@ package br.com.archbase.security.config;
 
 
 import br.com.archbase.security.auditing.ApplicationAuditAware;
+import br.com.archbase.security.crypto.ArchbaseCryptoService;
 import br.com.archbase.security.persistence.UserEntity;
 import br.com.archbase.security.repository.UserJpaRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -58,6 +60,18 @@ public class ArchbaseSecurityApplicationConfig {
     @ConditionalOnMissingBean(PasswordEncoder.class)
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    /**
+     * Serviço de cifragem de segredos em repouso (AES-GCM) — usado, entre outros, para o
+     * segredo TOTP do MFA. A chave vem de {@code archbase.security.crypto.key} (variável de
+     * ambiente/secret manager, nunca versionada).
+     */
+    @Bean
+    @ConditionalOnMissingBean(ArchbaseCryptoService.class)
+    public ArchbaseCryptoService archbaseCryptoService(
+            @Value("${archbase.security.crypto.key:}") String cryptoKey) {
+        return new ArchbaseCryptoService(cryptoKey);
     }
 
 }

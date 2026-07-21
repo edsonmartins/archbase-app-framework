@@ -1,6 +1,7 @@
 package br.com.archbase.security.persistence;
 
 import br.com.archbase.ddd.domain.aspect.annotations.StorageField;
+import br.com.archbase.security.password.ArchbasePasswordPolicy;
 import br.com.archbase.security.domain.dto.UserDto;
 import br.com.archbase.security.domain.dto.UserGroupDto;
 import br.com.archbase.security.domain.entity.User;
@@ -45,6 +46,13 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     @Convert(converter = BooleanToSNConverter.class)
     private Boolean passwordNeverExpires;
 
+    /**
+     * Data da última troca de senha, base de cálculo da expiração periódica
+     * (ver {@link ArchbasePasswordPolicy}). Nulo em usuários anteriores a esta coluna.
+     */
+    @Column(name = "DT_ULTIMA_TROCA_SENHA")
+    private LocalDateTime passwordChangedAt;
+
     @Column(name = "BO_CONTA_DESATIVADA", length = 1)
     @Convert(converter = BooleanToSNConverter.class)
     private Boolean accountDeactivated;
@@ -88,6 +96,21 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     @Column(name = "EXTERNAL_ID", nullable = true, unique = true)
     private String externalId; // ID externo para integração com sistemas terceiros (ex: Keycloak, LDAP, etc.)
 
+    // ===== MFA / 2FA (TOTP) =====
+
+    /** Segundo fator TOTP habilitado para este usuário. */
+    @Column(name = "BO_MFA_HABILITADO", length = 1)
+    @Convert(converter = BooleanToSNConverter.class)
+    private Boolean mfaEnabled;
+
+    /** Segredo TOTP (Base32) cifrado em repouso (AES-GCM via ArchbaseCryptoService). */
+    @Column(name = "MFA_SECRET", length = 255)
+    private String mfaSecret;
+
+    /** Códigos de recuperação (hash bcrypt, um por linha), consumidos ao usar. */
+    @Column(name = "MFA_RECOVERY_CODES", length = 2048)
+    private String mfaRecoveryCodes;
+
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<AccessTokenEntity> tokens = new ArrayList<>();
 
@@ -96,7 +119,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     }
 
     @Builder
-    public UserEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleEntity accessSchedule, Set<UserGroupEntity> groups, ProfileEntity profile, byte[] avatar, String email, String nickname, String externalId, List<AccessTokenEntity> tokens) {
+    public UserEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, LocalDateTime passwordChangedAt, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleEntity accessSchedule, Set<UserGroupEntity> groups, ProfileEntity profile, byte[] avatar, String email, String nickname, String externalId, List<AccessTokenEntity> tokens) {
         super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId, name, description);
         this.userName = userName;
         this.password = password;
@@ -104,6 +127,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
         this.allowPasswordChange = allowPasswordChange;
         this.allowMultipleLogins = allowMultipleLogins;
         this.passwordNeverExpires = passwordNeverExpires;
+        this.passwordChangedAt = passwordChangedAt;
         this.accountDeactivated = accountDeactivated;
         this.accountLocked = accountLocked;
         this.unlimitedAccessHours = unlimitedAccessHours;
@@ -140,22 +164,53 @@ public class UserEntity extends SecurityEntity implements UserDetails {
 
     @Override
     public boolean isAccountNonExpired() {
-        return !this.accountDeactivated;
+        return !Boolean.TRUE.equals(this.accountDeactivated);
     }
 
     @Override
     public boolean isAccountNonLocked() {
-        return !this.accountLocked;
+        return !Boolean.TRUE.equals(this.accountLocked);
     }
 
+    /**
+     * Credenciais expiram em dois casos, nesta ordem:
+     *
+     * <ol>
+     *   <li>{@code changePasswordOnNextLogin = true}: troca obrigatória pendente;</li>
+     *   <li>{@code passwordNeverExpires = false} <b>e</b> a senha ultrapassou o prazo da política
+     *       ({@code archbase.security.password.expiration-days}).</li>
+     * </ol>
+     *
+     * <p>Até a versão 3.0.x este método retornava {@code passwordNeverExpires} diretamente, o que
+     * fazia {@code passwordNeverExpires = false} significar "credenciais expiradas <i>agora</i>" —
+     * o usuário nunca conseguia autenticar, mesmo logo após redefinir a senha. Quem dependia desse
+     * efeito para forçar a troca deve usar {@code changePasswordOnNextLogin = true}.
+     */
     @Override
     public boolean isCredentialsNonExpired() {
-        return this.passwordNeverExpires;
+        if (Boolean.TRUE.equals(this.changePasswordOnNextLogin)) {
+            return false;
+        }
+        if (!Boolean.FALSE.equals(this.passwordNeverExpires)) {
+            return true;
+        }
+        LocalDateTime reference = this.passwordChangedAt != null ? this.passwordChangedAt : getCreateEntityDate();
+        return !ArchbasePasswordPolicy.isExpired(reference);
     }
 
     @Override
     public boolean isEnabled() {
-        return !this.accountDeactivated && !this.accountLocked;
+        return !Boolean.TRUE.equals(this.accountDeactivated) && !Boolean.TRUE.equals(this.accountLocked);
+    }
+
+    /**
+     * Registra que a senha acabou de ser trocada: zera a exigência de troca no próximo login e
+     * reinicia a contagem da expiração periódica. Deve ser chamado por todo fluxo que altere a
+     * senha do próprio usuário (reset por token, troca autenticada).
+     */
+    public void markPasswordChanged() {
+        this.changePasswordOnNextLogin = false;
+        this.passwordChangedAt = LocalDateTime.now();
     }
 
     public User toDomain() {
@@ -180,6 +235,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
                 .allowPasswordChange(this.getAllowPasswordChange())
                 .allowMultipleLogins(this.getAllowMultipleLogins())
                 .passwordNeverExpires(this.getPasswordNeverExpires())
+                .passwordChangedAt(this.getPasswordChangedAt())
                 .accountDeactivated(this.getAccountDeactivated())
                 .accountLocked(this.getAccountLocked())
                 .unlimitedAccessHours(this.getUnlimitedAccessHours())
@@ -215,6 +271,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
                 .allowPasswordChange(user.getAllowPasswordChange())
                 .allowMultipleLogins(user.getAllowMultipleLogins())
                 .passwordNeverExpires(user.getPasswordNeverExpires())
+                .passwordChangedAt(user.getPasswordChangedAt())
                 .accountDeactivated(user.getAccountDeactivated())
                 .accountLocked(user.getAccountLocked())
                 .unlimitedAccessHours(user.getUnlimitedAccessHours())
@@ -257,6 +314,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
                 .allowPasswordChange(this.getAllowPasswordChange())
                 .allowMultipleLogins(this.getAllowMultipleLogins())
                 .passwordNeverExpires(this.getPasswordNeverExpires())
+                .passwordChangedAt(this.getPasswordChangedAt())
                 .accountDeactivated(this.getAccountDeactivated())
                 .accountLocked(this.getAccountLocked())
                 .unlimitedAccessHours(this.getUnlimitedAccessHours())

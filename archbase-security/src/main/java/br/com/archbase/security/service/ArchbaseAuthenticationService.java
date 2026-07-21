@@ -24,6 +24,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.CredentialsExpiredException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -58,6 +59,10 @@ public class ArchbaseAuthenticationService {
     // Injection do business delegate - usa implementação padrão se não existir customizada
     @Autowired
     private AuthenticationBusinessDelegate businessDelegate;
+
+    // MFA/2FA - opcional; ausente ou desabilitado para o usuário ⇒ fluxo de login inalterado.
+    @Autowired(required = false)
+    private br.com.archbase.security.mfa.MfaService mfaService;
 
     @Transactional
     public void register(RegisterNewUser request) {
@@ -144,6 +149,16 @@ public class ArchbaseAuthenticationService {
             var user = repository.findByEmail(request.getEmail())
                     .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
 
+            // Segundo fator (MFA): senha conferiu, mas falta o TOTP. Não emite tokens ainda —
+            // devolve um desafio; o cliente completa em POST /auth/mfa/verify.
+            if (mfaService != null && mfaService.isMfaEnabled(user)) {
+                log.debug("MFA requerido para usuário {}, emitindo desafio", user.getEmail());
+                return AuthenticationResponse.builder()
+                        .mfaRequired(true)
+                        .challengeToken(jwtService.generateMfaChallengeToken(user).token())
+                        .build();
+            }
+
             // Marcar tokens expirados antes de buscar tokens válidos
             int expiredCount = accessTokenPersistenceAdapter.markExpiredTokens();
             if (expiredCount > 0) {
@@ -181,6 +196,43 @@ public class ArchbaseAuthenticationService {
             // Limpa o tenant resolvido acima do thread do pool. Sem isto, num login que falha
             // (BadCredentials / "usuário não encontrado"), o postHandle do interceptor é pulado e o
             // tenant vaza para a próxima requisição servida pelo mesmo thread (ThreadLocal herdável).
+            ArchbaseTenantContext.clear();
+        }
+    }
+
+    /**
+     * Completa o login em duas etapas (MFA): valida o token de desafio (emitido pelo
+     * {@link #authenticate}) e o código do segundo fator (TOTP ou código de recuperação);
+     * se ambos conferem, emite os tokens reais. O desafio carrega o tenant como claim.
+     *
+     * @throws BadCredentialsException se o desafio for inválido/expirado ou o código não conferir
+     */
+    @Transactional
+    public AuthenticationResponse completeMfaAuthentication(String challengeToken, String code) {
+        try {
+            if (challengeToken == null || !jwtService.isMfaChallengeToken(challengeToken)) {
+                throw new BadCredentialsException("Desafio de MFA inválido ou expirado");
+            }
+            String tenant = jwtService.extractTenantId(challengeToken);
+            if (tenant != null && !tenant.isBlank()) {
+                ArchbaseTenantContext.setTenantId(tenant);
+            }
+            String email = jwtService.extractUsername(challengeToken);
+            var user = repository.findByEmail(email)
+                    .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
+
+            if (mfaService == null || !mfaService.verificar(user, code)) {
+                throw new BadCredentialsException("Código de verificação inválido");
+            }
+
+            // Segundo fator confirmado — emite tokens novos (revoga os antigos).
+            accessTokenPersistenceAdapter.markExpiredTokens();
+            revokeAllUserTokens(user);
+            var jwtToken = jwtService.generateToken(user);
+            var accessToken = saveUserToken(user, jwtToken);
+            var refreshToken = jwtService.generateRefreshToken(user);
+            return buildAuthenticationResponse(accessToken, refreshToken.token(), user);
+        } finally {
             ArchbaseTenantContext.clear();
         }
     }
@@ -254,6 +306,18 @@ public class ArchbaseAuthenticationService {
                 throw new JwtException("Token de refresh inválido");
             }
 
+            // O estado da conta é reavaliado a cada refresh: sem isto, uma conta desativada,
+            // bloqueada ou marcada para troca obrigatória de senha continuaria renovando tokens
+            // indefinidamente, driblando as checagens feitas no login.
+            if (!user.isEnabled()) {
+                log.warn("Refresh negado: conta desativada ou bloqueada para o usuário {}", userEmail);
+                throw new DisabledException("Conta desativada ou bloqueada");
+            }
+            if (!user.isCredentialsNonExpired()) {
+                log.warn("Refresh negado: credenciais expiradas para o usuário {}", userEmail);
+                throw new CredentialsExpiredException("As credenciais do usuário expiraram");
+            }
+
             // Sempre revogar tokens antigos para evitar acumulação
             revokeAllUserTokens(user);
 
@@ -291,7 +355,9 @@ public class ArchbaseAuthenticationService {
         }
         UserEntity user = usuarioOptional.get();
         revokeExistingTokens(user);
-        if (user.getAllowPasswordChange()) {
+        // Coluna nula (base legada) é tratada como "pode alterar": o padrão do cadastro é true e
+        // negar o reset por ausência de dado trancaria o usuário fora da conta.
+        if (!Boolean.FALSE.equals(user.getAllowPasswordChange())) {
             String passwordResetToken = createPasswordResetToken(user.toDomain());
             archbaseEmailService.sendResetPasswordEmail(email, passwordResetToken, user.getUsername(), user.getName());
         } else {
@@ -339,6 +405,9 @@ public class ArchbaseAuthenticationService {
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        // A troca obrigatória foi cumprida com token válido: limpa a exigência e
+        // reinicia a contagem da expiração periódica.
+        user.markPasswordChanged();
 
         repository.save(user);
         token.revokeToken();
@@ -373,6 +442,7 @@ public class ArchbaseAuthenticationService {
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.markPasswordChanged();
 
         repository.save(user);
         token.revokeToken();
@@ -412,6 +482,12 @@ public class ArchbaseAuthenticationService {
 
             // 2. Autenticação básica usando lógica existente
             AuthenticationResponse baseResponse = authenticate(contextualRequest.toBasicRequest());
+
+            // 2b. MFA pendente: devolve o desafio direto, sem pós-processar/enriquecer
+            // (baseResponse ainda não tem usuário nem tokens).
+            if (Boolean.TRUE.equals(baseResponse.getMfaRequired())) {
+                return baseResponse;
+            }
 
             // 3. Pós-autenticação: ações customizadas via delegate
             if (businessDelegate != null && contextualRequest.getContext() != null) {

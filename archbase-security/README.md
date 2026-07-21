@@ -88,7 +88,51 @@ archbase.security.jwt.secret-key=secret-key
 
 # Validade do token JWT (em milissegundos)
 archbase.security.jwt.token-expiration=3600000
+
+# Validade da senha em dias (0 = sem expiração periódica, padrão)
+archbase.security.password.expiration-days=0
 ```
+
+## Expiração de senha e troca obrigatória
+
+O Spring Security consulta `UserDetails#isCredentialsNonExpired()` antes de autenticar. No
+`archbase-security` a regra é, nesta ordem:
+
+| Condição | Resultado |
+|----------|-----------|
+| `BO_ALTERAR_SENHA_PROXIMO_LOGIN = 'S'` (`changePasswordOnNextLogin`) | credenciais **expiradas** — força a troca |
+| `BO_SENHA_NUNCA_EXPIRA = 'S'` (`passwordNeverExpires`) ou nulo | credenciais válidas |
+| `BO_SENHA_NUNCA_EXPIRA = 'N'` e `archbase.security.password.expiration-days = 0` | credenciais válidas (política desligada) |
+| `BO_SENHA_NUNCA_EXPIRA = 'N'` e senha mais antiga que o prazo | credenciais **expiradas** |
+
+A base do cálculo é a coluna `DT_ULTIMA_TROCA_SENHA`, atualizada automaticamente em todo fluxo de
+troca de senha (`/auth/resetPassword`, `/auth/changePassword`, troca autenticada e atualização
+administrativa). Usuário sem essa data (base legada) nunca expira por tempo — ligar a política não
+derruba o login de toda a base de uma vez.
+
+Ao redefinir a senha com token válido, `changePasswordOnNextLogin` é zerado e a contagem de validade
+reiniciada; o usuário entra normalmente no login seguinte.
+
+### Migração de schema (aditiva)
+
+```sql
+-- PostgreSQL
+ALTER TABLE SEGURANCA ADD COLUMN IF NOT EXISTS DT_ULTIMA_TROCA_SENHA TIMESTAMP NULL;
+
+-- Oracle
+ALTER TABLE SEGURANCA ADD (DT_ULTIMA_TROCA_SENHA TIMESTAMP NULL);
+```
+
+> `SEGURANCA` é a tabela única da hierarquia `SecurityEntity` (`SINGLE_TABLE`, discriminador
+> `TP_SEGURANCA`). A coluna é nullable — nenhum backfill é necessário.
+
+### Mudança de comportamento (3.0.x → 3.1)
+
+Até a 3.0.x, `isCredentialsNonExpired()` retornava `passwordNeverExpires` diretamente: qualquer
+usuário com `BO_SENHA_NUNCA_EXPIRA = 'N'` era tratado como **"credenciais expiradas agora"** e não
+conseguia autenticar nem logo após um reset de senha bem-sucedido. Quem usava esse efeito colateral
+para forçar a troca de senha deve passar a usar `BO_ALTERAR_SENHA_PROXIMO_LOGIN = 'S'`, e quem quer
+expiração periódica real deve configurar `archbase.security.password.expiration-days`.
 
 ## Customização e Extensão
 

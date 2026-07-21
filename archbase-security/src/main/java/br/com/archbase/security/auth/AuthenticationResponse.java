@@ -30,4 +30,11 @@ public class AuthenticationResponse {
   @JsonProperty("context")
   private Object context;
 
+  /** Sinaliza que a senha conferiu mas falta o 2º fator (MFA); os tokens ainda não vêm. */
+  @JsonProperty("mfa_required")
+  private Boolean mfaRequired;
+  /** Token curto de desafio para completar o MFA em {@code POST /auth/mfa/verify}. */
+  @JsonProperty("challenge_token")
+  private String challengeToken;
+
 }

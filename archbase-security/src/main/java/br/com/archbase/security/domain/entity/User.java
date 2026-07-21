@@ -28,6 +28,7 @@ public class User extends Security<User, User> implements AggregateRoot<User, Id
     protected Boolean allowPasswordChange;
     protected Boolean allowMultipleLogins;
     protected Boolean passwordNeverExpires;
+    protected LocalDateTime passwordChangedAt;
     protected Boolean accountDeactivated = Boolean.FALSE;
     protected Boolean accountLocked = Boolean.FALSE;
     protected Boolean unlimitedAccessHours;
@@ -41,7 +42,7 @@ public class User extends Security<User, User> implements AggregateRoot<User, Id
     protected String externalId; // ID externo para integração com sistemas terceiros (ex: Keycloak, LDAP, etc.)
 
     @Builder
-    public User(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, AccessSchedule accessSchedule, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessSchedule accessSchedule1, List<UserGroup> groups, Profile profile, byte[] avatar, String email, String nickname, String externalId) {
+    public User(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, AccessSchedule accessSchedule, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, LocalDateTime passwordChangedAt, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessSchedule accessSchedule1, List<UserGroup> groups, Profile profile, byte[] avatar, String email, String nickname, String externalId) {
         super(id, code, version, updateEntityDate, createEntityDate, createdByUser, lastModifiedByUser, name, description, accessSchedule);
         this.userName = userName;
         this.password = password;
@@ -49,6 +50,7 @@ public class User extends Security<User, User> implements AggregateRoot<User, Id
         this.allowPasswordChange = allowPasswordChange;
         this.allowMultipleLogins = allowMultipleLogins;
         this.passwordNeverExpires = passwordNeverExpires;
+        this.passwordChangedAt = passwordChangedAt;
         this.accountDeactivated = accountDeactivated;
         this.accountLocked = accountLocked;
         this.unlimitedAccessHours = unlimitedAccessHours;
