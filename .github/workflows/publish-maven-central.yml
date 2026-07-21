@@ -51,9 +51,18 @@ jobs:
       - name: Extract tag message for release notes
         id: tag_message
         run: |
-          # O checkout em cima de uma tag pode vir raso; garante o objeto da tag anotada.
+          TAG="${GITHUB_REF#refs/tags/}"
+
+          # O actions/checkout cria a ref da tag apontando direto para o commit, sem trazer
+          # o objeto da tag anotada. Sem este fetch, '%(contents)' devolve a mensagem do
+          # COMMIT em vez das notas da tag.
           git fetch --tags --force --depth=1 2>/dev/null || true
-          MESSAGE=$(git tag -l --format='%(contents)' "${GITHUB_REF#refs/tags/}")
+
+          # Só usa a mensagem se for de fato uma tag anotada (objeto do tipo 'tag').
+          MESSAGE=""
+          if [ "$(git cat-file -t "$TAG" 2>/dev/null)" = "tag" ]; then
+            MESSAGE=$(git tag -l --format='%(contents)' "$TAG")
+          fi
           if [ -z "$MESSAGE" ]; then
             MESSAGE="Release v${{ steps.get_version.outputs.VERSION }}"
           fi
