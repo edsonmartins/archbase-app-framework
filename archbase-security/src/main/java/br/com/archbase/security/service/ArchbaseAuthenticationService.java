@@ -24,6 +24,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.CredentialsExpiredException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -305,6 +306,18 @@ public class ArchbaseAuthenticationService {
                 throw new JwtException("Token de refresh inválido");
             }
 
+            // O estado da conta é reavaliado a cada refresh: sem isto, uma conta desativada,
+            // bloqueada ou marcada para troca obrigatória de senha continuaria renovando tokens
+            // indefinidamente, driblando as checagens feitas no login.
+            if (!user.isEnabled()) {
+                log.warn("Refresh negado: conta desativada ou bloqueada para o usuário {}", userEmail);
+                throw new DisabledException("Conta desativada ou bloqueada");
+            }
+            if (!user.isCredentialsNonExpired()) {
+                log.warn("Refresh negado: credenciais expiradas para o usuário {}", userEmail);
+                throw new CredentialsExpiredException("As credenciais do usuário expiraram");
+            }
+
             // Sempre revogar tokens antigos para evitar acumulação
             revokeAllUserTokens(user);
 
@@ -342,7 +355,9 @@ public class ArchbaseAuthenticationService {
         }
         UserEntity user = usuarioOptional.get();
         revokeExistingTokens(user);
-        if (user.getAllowPasswordChange()) {
+        // Coluna nula (base legada) é tratada como "pode alterar": o padrão do cadastro é true e
+        // negar o reset por ausência de dado trancaria o usuário fora da conta.
+        if (!Boolean.FALSE.equals(user.getAllowPasswordChange())) {
             String passwordResetToken = createPasswordResetToken(user.toDomain());
             archbaseEmailService.sendResetPasswordEmail(email, passwordResetToken, user.getUsername(), user.getName());
         } else {
@@ -390,6 +405,9 @@ public class ArchbaseAuthenticationService {
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        // A troca obrigatória foi cumprida com token válido: limpa a exigência e
+        // reinicia a contagem da expiração periódica.
+        user.markPasswordChanged();
 
         repository.save(user);
         token.revokeToken();
@@ -424,6 +442,7 @@ public class ArchbaseAuthenticationService {
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.markPasswordChanged();
 
         repository.save(user);
         token.revokeToken();

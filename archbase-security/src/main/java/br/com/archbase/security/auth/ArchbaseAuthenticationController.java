@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.CredentialsExpiredException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -126,6 +127,21 @@ public class ArchbaseAuthenticationController {
     public ResponseEntity<?> refreshToken(@RequestBody RefreshTokenRequest refreshToken) {
         try {
             return ResponseEntity.ok(service.refreshToken(refreshToken));
+        } catch (CredentialsExpiredException e) {
+            log.warn("Refresh negado, credenciais expiradas: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of(
+                    "error", "CREDENTIALS_EXPIRED",
+                    "message", "As credenciais do usuário expiraram. É necessário alterar a senha.",
+                    "requirePasswordChange", true
+                ));
+        } catch (DisabledException e) {
+            log.warn("Refresh negado, conta desativada ou bloqueada: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of(
+                    "error", "ACCOUNT_DISABLED",
+                    "message", "Conta desativada ou bloqueada."
+                ));
         } catch (JwtException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(e.getMessage());
         } catch (ArchbaseValidationException e) {
