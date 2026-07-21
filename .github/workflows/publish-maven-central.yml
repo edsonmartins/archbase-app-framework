@@ -98,9 +98,11 @@ jobs:
           body: |
             ## 🚀 Archbase Framework v${{ steps.get_version.outputs.VERSION }}
 
-            ### What's New
-            - Migrated from Undertow to Jetty web server
-            - Java 21 required (Virtual Threads support)
+            > Linha de manutenção 2.1.x (Spring Boot 3.5, Java 21). A linha atual é a 3.x —
+            > veja a release mais recente para as novidades.
+
+            ### Nesta linha
+            - Spring Boot 3.5 / Jetty / Java 21 (Virtual Threads)
             - Enable Virtual Threads: `spring.threads.virtual.enabled=true`
 
             ### Módulos publicados
@@ -151,6 +153,10 @@ jobs:
             See [V1 branch](https://github.com/edsonmartins/archbase-app-framework/tree/V1) for version 1.x documentation.
           draft: false
           prerelease: false
+          # Sem isto, o action-gh-release marca a release recém-criada como "Latest".
+          # Como esta é a linha de manutenção 2.1.x, publicar daqui empurraria a 3.x
+          # para baixo na página de releases.
+          make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

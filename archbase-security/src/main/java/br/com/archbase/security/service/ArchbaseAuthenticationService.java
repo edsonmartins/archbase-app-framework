@@ -265,7 +265,9 @@ public class ArchbaseAuthenticationService {
         }
         UserEntity user = usuarioOptional.get();
         revokeExistingTokens(user);
-        if (user.getAllowPasswordChange()) {
+        // Coluna nula (base legada) é tratada como "pode alterar": o padrão do cadastro é true e
+        // negar o reset por ausência de dado trancaria o usuário fora da conta.
+        if (!Boolean.FALSE.equals(user.getAllowPasswordChange())) {
             String passwordResetToken = createPasswordResetToken(user.toDomain());
             archbaseEmailService.sendResetPasswordEmail(email, passwordResetToken, user.getUsername(), user.getName());
         } else {
@@ -313,6 +315,9 @@ public class ArchbaseAuthenticationService {
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        // A troca obrigatória foi cumprida com token válido: limpa a exigência e
+        // reinicia a contagem da expiração periódica.
+        user.markPasswordChanged();
 
         repository.save(user);
         token.revokeToken();
@@ -347,6 +352,7 @@ public class ArchbaseAuthenticationService {
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.markPasswordChanged();
 
         repository.save(user);
         token.revokeToken();

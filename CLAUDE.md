@@ -246,6 +246,8 @@ archbase.security.jwt.secret=your-secret
 archbase.security.jwt.expiration=86400000
 archbase.security.method.enabled=true
 archbase.security.permission.cache.enabled=true
+# Validade da senha em dias (0 = sem expiração periódica)
+archbase.security.password.expiration-days=0
 
 # RSQL
 archbase.rsql.enabled=true
