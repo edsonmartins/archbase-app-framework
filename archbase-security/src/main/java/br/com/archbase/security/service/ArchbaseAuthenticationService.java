@@ -390,6 +390,9 @@ public class ArchbaseAuthenticationService {
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        // A troca obrigatória foi cumprida com token válido: limpa a exigência e
+        // reinicia a contagem da expiração periódica.
+        user.markPasswordChanged();
 
         repository.save(user);
         token.revokeToken();
@@ -424,6 +427,7 @@ public class ArchbaseAuthenticationService {
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.markPasswordChanged();
 
         repository.save(user);
         token.revokeToken();

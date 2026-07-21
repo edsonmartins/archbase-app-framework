@@ -81,7 +81,11 @@ public class UserPersistenceAdapter implements UserPersistencePort, FindDataWith
 
     @Override
     public UserDto createUser(UserDto userDto)  {
-        return repository.save(UserEntity.fromDomain(userDto.toDomain())).toDto();
+        UserEntity entity = UserEntity.fromDomain(userDto.toDomain());
+        if (entity.getPasswordChangedAt() == null) {
+            entity.setPasswordChangedAt(LocalDateTime.now());
+        }
+        return repository.save(entity).toDto();
     }
 
     @Override
@@ -95,8 +99,13 @@ public class UserPersistenceAdapter implements UserPersistencePort, FindDataWith
                     existingEntity.setNickname(userDto.getNickname());
                     existingEntity.setDescription(userDto.getDescription());
                     existingEntity.setCode(userDto.getCode());
-                    if (!StringUtils.isBlank(userDto.getPassword())) {
+                    if (!StringUtils.isBlank(userDto.getPassword())
+                            && !userDto.getPassword().equals(existingEntity.getPassword())) {
                         existingEntity.setPassword(userDto.getPassword());
+                        // Reinicia a contagem da expiração periódica. A exigência de troca no
+                        // próximo login não é limpa aqui: quem administra o usuário a define
+                        // explicitamente logo abaixo.
+                        existingEntity.setPasswordChangedAt(LocalDateTime.now());
                     }
                     existingEntity.setAvatar(userDto.getAvatar());
                     existingEntity.setAccountDeactivated(userDto.getAccountDeactivated());

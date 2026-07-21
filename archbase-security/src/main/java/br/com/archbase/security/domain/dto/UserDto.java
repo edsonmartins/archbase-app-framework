@@ -25,6 +25,7 @@ public class UserDto extends SecurityDto {
 	protected Boolean allowPasswordChange;
 	protected Boolean allowMultipleLogins;
 	protected Boolean passwordNeverExpires;
+	protected LocalDateTime passwordChangedAt;
 	protected Boolean accountDeactivated = Boolean.FALSE;
 	protected Boolean accountLocked = Boolean.FALSE;
 	protected Boolean unlimitedAccessHours;
@@ -38,7 +39,7 @@ public class UserDto extends SecurityDto {
 	protected String externalId;
 
 	@Builder
-	public UserDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Set<ActionDto> actions, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleDto accessSchedule, List<UserGroupDto> groups, ProfileDto profile, byte[] avatar, String email, String nickname, String externalId) {
+	public UserDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Set<ActionDto> actions, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, LocalDateTime passwordChangedAt, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleDto accessSchedule, List<UserGroupDto> groups, ProfileDto profile, byte[] avatar, String email, String nickname, String externalId) {
 		super(id, code, version, createEntityDate, updateEntityDate, createdByUser, lastModifiedByUser, name, description, actions);
 		this.userName = userName;
 		this.password = password;
@@ -46,6 +47,7 @@ public class UserDto extends SecurityDto {
 		this.allowPasswordChange = allowPasswordChange;
 		this.allowMultipleLogins = allowMultipleLogins;
 		this.passwordNeverExpires = passwordNeverExpires;
+		this.passwordChangedAt = passwordChangedAt;
 		this.accountDeactivated = accountDeactivated;
 		this.accountLocked = accountLocked;
 		this.unlimitedAccessHours = unlimitedAccessHours;
@@ -81,6 +83,7 @@ public class UserDto extends SecurityDto {
 				.allowPasswordChange(user.getAllowPasswordChange())
 				.allowMultipleLogins(user.getAllowMultipleLogins())
 				.passwordNeverExpires(user.getPasswordNeverExpires())
+				.passwordChangedAt(user.getPasswordChangedAt())
 				.accountDeactivated(user.getAccountDeactivated())
 				.accountLocked(user.getAccountLocked())
 				.unlimitedAccessHours(user.getUnlimitedAccessHours())
@@ -114,6 +117,7 @@ public class UserDto extends SecurityDto {
 				.allowPasswordChange(this.allowPasswordChange)
 				.allowMultipleLogins(this.allowMultipleLogins)
 				.passwordNeverExpires(this.passwordNeverExpires)
+				.passwordChangedAt(this.passwordChangedAt)
 				.accountDeactivated(this.accountDeactivated)
 				.accountLocked(this.accountLocked)
 				.unlimitedAccessHours(this.unlimitedAccessHours)
