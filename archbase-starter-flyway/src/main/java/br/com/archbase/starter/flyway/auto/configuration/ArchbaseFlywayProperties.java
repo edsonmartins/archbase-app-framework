@@ -26,6 +26,22 @@ public class ArchbaseFlywayProperties {
      */
     private String baselineVersion = "0";
 
+    /**
+     * Acrescenta {@code classpath:db/migration/archbase} às locations do projeto, para que a
+     * evolução dos schemas dos próprios módulos do framework (ex.: as tabelas de segurança) venha
+     * junto da dependência, em vez de ser redescoberta em cada projeto quando a aplicação deixa de
+     * subir. As migrações de lá são {@code R__} idempotentes. Padrão: {@code true}.
+     */
+    private boolean includeArchbaseLocations = true;
+
+    public boolean isIncludeArchbaseLocations() {
+        return includeArchbaseLocations;
+    }
+
+    public void setIncludeArchbaseLocations(boolean includeArchbaseLocations) {
+        this.includeArchbaseLocations = includeArchbaseLocations;
+    }
+
     public boolean isEnabled() {
         return enabled;
     }
