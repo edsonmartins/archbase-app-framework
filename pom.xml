@@ -95,6 +95,7 @@
         <module>archbase-starter-messaging</module>
         <module>archbase-modular-monolith</module>
         <module>archbase-offline-sync</module>
+        <module>archbase-starter-offline-sync</module>
     </modules>
 
     <packaging>pom</packaging>
