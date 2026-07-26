@@ -13,6 +13,7 @@
     import org.springframework.beans.factory.annotation.Autowired;
     import org.springframework.data.domain.Page;
     import org.springframework.stereotype.Service;
+    import org.springframework.transaction.annotation.Transactional;
 
     import org.slf4j.Logger;
     import org.slf4j.LoggerFactory;
@@ -145,7 +146,15 @@
             return apiTokenPersistenceAdapter.validateToken(token);
         }
 
+        /**
+         * <b>Transacional de propósito.</b> Quem chama é o filtro de autenticação, que roda na
+         * cadeia de servlet — fora do {@code OpenEntityManagerInView}, que só abre no interceptor
+         * do MVC. Sem uma transação aqui, o {@code toDomain()} estoura ao tocar as coleções lazy do
+         * usuário ({@code groups}) com "no session", e a autenticação por token de API falhava
+         * depois de o token já ter sido dado como válido.
+         */
         @Override
+        @Transactional(readOnly = true)
         public Optional<ApiToken> getApiToken(String token) {
             Optional<ApiTokenEntity> optionalApiTokenEntity = apiTokenPersistenceAdapter.findByToken(token);
             return optionalApiTokenEntity.map(ApiTokenEntity::toDomain);
