@@ -38,12 +38,24 @@ public abstract class BaseArchbaseSecurityConfiguration implements ArchbaseSecur
                 })
                 .sessionManagement(session -> session.sessionCreationPolicy(STATELESS))
                 .addFilterBefore(getJwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class)
-                // Adicione o tratamento de exceção para capturar detalhes de erros de acesso
+                // Erros de acesso: 401 quando não há autenticação válida (token ausente/expirado),
+                // 403 quando há mas falta permissão. Sem o entry point o Spring devolvia 403 para
+                // os dois — e clientes que renovam a sessão em 401 (o interceptor do
+                // archbase-flutter, por exemplo) nunca disparavam o refresh.
                 .exceptionHandling(handling -> handling
+                        .authenticationEntryPoint(getAuthenticationEntryPoint())
                         .accessDeniedHandler(getAccessDeniedHandler()));
     }
 
     protected abstract CustomAccessDeniedHandler getAccessDeniedHandler();
+
+    /**
+     * Entry point para requisições não autenticadas. Default: {@link CustomAuthenticationEntryPoint}
+     * (401). Sobrescreva apenas se a aplicação precisar de outro corpo/comportamento.
+     */
+    protected CustomAuthenticationEntryPoint getAuthenticationEntryPoint() {
+        return new CustomAuthenticationEntryPoint();
+    }
 
     // Adicione estes métodos abstratos para CORS
     protected abstract List<String> getAllowedOrigins();

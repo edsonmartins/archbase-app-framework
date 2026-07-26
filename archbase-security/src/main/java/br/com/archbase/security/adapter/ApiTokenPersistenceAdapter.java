@@ -112,14 +112,23 @@ public class ApiTokenPersistenceAdapter implements FindDataWithFilterQuery<Strin
 
         log.debug("validateToken - Token={}, TenantId do contexto={}, Now={}", token, tenantId, now);
 
-        String sql = "SELECT * FROM seguranca_token_api WHERE token = :token AND tenant_id = :tenantId " +
-                     "AND bo_revogado = 'N' AND bo_ativado = 'S' AND dh_expiracao > :now";
+        // O tenant do CONTEXTO só entra como filtro quando existe. Esta validação acontece dentro
+        // da cadeia do Spring Security, que roda ANTES dos filtros de aplicação que resolvem o
+        // tenant pelo header: exigi-lo sempre fazia um token correto e registrado ser recusado com
+        // 401, sem nada no log apontando a causa. O token é único por si (UUID) e a linha carrega o
+        // próprio tenant — que continua sendo a fonte de verdade para quem autentica.
+        boolean scoped = tenantId != null && !tenantId.isBlank();
+        String sql = "SELECT * FROM seguranca_token_api WHERE token = :token "
+                + (scoped ? "AND tenant_id = :tenantId " : "")
+                + "AND bo_revogado = 'N' AND bo_ativado = 'S' AND dh_expiracao > :now";
 
-        List<ApiTokenEntity> results = entityManager.createNativeQuery(sql, ApiTokenEntity.class)
+        var query = entityManager.createNativeQuery(sql, ApiTokenEntity.class)
                 .setParameter("token", token)
-                .setParameter("tenantId", tenantId)
-                .setParameter("now", now)
-                .getResultList();
+                .setParameter("now", now);
+        if (scoped) {
+            query.setParameter("tenantId", tenantId);
+        }
+        List<ApiTokenEntity> results = query.getResultList();
 
         boolean isValid = !results.isEmpty();
 
@@ -128,11 +137,11 @@ public class ApiTokenPersistenceAdapter implements FindDataWithFilterQuery<Strin
             log.info("Token válido: ID={}, Nome={}, TenantId={}, Expiration={}",
                     result.getId(), result.getName(), result.getTenantId(), result.getExpirationDate());
         } else {
-            // Buscar para diagnóstico (sem filtros de validação)
-            String diagSql = "SELECT * FROM seguranca_token_api WHERE token = :token AND tenant_id = :tenantId";
+            // Buscar para diagnóstico (sem filtros de validação, e sem tenant: se a linha existe em
+            // outro tenant, o log tem de dizer isso — era justamente o caso que ficava invisível)
+            String diagSql = "SELECT * FROM seguranca_token_api WHERE token = :token";
             List<ApiTokenEntity> diagResults = entityManager.createNativeQuery(diagSql, ApiTokenEntity.class)
                     .setParameter("token", token)
-                    .setParameter("tenantId", tenantId)
                     .getResultList();
 
             if (!diagResults.isEmpty()) {
