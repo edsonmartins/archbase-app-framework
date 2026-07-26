@@ -87,6 +87,11 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
                 "/bootui",
                 "/bootui/**",
                 // Outros caminhos
+                // A rota de erro do container. A cadeia de segurança também filtra o dispatch
+                // ERROR: sem liberá-la, o redespacho do erro é barrado e o status que chega ao
+                // cliente vira 403 — inclusive para um 404 de rota inexistente ou para o 401 que o
+                // entry point acabou de escrever.
+                "/error",
                 "/actuator/**",
                 "/api/files/**",
                 "/static/**",
