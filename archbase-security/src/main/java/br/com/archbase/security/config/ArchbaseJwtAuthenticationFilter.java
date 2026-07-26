@@ -91,10 +91,19 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
             // Processar header de autorização
             if (authHeader != null) {
                 if (authHeader.startsWith("Bearer ")) {
-                    // Token JWT (usuário/senha)
                     String token = authHeader.substring(7);
-                    log.debug("Processando Bearer token: {}", maskToken(token));
-                    processJwtToken(token, request);
+                    if (isValidUUID(token)) {
+                        // Token de API apresentado como Bearer — a forma padrão de mandar um token
+                        // opaco (RFC 6750), e o que todo cliente HTTP genérico faz. Antes só era
+                        // reconhecido cru no header: quem seguia o padrão levava 401 sem
+                        // explicação, porque o valor seguia para o parser de JWT e falhava lá.
+                        log.debug("Processando API token via Bearer: {}", maskUUID(token));
+                        processApiToken(token, request);
+                    } else {
+                        // Token JWT (usuário/senha)
+                        log.debug("Processando Bearer token: {}", maskToken(token));
+                        processJwtToken(token, request);
+                    }
                 } else if (isValidUUID(authHeader)) {
                     // Token API (UUID direto)
                     log.debug("Processando API token (UUID): {}", maskUUID(authHeader));

@@ -112,8 +112,20 @@
                     .revoked(false)
                     .activated(false)
                     .build();
-            emailService.sendActivationTokenApiEmail(email, token, user.getUsername(), name);
-            return apiTokenRepository.save(apiToken).toDto();
+            // Persiste ANTES de notificar. Na ordem anterior, o e-mail saía primeiro: sem uma
+            // implementação de ArchbaseEmailService o default lança e o token nunca chegava a ser
+            // criado (500 na criação); e, mesmo com e-mail configurado, uma falha no save mandava
+            // ao usuário um token que não existe.
+            ApiTokenDto saved = apiTokenRepository.save(apiToken).toDto();
+            try {
+                emailService.sendActivationTokenApiEmail(email, token, user.getUsername(), name);
+            } catch (RuntimeException e) {
+                // Notificar é acessório: quem chamou já recebeu o token na resposta e pode ativá-lo.
+                // Falhar aqui destruiria o token recém-criado por causa do canal de aviso.
+                logger.warn("Token de API '{}' criado, mas o e-mail de ativação não foi enviado: {}",
+                        name, e.getMessage());
+            }
+            return saved;
         }
 
         @Override
