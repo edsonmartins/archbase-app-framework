@@ -6,6 +6,8 @@ import br.com.archbase.security.service.ArchbaseSecurityService;
 import org.aopalliance.intercept.MethodInvocation;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.authorization.AuthorizationManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
@@ -14,6 +16,8 @@ import java.util.function.Supplier;
 
 @Component
 public class CustomAuthorizationManager implements AuthorizationManager<MethodInvocation> {
+
+    private static final Logger log = LoggerFactory.getLogger(CustomAuthorizationManager.class);
     
     private final ArchbaseSecurityService securityService;
     
@@ -49,7 +53,12 @@ public class CustomAuthorizationManager implements AuthorizationManager<MethodIn
             return new AuthorizationDecision(hasAccess);
             
         } catch (Exception e) {
-            // Log do erro se necessário
+            // Falha ao AVALIAR a permissão não é o mesmo que "não tem permissão", mas negar é a
+            // opção segura. O que não pode é negar em silêncio: sem este log, um erro de consulta ou
+            // um principal inesperado viram um 403 idêntico ao de falta de permissão, e a
+            // investigação vai parar no cadastro de permissões — que está correto.
+            log.error("Erro ao avaliar permissão action={} resource={}: {}",
+                    hasPermission.action(), hasPermission.resource(), e.getMessage(), e);
             return new AuthorizationDecision(false);
         }
     }

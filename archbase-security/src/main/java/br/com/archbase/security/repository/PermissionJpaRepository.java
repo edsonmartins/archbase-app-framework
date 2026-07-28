@@ -27,6 +27,29 @@ public interface PermissionJpaRepository extends ArchbaseCommonJpaRepository<Per
             @Param("resourceName") String resourceName);
 
     /**
+     * Igual à consulta acima, mas para um CONJUNTO de IDs de segurança — usuário, grupos e perfil.
+     *
+     * <p>É esta a consulta que a AUTORIZAÇÃO deve usar. A versão por id único enxerga apenas as
+     * permissões concedidas diretamente ao usuário e ignora tudo o que ele herda de grupo e de perfil.
+     *
+     * @param securityIds  IDs de segurança (usuário, grupos e perfil)
+     * @param actionName   Nome da ação
+     * @param resourceName Nome do recurso
+     * @return Permissões correspondentes, vindas de qualquer um dos IDs informados
+     */
+    @Query("SELECT DISTINCT p FROM PermissionEntity p " +
+            "JOIN p.security u " +
+            "JOIN p.action a " +
+            "JOIN a.resource r " +
+            "WHERE u.id IN :securityIds " +
+            "AND a.name = :actionName " +
+            "AND r.name = :resourceName")
+    List<PermissionEntity> findBySecurityIdsAndActionNameAndResourceName(
+            @Param("securityIds") Set<String> securityIds,
+            @Param("actionName") String actionName,
+            @Param("resourceName") String resourceName);
+
+    /**
      * Busca todas as permissões para um conjunto de IDs de segurança (user, groups, profile).
      * Faz join eagerly com action e resource para evitar N+1.
      *
