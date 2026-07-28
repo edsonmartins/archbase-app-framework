@@ -13,12 +13,11 @@
     <name>Archbase Security</name>
 
     <dependencies>
-        <dependency>
-            <groupId>org.objenesis</groupId>
-            <artifactId>objenesis</artifactId>
-            <version>1.0</version>
-            <scope>test</scope>
-        </dependency>
+        <!--
+          objenesis 1.0 REMOVIDO: sobrescrevia a versão que o Mockito 5 traz e quebrava a criação de
+          mocks com "Could not initialize plugin: org.mockito.plugins.MockMaker". Quem precisa de
+          objenesis é o próprio Mockito, que já o declara na versão certa.
+        -->
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-shared-kernel</artifactId>
