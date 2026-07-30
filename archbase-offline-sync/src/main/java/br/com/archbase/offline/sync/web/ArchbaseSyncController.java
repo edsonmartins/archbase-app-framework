@@ -2,7 +2,10 @@ package br.com.archbase.offline.sync.web;
 
 import br.com.archbase.offline.sync.dto.SyncBatchRequestDTO;
 import br.com.archbase.offline.sync.dto.SyncBatchResponseDTO;
+import br.com.archbase.offline.sync.dto.SyncStatusRequestDTO;
+import br.com.archbase.offline.sync.dto.SyncStatusResponseDTO;
 import br.com.archbase.offline.sync.service.SyncOperationProcessor;
+import br.com.archbase.offline.sync.service.SyncStatusQueryService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -18,11 +21,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class ArchbaseSyncController {
 
     private final SyncOperationProcessor processor;
+    private final SyncStatusQueryService statusQuery;
     private final AppVersionGate versionGate;
 
     public ArchbaseSyncController(SyncOperationProcessor processor,
+                                  SyncStatusQueryService statusQuery,
                                   AppVersionGate versionGate) {
         this.processor = processor;
+        this.statusQuery = statusQuery;
         this.versionGate = versionGate;
     }
 
@@ -33,5 +39,17 @@ public class ArchbaseSyncController {
             @RequestBody SyncBatchRequestDTO request) {
         versionGate.check(appVersion); // lança 426 se incompatível
         return processor.process(request);
+    }
+
+    /**
+     * Reconciliação por transação: dado um conjunto de {@code operationId} que o
+     * cliente ainda não confirmou, devolve quais já foram processados no servidor.
+     * Read-only (não reexecuta nada). Resolve "commitou mas o response se perdeu".
+     */
+    @PostMapping(value = "/operations/status",
+            consumes = "application/json", produces = "application/json")
+    public SyncStatusResponseDTO operationsStatus(
+            @RequestBody SyncStatusRequestDTO request) {
+        return statusQuery.processed(request);
     }
 }
