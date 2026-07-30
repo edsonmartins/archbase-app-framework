@@ -3,6 +3,7 @@ package br.com.archbase.offline.sync.service;
 import br.com.archbase.offline.sync.dto.SyncAckDTO;
 import br.com.archbase.offline.sync.dto.SyncOperationDTO;
 import br.com.archbase.offline.sync.exception.SyncConflictException;
+import br.com.archbase.offline.sync.exception.SyncRejectedException;
 import br.com.archbase.offline.sync.exception.SyncSkippedException;
 import br.com.archbase.offline.sync.persistence.ProcessedSyncOperation;
 import br.com.archbase.offline.sync.persistence.ProcessedSyncOperationRepository;
@@ -74,6 +75,11 @@ public class SyncOperationExecutor implements SyncOperationExecutorPort {
             // Não persiste como processada: permite reenvio após resolução.
             // Retorno normal = a transação (sem efeito) só faz commit vazio.
             return SyncAckDTO.conflict(op.id, e.getDetail());
+        } catch (SyncRejectedException e) {
+            // Erro de negócio TERMINAL: não persiste (não foi processada) e não
+            // deve ser retentado às cegas. O cliente marca o registro em erro
+            // com este motivo. Diferente de FAILED (transitório) abaixo.
+            return SyncAckDTO.rejected(op.id, e.getMessage());
         }
         // Demais RuntimeException propagam → REQUIRES_NEW faz rollback só desta op;
         // o processador mapeia para FAILED (transitório).
