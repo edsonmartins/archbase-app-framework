@@ -91,8 +91,10 @@ class SyncRequiresNewIntegrationTest {
         @Bean
         SyncOperationExecutor syncOperationExecutor(ProcessedSyncOperationRepository repo,
                                                     SyncTenantProvider tenant,
+                                                    org.springframework.beans.factory.ObjectProvider<
+                                                            br.com.archbase.offline.sync.spi.SyncUserProvider> userProvider,
                                                     java.util.List<SyncOperationHandler> handlers) {
-            return new SyncOperationExecutor(repo, tenant, handlers);
+            return new SyncOperationExecutor(repo, tenant, userProvider, handlers);
         }
 
         @Bean

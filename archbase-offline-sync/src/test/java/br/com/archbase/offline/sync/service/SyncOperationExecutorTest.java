@@ -10,12 +10,17 @@ import br.com.archbase.offline.sync.persistence.ProcessedSyncOperationRepository
 import br.com.archbase.offline.sync.spi.SyncHandlerResult;
 import br.com.archbase.offline.sync.spi.SyncOperationHandler;
 import br.com.archbase.offline.sync.spi.SyncTenantProvider;
+import br.com.archbase.offline.sync.spi.SyncUserProvider;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.List;
 import java.util.function.Function;
 
+import org.mockito.ArgumentCaptor;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -46,6 +51,11 @@ class SyncOperationExecutorTest {
 
     private final SyncTenantProvider tenant = () -> "t1";
 
+    // ObjectProvider vazio (mock devolve null em getIfAvailable) → userId nulo.
+    @SuppressWarnings("unchecked")
+    private final ObjectProvider<SyncUserProvider> noUser =
+            (ObjectProvider<SyncUserProvider>) mock(ObjectProvider.class);
+
     private SyncOperationDTO op(String type) {
         SyncOperationDTO o = new SyncOperationDTO();
         o.id = "op1";
@@ -59,7 +69,7 @@ class SyncOperationExecutorTest {
         ProcessedSyncOperationRepository repo = mock(ProcessedSyncOperationRepository.class);
         when(repo.existsByTenantIdAndOperationId("t1", "op1")).thenReturn(true);
         TestHandler h = new TestHandler("T", o -> SyncHandlerResult.ok());
-        SyncOperationExecutor ex = new SyncOperationExecutor(repo, tenant, List.of(h));
+        SyncOperationExecutor ex = new SyncOperationExecutor(repo, tenant, noUser, List.of(h));
 
         SyncAckDTO ack = ex.execute(op("T"));
 
@@ -72,7 +82,7 @@ class SyncOperationExecutorTest {
         ProcessedSyncOperationRepository repo = mock(ProcessedSyncOperationRepository.class);
         when(repo.existsByTenantIdAndOperationId(any(), any())).thenReturn(false);
         TestHandler h = new TestHandler("T", o -> SyncHandlerResult.version(7L));
-        SyncOperationExecutor ex = new SyncOperationExecutor(repo, tenant, List.of(h));
+        SyncOperationExecutor ex = new SyncOperationExecutor(repo, tenant, noUser, List.of(h));
 
         SyncAckDTO ack = ex.execute(op("T"));
 
@@ -82,13 +92,48 @@ class SyncOperationExecutorTest {
     }
 
     @Test
+    void auditoria_userId_populadoQuandoProviderPresente() {
+        ProcessedSyncOperationRepository repo = mock(ProcessedSyncOperationRepository.class);
+        when(repo.existsByTenantIdAndOperationId(any(), any())).thenReturn(false);
+        TestHandler h = new TestHandler("T", o -> SyncHandlerResult.ok());
+        @SuppressWarnings("unchecked")
+        ObjectProvider<SyncUserProvider> comUser =
+                (ObjectProvider<SyncUserProvider>) mock(ObjectProvider.class);
+        when(comUser.getIfAvailable()).thenReturn(() -> "promotor-joao");
+        SyncOperationExecutor ex = new SyncOperationExecutor(repo, tenant, comUser, List.of(h));
+
+        ex.execute(op("T"));
+
+        ArgumentCaptor<ProcessedSyncOperation> cap =
+                ArgumentCaptor.forClass(ProcessedSyncOperation.class);
+        verify(repo).save(cap.capture());
+        assertEquals("promotor-joao", cap.getValue().getUserId());
+        assertEquals("t1", cap.getValue().getTenantId());
+    }
+
+    @Test
+    void auditoria_userId_nuloSemProvider() {
+        ProcessedSyncOperationRepository repo = mock(ProcessedSyncOperationRepository.class);
+        when(repo.existsByTenantIdAndOperationId(any(), any())).thenReturn(false);
+        TestHandler h = new TestHandler("T", o -> SyncHandlerResult.ok());
+        SyncOperationExecutor ex = new SyncOperationExecutor(repo, tenant, noUser, List.of(h));
+
+        ex.execute(op("T"));
+
+        ArgumentCaptor<ProcessedSyncOperation> cap =
+                ArgumentCaptor.forClass(ProcessedSyncOperation.class);
+        verify(repo).save(cap.capture());
+        assertNull(cap.getValue().getUserId());
+    }
+
+    @Test
     void skipException_retornaSkippedEgrava() {
         ProcessedSyncOperationRepository repo = mock(ProcessedSyncOperationRepository.class);
         when(repo.existsByTenantIdAndOperationId(any(), any())).thenReturn(false);
         TestHandler h = new TestHandler("T", o -> {
             throw new SyncSkippedException("terminal");
         });
-        SyncOperationExecutor ex = new SyncOperationExecutor(repo, tenant, List.of(h));
+        SyncOperationExecutor ex = new SyncOperationExecutor(repo, tenant, noUser, List.of(h));
 
         SyncAckDTO ack = ex.execute(op("T"));
 
@@ -103,7 +148,7 @@ class SyncOperationExecutorTest {
         TestHandler h = new TestHandler("T", o -> {
             throw new SyncConflictException("Visita", "agg1", 3L, 5L);
         });
-        SyncOperationExecutor ex = new SyncOperationExecutor(repo, tenant, List.of(h));
+        SyncOperationExecutor ex = new SyncOperationExecutor(repo, tenant, noUser, List.of(h));
 
         SyncAckDTO ack = ex.execute(op("T"));
 
@@ -116,7 +161,7 @@ class SyncOperationExecutorTest {
     void tipoDesconhecido_retornaRejected() {
         ProcessedSyncOperationRepository repo = mock(ProcessedSyncOperationRepository.class);
         when(repo.existsByTenantIdAndOperationId(any(), any())).thenReturn(false);
-        SyncOperationExecutor ex = new SyncOperationExecutor(repo, tenant, List.of());
+        SyncOperationExecutor ex = new SyncOperationExecutor(repo, tenant, noUser, List.of());
 
         SyncAckDTO ack = ex.execute(op("DESCONHECIDO"));
 
@@ -131,7 +176,7 @@ class SyncOperationExecutorTest {
         TestHandler h = new TestHandler("T", o -> {
             throw new IllegalStateException("db down");
         });
-        SyncOperationExecutor ex = new SyncOperationExecutor(repo, tenant, List.of(h));
+        SyncOperationExecutor ex = new SyncOperationExecutor(repo, tenant, noUser, List.of(h));
 
         assertThrows(IllegalStateException.class, () -> ex.execute(op("T")));
         verify(repo, never()).save(any());

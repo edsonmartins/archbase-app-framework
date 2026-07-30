@@ -10,6 +10,8 @@ import br.com.archbase.offline.sync.persistence.ProcessedSyncOperationRepository
 import br.com.archbase.offline.sync.spi.SyncHandlerResult;
 import br.com.archbase.offline.sync.spi.SyncOperationHandler;
 import br.com.archbase.offline.sync.spi.SyncTenantProvider;
+import br.com.archbase.offline.sync.spi.SyncUserProvider;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,15 +34,35 @@ public class SyncOperationExecutor implements SyncOperationExecutorPort {
 
     private final ProcessedSyncOperationRepository processedRepo;
     private final SyncTenantProvider tenantProvider;
+    private final ObjectProvider<SyncUserProvider> userProvider;
     private final Map<String, SyncOperationHandler> handlers = new HashMap<>();
 
     public SyncOperationExecutor(ProcessedSyncOperationRepository processedRepo,
                                  SyncTenantProvider tenantProvider,
+                                 ObjectProvider<SyncUserProvider> userProvider,
                                  List<SyncOperationHandler> handlerBeans) {
         this.processedRepo = processedRepo;
         this.tenantProvider = tenantProvider;
+        this.userProvider = userProvider;
         for (SyncOperationHandler h : handlerBeans) {
             this.handlers.put(h.type(), h);
+        }
+    }
+
+    /**
+     * Resolve o usuário corrente para auditoria. Opcional e à prova de falha:
+     * sem bean {@link SyncUserProvider}, ou se ele lançar, devolve {@code null}
+     * (a auditoria é best-effort — nunca derruba a operação de sync).
+     */
+    private String resolveUserId() {
+        final SyncUserProvider provider = userProvider.getIfAvailable();
+        if (provider == null) {
+            return null;
+        }
+        try {
+            return provider.currentUserId();
+        } catch (RuntimeException e) {
+            return null;
         }
     }
 
@@ -48,6 +70,7 @@ public class SyncOperationExecutor implements SyncOperationExecutorPort {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public SyncAckDTO execute(SyncOperationDTO op) {
         final String tenant = tenantProvider.currentTenantId();
+        final String userId = resolveUserId();
 
         // Idempotência durável: já processada antes → no-op.
         if (processedRepo.existsByTenantIdAndOperationId(tenant, op.id)) {
@@ -62,13 +85,13 @@ public class SyncOperationExecutor implements SyncOperationExecutorPort {
         try {
             final SyncHandlerResult result = handler.handle(op);
             processedRepo.save(new ProcessedSyncOperation(
-                    tenant, op.id, "PROCESSED", op.type, op.aggregateId,
+                    tenant, op.id, "PROCESSED", op.type, op.aggregateId, userId,
                     result == null ? null : result.getServerVersion(), LocalDateTime.now()));
             return SyncAckDTO.processed(op.id,
                     result == null ? null : result.getServerVersion());
         } catch (SyncSkippedException e) {
             processedRepo.save(new ProcessedSyncOperation(
-                    tenant, op.id, "SKIPPED", op.type, op.aggregateId, null,
+                    tenant, op.id, "SKIPPED", op.type, op.aggregateId, userId, null,
                     LocalDateTime.now()));
             return SyncAckDTO.skipped(op.id);
         } catch (SyncConflictException e) {
