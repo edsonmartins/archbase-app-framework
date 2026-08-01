@@ -55,7 +55,7 @@ mvn versions:display-dependency-updates
 ## Architecture Overview
 
 ### Framework Structure
-Archbase is a multi-module Maven project built on Spring Boot 3.2.5 and Java 17. It provides a comprehensive framework for building enterprise applications using Domain-Driven Design (DDD) principles.
+Archbase is a multi-module Maven project built on Spring Boot 4.1.0 and Java 17. It provides a comprehensive framework for building enterprise applications using Domain-Driven Design (DDD) principles.
 
 ### Module Organization
 
@@ -171,13 +171,24 @@ public interface YourRepository extends Repository<YourEntity, UUID, Long> {
 ```
 
 3. **Security Annotations:**
+
+`@HasPermission` is `@Target(METHOD)` — it does **not** compile on a class:
 ```java
 @RestController
-@HasPermission(action = "VIEW", resource = "YOUR_RESOURCE")
 public class YourController {
-    // Method-level security also supported
+
+    @GetMapping
+    @HasPermission(action = "VIEW", resource = "YOUR_RESOURCE", description = "...")
+    public ResponseEntity<?> list() { ... }
 }
 ```
+
+`@RequireProfile`, `@RequireRole` and `@RequirePersona` do accept class level; when placed on the
+class they apply to every method, and a method-level annotation overrides the class one.
+
+`@RequireRole` only enforces anything if the application registers an `ArchbaseRoleResolver` bean —
+the roles it checks belong to the application domain, not to Archbase. Without that bean the
+behaviour is controlled by `archbase.security.require-role.no-resolver-policy`.
 
 4. **Event Handling:**
 ```java
@@ -248,6 +259,35 @@ archbase.security.method.enabled=true
 archbase.security.permission.cache.enabled=true
 # Validade da senha em dias (0 = sem expiração periódica)
 archbase.security.password.expiration-days=0
+
+# Security hardening (auditoria 3.0.11)
+# Os defaults abaixo PRESERVAM o comportamento anterior à auditoria. Enquanto não forem
+# alterados, a proteção correspondente está inerte — ver deployment/security-hardening.md.
+archbase.security.admin-endpoints.policy=permit             # permit | admin-only | permission
+archbase.security.require-role.no-resolver-policy=permit    # permit | deny
+archbase.security.jwt.strict-token-use=false                # recusa token sem o claim token_use
+archbase.security.jwt.accept-token-query-param=true         # aceita credencial em ?token=
+archbase.security.prevent-user-enumeration=false            # resposta uniforme no reset de senha
+archbase.security.api-token.purge-plaintext=false           # IRREVERSÍVEL: apaga o token em claro
+archbase.security.public-paths.actuator=true
+archbase.security.public-paths.registration=true            # auto-cadastro anônimo
+archbase.security.public-paths.legacy-app-routes=true       # rotas de aplicação (deprecado)
+archbase.app.tenant.fail-on-missing=false                   # recusa acesso sem tenant no contexto
+archbase.app.tenant.accept-query-param=true                 # aceita X-TENANT-ID na query string
+
+# Rate limiting dos fluxos de credencial (ligado por padrão)
+archbase.security.rate-limit.enabled=true
+archbase.security.rate-limit.max-attempts=10
+archbase.security.rate-limit.window-seconds=900
+archbase.security.rate-limit.block-seconds=900
+
+# Força de senha (desligada por padrão; min-length=0 desliga tudo menos block-common)
+archbase.security.password.min-length=0
+archbase.security.password.require-digit=false
+archbase.security.password.require-uppercase=false
+archbase.security.password.require-lowercase=false
+archbase.security.password.require-special=false
+archbase.security.password.block-common=true
 
 # RSQL
 archbase.rsql.enabled=true

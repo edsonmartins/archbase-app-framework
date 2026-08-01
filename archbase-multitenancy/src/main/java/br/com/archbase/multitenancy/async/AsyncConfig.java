@@ -1,6 +1,7 @@
 package br.com.archbase.multitenancy.async;
 
 import java.util.concurrent.Executor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Configuration;
@@ -23,6 +24,13 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 @ConditionalOnMissingBean(AsyncConfigurer.class)
 public class AsyncConfig extends AsyncConfigurerSupport {
 
+    /**
+     * Leva o usuário autenticado para dentro do {@code @Async}. Sem isto, a auditoria grava
+     * {@code createdByUser} vazio nas tarefas assíncronas e checagens de permissão feitas ali negam.
+     */
+    @Value("${archbase.multitenancy.async.propagate-security-context:true}")
+    private boolean propagateSecurityContext;
+
     @Override
     public Executor getAsyncExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
@@ -31,7 +39,7 @@ public class AsyncConfig extends AsyncConfigurerSupport {
         executor.setMaxPoolSize(42);
         executor.setQueueCapacity(11);
         executor.setThreadNamePrefix("TenantAwareTaskExecutor-");
-        executor.setTaskDecorator(new ArchbaseTenantAwareTaskDecorator());
+        executor.setTaskDecorator(new ArchbaseTenantAwareTaskDecorator(propagateSecurityContext));
         executor.initialize();
 
         return executor;

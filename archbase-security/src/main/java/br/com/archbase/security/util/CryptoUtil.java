@@ -5,10 +5,22 @@ import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Base64;
 
+/**
+ * Primitivas AES-GCM usadas pela cifragem de segredos em repouso.
+ *
+ * <p><b>Charset explícito.</b> A conversão texto↔bytes usa UTF-8 em vez do charset padrão da
+ * plataforma. Com o padrão, o valor cifrado numa JVM e decifrado em outra com {@code file.encoding}
+ * diferente devolvia texto corrompido em qualquer caractere acentuado — e o projeto compila para
+ * Java 17, onde o padrão ainda depende do locale (o UTF-8 universal só veio no 18, via JEP 400).
+ *
+ * <p>Se algum valor acentuado foi cifrado em ambiente cujo padrão não era UTF-8, ele precisa ser
+ * recifrado; use {@code ArchbaseColumnReencryptor}.
+ */
 public class CryptoUtil {
     private static final String ALGORITHM = "AES";
     private static final int GCM_IV_LENGTH = 12; // 12 bytes for GCM IV
@@ -28,7 +40,7 @@ public class CryptoUtil {
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         GCMParameterSpec gcmParameterSpec = new GCMParameterSpec(GCM_TAG_LENGTH * 8, iv);
         cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmParameterSpec);
-        byte[] encryptedData = cipher.doFinal(data.getBytes());
+        byte[] encryptedData = cipher.doFinal(data.getBytes(StandardCharsets.UTF_8));
         return Base64.getEncoder().encodeToString(encryptedData);
     }
 
@@ -39,7 +51,7 @@ public class CryptoUtil {
         GCMParameterSpec gcmParameterSpec = new GCMParameterSpec(GCM_TAG_LENGTH * 8, iv);
         cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmParameterSpec);
         byte[] decryptedData = cipher.doFinal(Base64.getDecoder().decode(encryptedData));
-        return new String(decryptedData);
+        return new String(decryptedData, StandardCharsets.UTF_8);
     }
 
     public static String encryptWithIv(String data, String base64Key) throws Exception {
@@ -51,7 +63,7 @@ public class CryptoUtil {
         GCMParameterSpec gcmParameterSpec = new GCMParameterSpec(128, iv);
         cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmParameterSpec);
 
-        byte[] encryptedData = cipher.doFinal(data.getBytes());
+        byte[] encryptedData = cipher.doFinal(data.getBytes(StandardCharsets.UTF_8));
         byte[] encryptedDataWithIv = new byte[iv.length + encryptedData.length];
         System.arraycopy(iv, 0, encryptedDataWithIv, 0, iv.length);
         System.arraycopy(encryptedData, 0, encryptedDataWithIv, iv.length, encryptedData.length);
@@ -71,7 +83,7 @@ public class CryptoUtil {
         cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmParameterSpec);
 
         byte[] decryptedData = cipher.doFinal(encryptedData);
-        return new String(decryptedData);
+        return new String(decryptedData, StandardCharsets.UTF_8);
     }
 }
 
