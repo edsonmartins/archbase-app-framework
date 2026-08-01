@@ -15,6 +15,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import br.com.archbase.security.annotation.ArchbaseSecurityAdminEndpoint;
+import br.com.archbase.security.util.TokenMaskUtil;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -48,16 +49,18 @@ public class ApiTokenController {
     @GetMapping("/activate")
     @ArchbaseSecurityAdminEndpoint(selfService = true)
     public ResponseEntity<String> activateToken(@RequestParam String token, @RequestParam String tenantId) {
-        logger.info("Recebida solicitação para ativar token: {} com tenantId: {}", token, tenantId);
+        // Mascarado: o token é a credencial em si, e este é o endpoint por onde ela mais passa.
+        logger.info("Recebida solicitação para ativar token: {} com tenantId: {}",
+                TokenMaskUtil.mask(token), tenantId);
         // Set tenantId in context
         ArchbaseTenantContext.setTenantId(tenantId);
 
         boolean activated = apiTokenService.activateToken(token, tenantId);
         if (activated) {
-            logger.info("Token ativado com sucesso: {}", token);
+            logger.info("Token ativado com sucesso: {}", TokenMaskUtil.mask(token));
             return ResponseEntity.ok(generateHtmlResponse("Token ativado com sucesso.", true));
         } else {
-            logger.warn("Falha ao ativar token: {}. Token inválido ou já ativado.", token);
+            logger.warn("Falha ao ativar token: {}. Token inválido ou já ativado.", TokenMaskUtil.mask(token));
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(generateHtmlResponse("Token inválido ou já ativado.", false));
         }
     }

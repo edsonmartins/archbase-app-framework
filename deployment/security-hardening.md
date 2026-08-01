@@ -131,6 +131,12 @@ Colunas adicionadas nesta versão:
 | `seguranca_token_api` | `token_hash` | SHA-256 do token; passa a ser a chave de busca |
 | `seguranca_token_api` | `token` | Passa a ser nulável |
 
-Quem **não** usa Flyway: as colunas são criadas por `hbm2ddl`, e o cálculo dos hashes das linhas
-existentes roda na subida da aplicação (`ArchbaseApiTokenHashMigrator`). Enquanto não rodar, a
-autenticação por token de API continua funcionando pelo valor em claro.
+Quem **não** usa Flyway precisa garantir que as colunas existam **antes** de subir a versão nova:
+
+- com `spring.jpa.hibernate.ddl-auto=update`, o Hibernate as cria sozinho;
+- com `validate` ou `none`, aplique o DDL do arquivo acima manualmente. **Sem a coluna
+  `token_hash`, toda autenticação por token de API para** — a consulta passa a referenciá-la
+  sempre, e não há degradação graciosa aqui.
+
+O cálculo dos hashes das linhas existentes roda na subida (`ArchbaseApiTokenHashMigrator`).
+Enquanto ele não rodar, os tokens antigos continuam autenticando pelo valor em claro.

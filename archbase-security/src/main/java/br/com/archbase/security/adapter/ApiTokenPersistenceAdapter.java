@@ -45,11 +45,17 @@ public class ApiTokenPersistenceAdapter implements FindDataWithFilterQuery<Strin
     /**
      * Condição de casamento do token apresentado.
      *
-     * <p>Casa pelo hash e, só quando a linha ainda não foi migrada ({@code token_hash IS NULL}),
-     * pelo valor em claro. O segundo ramo existe para quem atualiza o framework sem rodar a
-     * migração — aplicação sem Flyway, por exemplo: sem ele, todos os tokens de API já emitidos
-     * parariam de autenticar no deploy. O {@code ArchbaseApiTokenHashMigrator} preenche os hashes
-     * na subida, então esse ramo tende a nunca casar depois do primeiro startup.
+     * <p>Casa pelo hash e, só quando a <b>linha</b> ainda não foi migrada
+     * ({@code token_hash IS NULL}), pelo valor em claro. Esse segundo ramo cobre a janela entre a
+     * coluna existir e o {@code ArchbaseApiTokenHashMigrator} preencher os hashes — depois do
+     * primeiro startup ele tende a nunca mais casar.
+     *
+     * <p><b>A coluna precisa existir.</b> Isto não é tolerante a schema desatualizado: sem
+     * {@code TOKEN_HASH} a consulta falha e toda autenticação por token de API para. Quem usa
+     * {@code archbase-starter-flyway} recebe a coluna pela migration do próprio framework; quem
+     * gerencia schema à mão precisa aplicar o DDL de
+     * {@code db/migration/archbase/R__archbase_security_schema.sql} antes de subir a versão nova.
+     * O mesmo vale para {@code TP_USO_TOKEN} em {@code SEGURANCA_TOKEN_ACESSO}.
      */
     private static final String TOKEN_MATCH =
             "(token_hash = :tokenHash OR (token_hash IS NULL AND token = :token))";

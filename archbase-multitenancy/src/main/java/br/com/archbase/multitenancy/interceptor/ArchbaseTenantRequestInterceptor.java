@@ -3,7 +3,6 @@ package br.com.archbase.multitenancy.interceptor;
 import br.com.archbase.ddd.context.ArchbaseTenantContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 public class ArchbaseTenantRequestInterceptor implements HandlerInterceptor {
@@ -18,9 +17,23 @@ public class ArchbaseTenantRequestInterceptor implements HandlerInterceptor {
      * log, no histórico do navegador e no {@code Referer} enviado a terceiros — e transforma a troca
      * de tenant em algo que cabe num link. Prefira os headers e desligue com
      * {@code archbase.app.tenant.accept-query-param=false}.
+     *
+     * <p><b>Recebido pelo construtor, não por {@code @Value}.</b> Esta classe é instanciada com
+     * {@code new} pelo {@code addInterceptors} da autoconfiguração — nunca passa pelo container,
+     * então nenhuma anotação de injeção é processada nela. Um {@code @Value} aqui ficaria com o
+     * default do Java ({@code false}), silenciosamente desligando o suporte a query string em vez
+     * de mantê-lo ligado como a configuração promete.
      */
-    @Value("${archbase.app.tenant.accept-query-param:true}")
-    private boolean acceptQueryParam;
+    private final boolean acceptQueryParam;
+
+    /** Mantém o comportamento histórico (aceita query string) para quem instancia sem argumento. */
+    public ArchbaseTenantRequestInterceptor() {
+        this(true);
+    }
+
+    public ArchbaseTenantRequestInterceptor(boolean acceptQueryParam) {
+        this.acceptQueryParam = acceptQueryParam;
+    }
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {

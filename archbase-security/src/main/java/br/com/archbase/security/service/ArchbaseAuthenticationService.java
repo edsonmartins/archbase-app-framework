@@ -199,7 +199,11 @@ public class ArchbaseAuthenticationService {
             // Verificar se o token existe e não está expirado
             if (accessToken != null && !jwtService.isTokenExpired(accessToken.getToken())) {
                 log.debug("Token válido encontrado para o usuário {}, reusando token", user.getEmail());
-                // Token ainda válido, retorna o mesmo
+                // Token ainda válido, retorna o mesmo — mas o refresh é reemitido, e os anteriores
+                // precisam morrer junto. Sem isto, cada login dentro da validade do access token
+                // deixava mais um refresh vivo (dez logins, dez refresh válidos simultâneos),
+                // desfazendo na prática a rotação e a revogação que este fluxo existe para garantir.
+                revokeAllRefreshTokens(user);
                 return buildAuthenticationResponse(accessToken, issueRefreshToken(user), user);
             }
 
@@ -327,6 +331,28 @@ public class ArchbaseAuthenticationService {
         return Instant.ofEpochMilli(dateToConvert.getTime())
                 .atZone(ZoneId.systemDefault())
                 .toLocalDateTime();
+    }
+
+    /**
+     * Revoga apenas os refresh tokens do usuário, preservando o access token em uso.
+     *
+     * <p>Serve ao login que reaproveita um access token ainda válido: o refresh é reemitido, e
+     * deixar os anteriores vivos acumularia credenciais de renovação sem limite.
+     */
+    @Transactional
+    public void revokeAllRefreshTokens(UserEntity user) {
+        var refreshTokens = accessTokenPersistenceAdapter.findAllValidTokenByUser(user).stream()
+                .filter(token -> token.getTokenUse() == TokenUse.REFRESH)
+                .toList();
+        if (refreshTokens.isEmpty()) {
+            return;
+        }
+        log.debug("Revogando {} refresh token(s) anteriores do usuário {}", refreshTokens.size(), user.getEmail());
+        refreshTokens.forEach(token -> {
+            token.setExpired(true);
+            token.setRevoked(true);
+        });
+        tokenRepository.saveAll(refreshTokens);
     }
 
     @Transactional

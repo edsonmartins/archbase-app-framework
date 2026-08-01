@@ -14,7 +14,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
-import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -35,8 +35,13 @@ public class RoleAuthorizationManager implements AuthorizationManager<MethodInvo
     /** Nega o acesso quando não há {@link ArchbaseRoleResolver} registrado. */
     private static final String POLICY_DENY = "deny";
 
+    /**
+     * Lista, e não bean único: uma aplicação modular pode registrar um resolver por módulo, e
+     * injetar {@code ArchbaseRoleResolver} direto derrubaria a subida com
+     * {@code NoUniqueBeanDefinitionException}. As roles de todos os resolvers são unidas.
+     */
     @Autowired(required = false)
-    private ArchbaseRoleResolver roleResolver;
+    private List<ArchbaseRoleResolver> roleResolvers = List.of();
 
     /**
      * O que fazer quando {@code @RequireRole} é avaliada sem nenhum {@link ArchbaseRoleResolver}
@@ -113,13 +118,16 @@ public class RoleAuthorizationManager implements AuthorizationManager<MethodInvo
     private boolean validateRoleAccess(UserEntity user, RequireRole requireRole, MethodInvocation invocation) {
         List<String> requiredRoles = Arrays.asList(requireRole.value());
 
-        if (roleResolver == null) {
+        if (roleResolvers == null || roleResolvers.isEmpty()) {
             return handleMissingResolver(requiredRoles, invocation);
         }
 
-        Set<String> userRoles = roleResolver.resolveRoles(user);
-        if (userRoles == null) {
-            userRoles = Collections.emptySet();
+        Set<String> userRoles = new HashSet<>();
+        for (ArchbaseRoleResolver resolver : roleResolvers) {
+            Set<String> resolved = resolver.resolveRoles(user);
+            if (resolved != null) {
+                userRoles.addAll(resolved);
+            }
         }
 
         log.debug("Roles exigidas: {} | Roles do usuário {}: {}", requiredRoles, user.getEmail(), userRoles);
@@ -132,7 +140,9 @@ public class RoleAuthorizationManager implements AuthorizationManager<MethodInvo
             return false;
         }
 
-        if (requireRole.ownerOnly() && !roleResolver.isOwner(user)) {
+        // Basta um resolver reconhecer o usuário como proprietário: cada um responde pelo seu
+        // módulo, e exigir unanimidade negaria acesso legítimo por causa de quem não tem opinião.
+        if (requireRole.ownerOnly() && roleResolvers.stream().noneMatch(resolver -> resolver.isOwner(user))) {
             log.debug("Acesso negado - método restrito a proprietários e {} não é", user.getEmail());
             return false;
         }

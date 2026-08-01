@@ -72,11 +72,14 @@ public class ArchbaseTenantAwareTaskDecorator implements TaskDecorator {
     }
 
     private void restore(String previousTenantId, String previousCompanyId) {
-        if (previousTenantId == null && previousCompanyId == null) {
-            ArchbaseTenantContext.clear();
-            return;
+        // clear() primeiro, sempre: setTenantId(null) deixaria a entrada do ThreadLocal viva com
+        // valor nulo — exatamente o que esta classe corrige. Só o que existia antes é reposto.
+        ArchbaseTenantContext.clear();
+        if (previousTenantId != null) {
+            ArchbaseTenantContext.setTenantId(previousTenantId);
         }
-        ArchbaseTenantContext.setTenantId(previousTenantId);
-        ArchbaseTenantContext.setCompanyId(previousCompanyId);
+        if (previousCompanyId != null) {
+            ArchbaseTenantContext.setCompanyId(previousCompanyId);
+        }
     }
 }

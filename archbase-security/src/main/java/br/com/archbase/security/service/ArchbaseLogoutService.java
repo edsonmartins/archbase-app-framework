@@ -8,6 +8,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.logout.LogoutHandler;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -15,7 +16,16 @@ public class ArchbaseLogoutService implements LogoutHandler {
 
     private final AccessTokenJpaRepository tokenRepository;
 
+    /**
+     * <b>Transacional de propósito.</b> Um {@link LogoutHandler} roda na cadeia de filtros do
+     * Spring Security — fora do {@code OpenEntityManagerInView}, que só abre no interceptor do MVC.
+     * Sem uma transação aqui, a entidade devolvida pelo repositório já vem desconectada e tocar o
+     * {@code user} (associação LAZY) para descobrir o dono dos demais tokens estoura
+     * {@code LazyInitializationException}: o logout falharia com 500 e o
+     * {@code SecurityContextHolder.clearContext()} no fim nunca rodaria.
+     */
     @Override
+    @Transactional
     public void logout(
             HttpServletRequest request,
             HttpServletResponse response,
