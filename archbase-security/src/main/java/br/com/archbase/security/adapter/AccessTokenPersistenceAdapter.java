@@ -8,6 +8,7 @@ import br.com.archbase.security.persistence.QAccessTokenEntity;
 import br.com.archbase.security.persistence.UserEntity;
 import br.com.archbase.security.repository.AccessTokenJpaRepository;
 import br.com.archbase.security.repository.PasswordResetTokenJpaRepository;
+import br.com.archbase.security.token.TokenUse;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.EntityManager;
@@ -65,7 +66,18 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
     }
 
     /**
-     * Encontra um token válido para um usuário
+     * Predicado "esta linha é um access token".
+     *
+     * <p>Inclui {@code TP_USO_TOKEN IS NULL} porque toda linha gravada antes desta versão é access
+     * token — a coluna não existia. Sem esta cláusula, atualizar o framework faria toda sessão em
+     * curso deixar de ser encontrada e o usuário cairia para 401.
+     */
+    private BooleanExpression isAccessToken(QAccessTokenEntity accessToken) {
+        return accessToken.tokenUse.eq(TokenUse.ACCESS).or(accessToken.tokenUse.isNull());
+    }
+
+    /**
+     * Encontra um token de <b>acesso</b> válido para um usuário
      * Melhorado: agora ordena por data de expiração para pegar o mais recente
      * Corrigido: verifica data de expiração real além das flags
      */
@@ -79,7 +91,8 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
         BooleanExpression predicate = accessToken.user.id.eq(user.getId())
                 .and(accessToken.expired.eq(false))
                 .and(accessToken.revoked.eq(false))
-                .and(accessToken.expirationDate.after(now)); // ← FIX: Verificar data real
+                .and(accessToken.expirationDate.after(now)) // ← FIX: Verificar data real
+                .and(isAccessToken(accessToken)); // reaproveitar um refresh como access seria confusão de credencial
 
         AccessTokenEntity result = queryFactory.selectFrom(accessToken)
                 .where(predicate)
@@ -98,7 +111,7 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
     }
 
     /**
-     * Encontra um token pelo valor
+     * Encontra um token de <b>acesso</b> pelo valor — é o que o filtro de autenticação consulta.
      * Corrigido: agora retorna apenas tokens não expirados E não revogados
      *
      * @param tokenValue o valor do token JWT
@@ -113,7 +126,8 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
         // Corrigido: adicionar filtros para expired=false e revoked=false
         BooleanExpression predicate = accessToken.token.eq(tokenValue)
                 .and(accessToken.expired.eq(false))
-                .and(accessToken.revoked.eq(false));
+                .and(accessToken.revoked.eq(false))
+                .and(isAccessToken(accessToken)); // refresh token agora também mora aqui e não vale como credencial
 
         AccessTokenEntity result = queryFactory.selectFrom(accessToken)
                 .where(predicate)
@@ -130,6 +144,32 @@ public class AccessTokenPersistenceAdapter implements FindDataWithFilterQuery<St
         }
 
         return result;
+    }
+
+    /**
+     * Encontra um <b>refresh token</b> vivo pelo valor.
+     *
+     * <p>É esta consulta que torna o refresh token revogável: antes ele não era persistido, então
+     * logout, troca de senha e desativação de conta não tinham o que revogar — o token continuava
+     * rendendo pares novos até expirar sozinho.
+     *
+     * @return a linha correspondente, ou {@code null} se o token não existe, foi revogado ou expirou
+     */
+    @Transactional(readOnly = true)
+    public AccessTokenEntity findRefreshTokenByValue(String tokenValue) {
+        QAccessTokenEntity accessToken = QAccessTokenEntity.accessTokenEntity;
+
+        JPAQueryFactory queryFactory = new JPAQueryFactory(entityManager);
+
+        BooleanExpression predicate = accessToken.token.eq(tokenValue)
+                .and(accessToken.expired.eq(false))
+                .and(accessToken.revoked.eq(false))
+                .and(accessToken.tokenUse.eq(TokenUse.REFRESH));
+
+        return queryFactory.selectFrom(accessToken)
+                .where(predicate)
+                .orderBy(accessToken.createEntityDate.desc())
+                .fetchFirst();
     }
 
     /**

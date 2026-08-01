@@ -13,6 +13,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import br.com.archbase.security.annotation.ArchbaseSecurityAdminEndpoint;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
@@ -21,11 +22,14 @@ import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/v1/user")
+@ArchbaseSecurityAdminEndpoint(resource = "USER")
 public class UserController {
 
     private final ArchbaseUserService service;
 
+    // Trocar a própria senha (exige a senha atual) é autoatendimento, não administração.
     @PatchMapping
+    @ArchbaseSecurityAdminEndpoint(selfService = true)
     public ResponseEntity<?> changePassword(
             @RequestBody ChangePasswordRequest request,
             Principal connectedUser

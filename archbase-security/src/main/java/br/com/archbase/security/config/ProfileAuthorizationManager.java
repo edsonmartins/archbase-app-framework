@@ -3,6 +3,7 @@ package br.com.archbase.security.config;
 import br.com.archbase.security.annotations.RequireProfile;
 import br.com.archbase.security.service.ArchbaseSecurityService;
 import br.com.archbase.security.persistence.UserEntity;
+import br.com.archbase.security.util.AuthorizationAnnotationUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aopalliance.intercept.MethodInvocation;
@@ -30,13 +31,17 @@ public class ProfileAuthorizationManager implements AuthorizationManager<MethodI
     
     @Override
     public AuthorizationDecision authorize(Supplier<? extends Authentication> authentication, MethodInvocation methodInvocation) {
-        Method method = methodInvocation.getMethod();
-        RequireProfile requireProfile = method.getAnnotation(RequireProfile.class);
-        
+        RequireProfile requireProfile = AuthorizationAnnotationUtils.findAnnotation(methodInvocation, RequireProfile.class);
+
         if (requireProfile == null) {
-            return new AuthorizationDecision(true);
+            // Nega: o pointcut casou, então a anotação existe (possivelmente na classe) e a
+            // resolução é que falhou. Liberar aqui é o defeito, não o comportamento.
+            log.error("Interceptação de @RequireProfile sem anotação resolvível em {}#{} — acesso negado",
+                    methodInvocation.getMethod().getDeclaringClass().getName(),
+                    methodInvocation.getMethod().getName());
+            return new AuthorizationDecision(false);
         }
-        
+
         try {
             Authentication auth = authentication.get();
             
@@ -79,9 +84,13 @@ public class ProfileAuthorizationManager implements AuthorizationManager<MethodI
         List<String> requiredProfiles = Arrays.asList(requireProfile.value());
         
         // Busca os profiles do usuário através das UserProfiles
+        if (user.getProfile() == null) {
+            log.debug("Usuário {} não possui profile — acesso negado", user.getEmail());
+            return false;
+        }
         List<String> userProfiles = new ArrayList<>();
         userProfiles.add(user.getProfile().getName());
-        
+
         log.debug("Profiles necessários: {} | Profiles do usuário: {}", requiredProfiles, userProfiles);
         
         boolean hasProfile;

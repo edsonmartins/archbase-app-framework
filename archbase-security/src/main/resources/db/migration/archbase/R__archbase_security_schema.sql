@@ -27,3 +27,16 @@ comment on column seguranca.bo_mfa_habilitado is 'Segundo fator TOTP habilitado 
 comment on column seguranca.mfa_secret is 'Segredo TOTP (Base32), cifrado em repouso';
 comment on column seguranca.mfa_recovery_codes is 'Códigos de recuperação (hash bcrypt, um por linha)';
 comment on column seguranca.dt_ultima_troca_senha is 'Quando a senha foi trocada pela última vez';
+
+-- ── 3.0.11: refresh token passa a ser persistido e revogável (AccessTokenEntity) ───────────────
+-- Antes, o refresh existia apenas como JWT assinado: logout, troca de senha e desativação de conta
+-- só mexiam nas linhas de access token, e um refresh vazado seguia emitindo credenciais novas até
+-- expirar sozinho. Agora as duas espécies dividem a tabela e esta coluna as separa.
+alter table seguranca_token_acesso
+    add column if not exists tp_uso_token varchar(20);
+
+comment on column seguranca_token_acesso.tp_uso_token is
+    'ACCESS ou REFRESH. NULL em linhas anteriores a 3.0.11, quando só access token era gravado — lidas como ACCESS.';
+
+-- Sem índice novo de propósito: a busca do filtro é por TOKEN, que já é UNIQUE (e um índice em
+-- varchar(5000) esbarraria no limite de entrada de btree do Postgres).

@@ -14,6 +14,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import br.com.archbase.security.annotation.ArchbaseSecurityAdminEndpoint;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -21,6 +22,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/apiToken")
+@ArchbaseSecurityAdminEndpoint(resource = "API_TOKEN")
 public class ApiTokenController {
 
     private static final Logger logger = LoggerFactory.getLogger(ApiTokenController.class);
@@ -41,7 +43,10 @@ public class ApiTokenController {
         return ResponseEntity.ok().build();
     }
 
+    // Ativação por link de e-mail: é anônima por desenho (está na whitelist) e se autentica pelo
+    // próprio token UUID. Tratá-la como administrativa quebraria o fluxo de ativação.
     @GetMapping("/activate")
+    @ArchbaseSecurityAdminEndpoint(selfService = true)
     public ResponseEntity<String> activateToken(@RequestParam String token, @RequestParam String tenantId) {
         logger.info("Recebida solicitação para ativar token: {} com tenantId: {}", token, tenantId);
         // Set tenantId in context

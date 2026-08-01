@@ -13,6 +13,7 @@ import br.com.archbase.security.persistence.UserGroupEntity;
 import br.com.archbase.security.repository.AccessTokenJpaRepository;
 import br.com.archbase.security.repository.UserJpaRepository;
 import br.com.archbase.security.token.TokenType;
+import br.com.archbase.security.token.TokenUse;
 import br.com.archbase.security.util.TokenGeneratorUtil;
 import br.com.archbase.validation.exception.ArchbaseValidationException;
 import io.jsonwebtoken.JwtException;
@@ -172,8 +173,7 @@ public class ArchbaseAuthenticationService {
             if (accessToken != null && !jwtService.isTokenExpired(accessToken.getToken())) {
                 log.debug("Token válido encontrado para o usuário {}, reusando token", user.getEmail());
                 // Token ainda válido, retorna o mesmo
-                var refreshToken = jwtService.generateRefreshToken(user);
-                return buildAuthenticationResponse(accessToken, refreshToken.token(), user);
+                return buildAuthenticationResponse(accessToken, issueRefreshToken(user), user);
             }
 
             log.debug("Nenhum token válido encontrado para o usuário {}, criando novo token", user.getEmail());
@@ -183,9 +183,8 @@ public class ArchbaseAuthenticationService {
             // Gerar novos tokens
             var jwtToken = jwtService.generateToken(user);
             accessToken = saveUserToken(user, jwtToken);
-            var refreshToken = jwtService.generateRefreshToken(user);
 
-            return buildAuthenticationResponse(accessToken, refreshToken.token(), user);
+            return buildAuthenticationResponse(accessToken, issueRefreshToken(user), user);
         } catch (CredentialsExpiredException e) {
             log.warn("Credenciais expiradas para usuário: {}", request.getEmail());
             throw e; // Re-lançar para tratamento específico no controller
@@ -230,19 +229,22 @@ public class ArchbaseAuthenticationService {
             revokeAllUserTokens(user);
             var jwtToken = jwtService.generateToken(user);
             var accessToken = saveUserToken(user, jwtToken);
-            var refreshToken = jwtService.generateRefreshToken(user);
-            return buildAuthenticationResponse(accessToken, refreshToken.token(), user);
+            return buildAuthenticationResponse(accessToken, issueRefreshToken(user), user);
         } finally {
             ArchbaseTenantContext.clear();
         }
     }
 
     private AccessTokenEntity saveUserToken(UserEntity usuario, ArchbaseJwtService.TokenResult jwtToken) {
+        return saveUserToken(usuario, jwtToken, TokenUse.ACCESS);
+    }
+
+    private AccessTokenEntity saveUserToken(UserEntity usuario, ArchbaseJwtService.TokenResult jwtToken, TokenUse tokenUse) {
         // Usar UTC para datas de expiração
         LocalDateTime expirationDateTime = convertToLocalDateTimeViaInstant(jwtService.extractExpiration(jwtToken.token()));
 
-        log.debug("Salvando novo token para usuário {} com expiração em {}",
-                usuario.getEmail(), expirationDateTime);
+        log.debug("Salvando novo token ({}) para usuário {} com expiração em {}",
+                tokenUse, usuario.getEmail(), expirationDateTime);
 
         var token = AccessTokenEntity.builder()
                 .id(UUID.randomUUID().toString())
@@ -251,10 +253,25 @@ public class ArchbaseAuthenticationService {
                 .expirationTime(jwtToken.expiresIn())
                 .expirationDate(expirationDateTime)
                 .tokenType(TokenType.BEARER)
+                .tokenUse(tokenUse)
                 .expired(false)
                 .revoked(false)
                 .build();
         return tokenRepository.save(token);
+    }
+
+    /**
+     * Emite e persiste o refresh token.
+     *
+     * <p>Persistir é o ponto: enquanto o refresh existia só como JWT assinado, nada no sistema
+     * conseguia invalidá-lo — logout, reset de senha e revogação de sessão mexiam apenas nas linhas
+     * de access token, e o refresh vazado seguia produzindo credenciais novas até a expiração
+     * natural. Com a linha em banco, {@link #revokeAllUserTokens} alcança os dois.
+     */
+    private String issueRefreshToken(UserEntity user) {
+        var refreshToken = jwtService.generateRefreshToken(user);
+        saveUserToken(user, refreshToken, TokenUse.REFRESH);
+        return refreshToken.token();
     }
 
     private LocalDateTime convertToLocalDateTimeViaInstant(Date dateToConvert) {
@@ -289,6 +306,15 @@ public class ArchbaseAuthenticationService {
     @Transactional
     public AuthenticationResponse refreshToken(RefreshTokenRequest refreshToken) {
         try {
+            // Só um token emitido COMO refresh entra aqui. Sem esta checagem, qualquer JWT assinado
+            // com o subject do usuário servia — inclusive o desafio de MFA, que é emitido depois da
+            // senha conferir e antes do segundo fator: trocá-lo aqui devolvia os tokens reais e o
+            // segundo fator deixava de existir.
+            if (!jwtService.isRefreshToken(refreshToken.getToken())) {
+                log.warn("Refresh negado: token apresentado não é um refresh token");
+                throw new JwtException("Token de refresh inválido");
+            }
+
             String userEmail = jwtService.extractUsername(refreshToken.getToken());
             if (userEmail == null) {
                 log.warn("Refresh token inválido: não foi possível extrair o email do usuário");
@@ -306,6 +332,23 @@ public class ArchbaseAuthenticationService {
                 throw new JwtException("Token de refresh inválido");
             }
 
+            // Assinatura válida não basta: o token precisa corresponder a uma linha viva. É o que
+            // faz logout, troca de senha e revogação de sessão realmente encerrarem a renovação —
+            // um refresh revogado continua com assinatura boa até a data de expiração.
+            //
+            // A tolerância é estreita de propósito: só um refresh SEM o claim token_use é anterior
+            // a esta versão e, portanto, legitimamente não tem linha em banco. Tendo o claim, foi
+            // emitido por este código e a linha existe — a ausência dela significa revogado, e aí
+            // não há o que tolerar. Assim a revogação vale de imediato para todo token novo, e a
+            // atualização não derruba as sessões que já estavam em curso.
+            boolean issuedByCurrentVersion = jwtService.extractTokenUse(refreshToken.getToken()) != null;
+            AccessTokenEntity storedRefreshToken =
+                    accessTokenPersistenceAdapter.findRefreshTokenByValue(refreshToken.getToken());
+            if (storedRefreshToken == null && issuedByCurrentVersion) {
+                log.warn("Refresh negado: token revogado, expirado ou desconhecido para o usuário {}", userEmail);
+                throw new JwtException("Token de refresh inválido");
+            }
+
             // O estado da conta é reavaliado a cada refresh: sem isto, uma conta desativada,
             // bloqueada ou marcada para troca obrigatória de senha continuaria renovando tokens
             // indefinidamente, driblando as checagens feitas no login.
@@ -318,16 +361,16 @@ public class ArchbaseAuthenticationService {
                 throw new CredentialsExpiredException("As credenciais do usuário expiraram");
             }
 
-            // Sempre revogar tokens antigos para evitar acumulação
+            // Sempre revogar tokens antigos para evitar acumulação. Rotaciona o refresh junto:
+            // o token apresentado deixa de valer assim que o novo par é emitido.
             revokeAllUserTokens(user);
 
             // Gerar novos tokens
             var jwtToken = jwtService.generateToken(user);
             AccessTokenEntity accessToken = saveUserToken(user, jwtToken);
-            var newRefreshToken = jwtService.generateRefreshToken(user);
 
             log.debug("Token refreshed com sucesso para o usuário: {}", userEmail);
-            return buildAuthenticationResponse(accessToken, newRefreshToken.token(), user);
+            return buildAuthenticationResponse(accessToken, issueRefreshToken(user), user);
 
         } catch (JwtException e) {
             log.error("Erro ao processar refresh token", e);
@@ -608,11 +651,10 @@ public class ArchbaseAuthenticationService {
         // Gerar novos tokens
         var jwtToken = jwtService.generateToken(user);
         AccessTokenEntity accessToken = saveUserToken(user, jwtToken);
-        var refreshToken = jwtService.generateRefreshToken(user);
 
         log.debug("Autenticação sem senha bem-sucedida para: {}", email);
 
-        return buildAuthenticationResponse(accessToken, refreshToken.token(), user);
+        return buildAuthenticationResponse(accessToken, issueRefreshToken(user), user);
     }
 
     /**

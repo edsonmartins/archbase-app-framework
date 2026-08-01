@@ -3,6 +3,7 @@ package br.com.archbase.security.config;
 import br.com.archbase.security.annotations.RequirePersona;
 import br.com.archbase.security.service.ArchbaseSecurityService;
 import br.com.archbase.security.persistence.UserEntity;
+import br.com.archbase.security.util.AuthorizationAnnotationUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aopalliance.intercept.MethodInvocation;
@@ -32,13 +33,17 @@ public class PersonaAuthorizationManager implements AuthorizationManager<MethodI
     
     @Override
     public AuthorizationDecision authorize(Supplier<? extends Authentication> authentication, MethodInvocation methodInvocation) {
-        Method method = methodInvocation.getMethod();
-        RequirePersona requirePersona = method.getAnnotation(RequirePersona.class);
-        
+        RequirePersona requirePersona = AuthorizationAnnotationUtils.findAnnotation(methodInvocation, RequirePersona.class);
+
         if (requirePersona == null) {
-            return new AuthorizationDecision(true);
+            // Nega: o pointcut casou, então a anotação existe (possivelmente na classe) e a
+            // resolução é que falhou. Liberar aqui é o defeito, não o comportamento.
+            log.error("Interceptação de @RequirePersona sem anotação resolvível em {}#{} — acesso negado",
+                    methodInvocation.getMethod().getDeclaringClass().getName(),
+                    methodInvocation.getMethod().getName());
+            return new AuthorizationDecision(false);
         }
-        
+
         try {
             Authentication auth = authentication.get();
             
@@ -89,8 +94,12 @@ public class PersonaAuthorizationManager implements AuthorizationManager<MethodI
         
         // Validação básica baseada no profile do usuário
         // Esta lógica pode ser estendida por enrichers da aplicação
+        if (user.getProfile() == null) {
+            log.debug("Usuário {} não possui profile — acesso negado", user.getEmail());
+            return false;
+        }
         String userProfile = user.getProfile().getName();
-        
+
         // Mapeamento básico de profiles para personas
         // Esta lógica deve ser customizada conforme o domínio
         boolean hasPersona = validateBasicPersonaMapping(userProfile, requiredPersonas, requirePersona);

@@ -8,10 +8,12 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import br.com.archbase.security.annotation.ArchbaseSecurityAdminEndpoint;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/simple-user")
+@ArchbaseSecurityAdminEndpoint(resource = "USER")
 @Tag(name = "Usuários Simples", description = "Operações simplificadas de gestão de usuários")
 @SecurityRequirement(name = "bearerAuth")
 @SecurityRequirement(name = "apiTokenAuth")

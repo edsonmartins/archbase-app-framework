@@ -3,6 +3,7 @@ package br.com.archbase.security.config;
 import br.com.archbase.ddd.context.ArchbaseTenantContext;
 import br.com.archbase.security.annotation.HasPermission;
 import br.com.archbase.security.service.ArchbaseSecurityService;
+import br.com.archbase.security.util.AuthorizationAnnotationUtils;
 import org.aopalliance.intercept.MethodInvocation;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.authorization.AuthorizationManager;
@@ -11,7 +12,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
-import java.lang.reflect.Method;
 import java.util.function.Supplier;
 
 @Component
@@ -27,14 +27,18 @@ public class CustomAuthorizationManager implements AuthorizationManager<MethodIn
 
     @Override
     public AuthorizationDecision authorize(Supplier<? extends Authentication> authentication, MethodInvocation methodInvocation) {
-        Method method = methodInvocation.getMethod();
-        HasPermission hasPermission = method.getAnnotation(HasPermission.class);
-        
+        HasPermission hasPermission = AuthorizationAnnotationUtils.findAnnotation(methodInvocation, HasPermission.class);
+
         if (hasPermission == null) {
-            // Se não tem a anotação, permite acesso (já que o pointcut só deve interceptar métodos com a anotação)
-            return new AuthorizationDecision(true);
+            // O interceptador só roda quando o pointcut casou, ou seja: a anotação existe em algum
+            // lugar e a resolução é que falhou. Liberar aqui transformaria uma falha de leitura em
+            // acesso concedido — nega, e deixa rastro para a investigação.
+            log.error("Interceptação de @HasPermission sem anotação resolvível em {}#{} — acesso negado",
+                    methodInvocation.getMethod().getDeclaringClass().getName(),
+                    methodInvocation.getMethod().getName());
+            return new AuthorizationDecision(false);
         }
-        
+
         try {
             String tenantId = hasPermission.tenantId().isEmpty() ? 
                 ArchbaseTenantContext.getTenantId() : hasPermission.tenantId();

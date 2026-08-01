@@ -32,6 +32,8 @@ import java.util.stream.Collectors;
 @Component
 public class UserService implements UserUseCase, FindDataWithFilterQuery<String, UserDto> {
 
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(UserService.class);
+
     private final UserPersistenceAdapter persistenceAdapter;
     private final SecurityAdapter securityAdapter;
     private final PasswordEncoder passwordEncoder;
@@ -92,6 +94,55 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
         return Optional.empty();
     }
 
+    /**
+     * Impede que um usuário sem privilégio administrativo crie ou promova um administrador.
+     *
+     * <p>{@code isAdministrator} chega pelo corpo da requisição e vale como bypass total em
+     * {@link ArchbaseSecurityService#hasPermission}. Sem esta checagem, qualquer autenticado que
+     * alcançasse {@code POST /api/v1/user} virava administrador enviando um campo — a escalação
+     * mais curta do sistema.
+     *
+     * <p>Vale sempre, independente de
+     * {@code archbase.security.admin-endpoints.policy}: a política controla <i>quem chega</i> ao
+     * endpoint, esta trava controla <i>o que pode ser concedido</i>, e a segunda não deve depender
+     * da primeira estar ligada.
+     */
+    private void denyAdministratorPromotionByNonAdmin(UserDto userDto) {
+        if (!Boolean.TRUE.equals(userDto.getIsAdministrator())) {
+            return;
+        }
+        User loggedUser = securityAdapter.getLoggedUserOrNull();
+        if (loggedUser == null) {
+            // Sem usuário no contexto: chamada interna (bootstrap, seed, importação). Não há a quem
+            // negar — mas fica registrado, porque é o caminho pelo qual um admin nasce sem revisão.
+            logger.warn("Criação/alteração de usuário administrador sem usuário autenticado no contexto");
+            return;
+        }
+        if (!Boolean.TRUE.equals(loggedUser.getIsAdministrator())) {
+            throw new ArchbaseValidationException(
+                    "Apenas um administrador pode conceder privilégio de administrador.");
+        }
+    }
+
+    /**
+     * Impede que um não-administrador altere a conta de um administrador — inclusive a senha, o que
+     * seria tomada de conta direta.
+     */
+    private void denyEditingAdministratorByNonAdmin(UserDto currentUserDto) {
+        if (!Boolean.TRUE.equals(currentUserDto.getIsAdministrator())) {
+            return;
+        }
+        User loggedUser = securityAdapter.getLoggedUserOrNull();
+        if (loggedUser == null) {
+            return;
+        }
+        if (!Boolean.TRUE.equals(loggedUser.getIsAdministrator())
+                && !currentUserDto.getId().equals(loggedUser.getId().toString())) {
+            throw new ArchbaseValidationException(
+                    "Apenas um administrador pode alterar a conta de outro administrador.");
+        }
+    }
+
     @Override
     @Transactional
     public UserDto createUser(UserDto userDto) {
@@ -101,6 +152,7 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
         if (usuarioOptional.isPresent()) {
             throw new ArchbaseValidationException(String.format("Usuário com email %s já cadastrado.",userDto.getEmail()));
         }
+        denyAdministratorPromotionByNonAdmin(userDto);
         userServiceListener.onBeforeCreate(originalUserDto);
         userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
         UserDto user = persistenceAdapter.createUser(userDto);
@@ -117,13 +169,15 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
         if (usuarioOptional.isPresent() && !usuarioOptional.get().getId().toString().equals(id)) {
             throw new ArchbaseValidationException(String.format("Usuário com email %s já cadastrado.",userDto.getEmail()));
         }
-        userServiceListener.onBeforeUpdate(originalUserDto);
-        if (!StringUtils.isBlank(userDto.getPassword())) {
-            userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
-        }
         UserDto currentUserDto = findById(id);
         if (currentUserDto==null){
             throw new ArchbaseValidationException("Usuário não encontrado.");
+        }
+        denyAdministratorPromotionByNonAdmin(userDto);
+        denyEditingAdministratorByNonAdmin(currentUserDto);
+        userServiceListener.onBeforeUpdate(originalUserDto);
+        if (!StringUtils.isBlank(userDto.getPassword())) {
+            userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
         }
         Optional<UserDto> result = persistenceAdapter.updateUser(id, userDto);
         userServiceListener.onAfterUpdate(originalUserDto, currentUserDto, result.get());

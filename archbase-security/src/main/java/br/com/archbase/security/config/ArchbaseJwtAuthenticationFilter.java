@@ -180,6 +180,15 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
 
     private void processJwtToken(String token, HttpServletRequest request) {
         try {
+            // Refresh token e desafio de MFA são JWTs assinados com o mesmo subject do access
+            // token: sem esta checagem, ambos passariam por credencial. O refresh agora é
+            // persistido na mesma tabela consultada abaixo, então a busca em banco deixou de ser,
+            // sozinha, o que os separava.
+            if (!jwtService.isAccessToken(token)) {
+                log.warn("Token apresentado não é um access token — autenticação recusada");
+                return;
+            }
+
             // Extrai o email do usuário
             String userEmail = jwtService.extractUsername(token);
             log.debug("Email extraído do JWT: {}", userEmail);

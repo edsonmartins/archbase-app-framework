@@ -11,6 +11,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import br.com.archbase.security.annotation.ArchbaseSecurityAdminEndpoint;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,6 +20,7 @@ import java.util.Optional;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/resource")
+@ArchbaseSecurityAdminEndpoint(resource = "RESOURCE")
 public class ResourceController {
 
     private final ResourceService resourceService;
@@ -47,7 +49,9 @@ public class ResourceController {
         return ResponseEntity.ok(resourceService.registerResource(resourceRegister));
     }
 
+    // Consulta as permissões do próprio usuário logado — autoatendimento, não administração.
     @GetMapping("/permissions/{resourceName}")
+    @ArchbaseSecurityAdminEndpoint(selfService = true)
     public ResponseEntity<ResourcePermissionsDto> findLoggedUserResourcePermissions(@PathVariable String resourceName) {
         return ResponseEntity.ok(resourceService.findLoggedUserResourcePermissions(resourceName));
     }
