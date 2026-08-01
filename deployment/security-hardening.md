@@ -123,6 +123,18 @@ archbase.security.api-token.purge-plaintext=true
 O arquivo `db/migration/archbase/R__archbase_security_schema.sql` acompanha o framework e é
 idempotente (`if not exists` em tudo). Aplica-se sozinho em quem usa `archbase-starter-flyway`.
 
+> **⚠ O script é específico de PostgreSQL** e o starter o injeta nas locations de **todo** projeto
+> por padrão (`archbase.flyway.include-archbase-locations=true`). Numa aplicação MySQL ou Oracle o
+> Flyway falha na sintaxe e **a aplicação não sobe**. O mesmo acontece se o Flyway estiver
+> habilitado mas as tabelas `seguranca*` vierem de `ddl-auto`, porque o Flyway roda antes do
+> Hibernate. Nesses casos:
+>
+> ```properties
+> archbase.flyway.include-archbase-locations=false
+> ```
+>
+> e aplique o DDL equivalente pelo versionamento do próprio projeto.
+
 Colunas adicionadas nesta versão:
 
 | Tabela | Coluna | Para quê |

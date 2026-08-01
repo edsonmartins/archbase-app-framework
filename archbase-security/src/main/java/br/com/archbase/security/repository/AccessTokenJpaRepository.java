@@ -2,6 +2,7 @@ package br.com.archbase.security.repository;
 
 import br.com.archbase.ddd.infraestructure.persistence.jpa.repository.ArchbaseCommonJpaRepository;
 import br.com.archbase.security.persistence.AccessTokenEntity;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -45,6 +46,21 @@ public interface AccessTokenJpaRepository extends ArchbaseCommonJpaRepository<Ac
    */
   @Query("SELECT t FROM AccessTokenEntity t WHERE t.expirationDate < :date")
   List<AccessTokenEntity> findExpiredTokensOlderThan(@Param("date") LocalDateTime date);
+
+  /**
+   * Revoga, em um único comando, todos os tokens vivos do usuário dono do token informado.
+   *
+   * <p>Existe para o logout. Carregar as entidades e salvá-las uma a uma tinha dois problemas:
+   * exigia navegar a associação LAZY do usuário fora de sessão, e o {@code @Version} herdado fazia
+   * um refresh concorrente derrubar toda a transação por conflito otimista — desfazendo inclusive a
+   * revogação do token que o usuário acabou de apresentar, com o cliente lendo a resposta como
+   * logout bem-sucedido. O update em lote não toca associação nem versão.
+   */
+  @Modifying
+  @Query("UPDATE AccessTokenEntity t SET t.expired = true, t.revoked = true "
+          + "WHERE t.expired = false AND t.revoked = false "
+          + "AND t.user.id = (SELECT o.user.id FROM AccessTokenEntity o WHERE o.token = :token)")
+  int revokeAllTokensOfOwnerOf(@Param("token") String token);
 
   /**
    * Conta a quantidade de tokens válidos para um usuário

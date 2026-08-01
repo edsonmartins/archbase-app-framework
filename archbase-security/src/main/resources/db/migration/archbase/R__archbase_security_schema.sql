@@ -12,6 +12,18 @@
 -- entraria fora de ordem no histórico do projeto e o Flyway a rejeitaria. Repeatable roda depois das
 -- versionadas, sempre que o checksum muda, e não participa da ordenação.
 --
+-- ⚠ ESTE ARQUIVO É ESPECÍFICO DE POSTGRESQL
+-- Usa `add column if not exists`, `alter column ... drop not null` e `comment on column` — sintaxe
+-- que MySQL e Oracle não aceitam. O archbase-starter-flyway acrescenta este diretório às locations
+-- de TODO projeto por padrão (ArchbaseFlywayProperties.includeArchbaseLocations = true), então numa
+-- aplicação que não seja PostgreSQL o Flyway falha e a aplicação NÃO SOBE.
+--
+-- Nesse caso, desligue a inclusão e aplique o DDL equivalente pelo seu próprio versionamento:
+--     archbase.flyway.include-archbase-locations=false
+--
+-- O mesmo vale para quem tem Flyway habilitado mas cria as tabelas `seguranca*` por
+-- `spring.jpa.hibernate.ddl-auto`: o Flyway roda antes do Hibernate e não encontrará as tabelas.
+
 -- POR QUE TODO COMANDO É IDEMPOTENTE
 -- Este arquivo roda tanto em base nova quanto em base que já passou por upgrades manuais. Só
 -- `IF NOT EXISTS` — nada aqui pode falhar por já ter sido aplicado, nem destruir dado existente.

@@ -135,7 +135,7 @@ public class ArchbaseAuthenticationService {
 
     @Transactional
     public AuthenticationResponse authenticate(AuthenticationRequest request) {
-        String rateLimitKey = "login:" + request.getEmail();
+        String rateLimitKey = ArchbaseAuthRateLimiter.key("login", request.getEmail());
         if (rateLimiter.isBlocked(rateLimitKey)) {
             log.warn("Login bloqueado por excesso de tentativas: {}", request.getEmail());
             throw new ArchbaseTooManyAttemptsException(
@@ -225,12 +225,13 @@ public class ArchbaseAuthenticationService {
             rateLimiter.recordFailure(rateLimitKey);
             log.warn("Falha na autenticação", e);
             throw new BadCredentialsException("Login ou senha inválido", e);
-        } finally {
-            // Limpa o tenant resolvido acima do thread do pool. Sem isto, num login que falha
-            // (BadCredentials / "usuário não encontrado"), o postHandle do interceptor é pulado e o
-            // tenant vaza para a próxima requisição servida pelo mesmo thread (ThreadLocal herdável).
-            ArchbaseTenantContext.clear();
         }
+        // Sem finally { clear() }. Ele existia porque, com a limpeza do interceptor no postHandle,
+        // um login que falhasse deixava o tenant na thread do pool. O interceptor agora limpa no
+        // afterCompletion, que roda mesmo com exceção — e limpar aqui atrapalhava o caminho de
+        // sucesso: o /login-flexible chama os hooks da aplicação (postAuthenticate, enrichers)
+        // DEPOIS deste método, e eles abriam sessão nova sem tenant no contexto, resolvendo para o
+        // tenant padrão. Ou seja: leitura (e possível gravação) no tenant errado, em silêncio.
     }
 
     /**
@@ -254,7 +255,7 @@ public class ArchbaseAuthenticationService {
 
             // Segundo fator é um código de 6 dígitos: sem contagem de tentativas, o desafio de 5
             // minutos é tempo de sobra para varrer boa parte do espaço.
-            String rateLimitKey = "mfa:" + email;
+            String rateLimitKey = ArchbaseAuthRateLimiter.key("mfa", email);
             if (rateLimiter.isBlocked(rateLimitKey)) {
                 log.warn("Verificação de MFA bloqueada por excesso de tentativas: {}", email);
                 throw new ArchbaseTooManyAttemptsException(
@@ -509,7 +510,7 @@ public class ArchbaseAuthenticationService {
 
         // O token de reset tem 8 dígitos numéricos. Contar as tentativas é o que impede varrer o
         // espaço: sem isso, adivinhá-lo é só uma questão de quantas requisições cabem na validade.
-        String rateLimitKey = "reset:" + request.getEmail();
+        String rateLimitKey = ArchbaseAuthRateLimiter.key("reset", request.getEmail());
         if (rateLimiter.isBlocked(rateLimitKey)) {
             log.warn("Redefinição de senha bloqueada por excesso de tentativas: {}", request.getEmail());
             throw new ArchbaseTooManyAttemptsException(
@@ -559,7 +560,7 @@ public class ArchbaseAuthenticationService {
 
         // O token de reset tem 8 dígitos numéricos. Contar as tentativas é o que impede varrer o
         // espaço: sem isso, adivinhá-lo é só uma questão de quantas requisições cabem na validade.
-        String rateLimitKey = "reset:" + request.getEmail();
+        String rateLimitKey = ArchbaseAuthRateLimiter.key("reset", request.getEmail());
         if (rateLimiter.isBlocked(rateLimitKey)) {
             log.warn("Redefinição de senha bloqueada por excesso de tentativas: {}", request.getEmail());
             throw new ArchbaseTooManyAttemptsException(

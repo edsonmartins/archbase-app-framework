@@ -53,7 +53,6 @@ public class ArchbaseTenantAwareTaskDecorator implements TaskDecorator {
         return () -> {
             String previousTenantId = ArchbaseTenantContext.getTenantId();
             String previousCompanyId = ArchbaseTenantContext.getCompanyId();
-            SecurityContext previousSecurityContext = SecurityContextHolder.getContext();
 
             try {
                 ArchbaseTenantContext.setTenantId(tenantId);
@@ -64,9 +63,11 @@ public class ArchbaseTenantAwareTaskDecorator implements TaskDecorator {
                 runnable.run();
             } finally {
                 restore(previousTenantId, previousCompanyId);
-                if (securityContext != null) {
-                    SecurityContextHolder.setContext(previousSecurityContext);
-                }
+                // Sempre, inclusive com a propagação desligada. Guardar esta limpeza atrás do
+                // mesmo if da instalação deixava a thread do pool carregando o que a própria
+                // tarefa tivesse posto no holder — e a tarefa seguinte, submetida por outro
+                // caminho, herdava aquela identidade. É o mesmo defeito do tenant, do outro lado.
+                SecurityContextHolder.clearContext();
             }
         };
     }

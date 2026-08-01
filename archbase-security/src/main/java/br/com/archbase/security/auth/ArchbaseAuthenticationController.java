@@ -47,6 +47,25 @@ public class ArchbaseAuthenticationController {
      * tentar por enquanto". Devolver 401 de novo faria um app com retry automático continuar
      * batendo e prolongar o próprio bloqueio.
      */
+    /**
+     * Mensagem que pode ir para o cliente.
+     *
+     * <p>Só a de {@link ArchbaseValidationException}, que é escrita para o usuário final. Qualquer
+     * outra exceção carrega detalhe interno — nome de tabela, coluna e fragmento de SQL numa
+     * violação de integridade, por exemplo — e estes handlers atendem endpoints anônimos como
+     * {@code /auth/register}. O diagnóstico completo fica no log.
+     *
+     * <p>Nunca devolve {@code null}: {@code Map.of} rejeita valor nulo, e uma exceção sem mensagem
+     * (um {@code NullPointerException} vindo de um delegate, por exemplo) faria o próprio bloco de
+     * tratamento estourar, trocando a resposta por um 500 sem corpo.
+     */
+    private String safeMessage(Exception e) {
+        if (e instanceof ArchbaseValidationException && e.getMessage() != null) {
+            return e.getMessage();
+        }
+        return "Não foi possível completar a operação.";
+    }
+
     private ResponseEntity<?> tooManyAttempts(ArchbaseTooManyAttemptsException e) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
             .header("Retry-After", String.valueOf(e.getRetryAfterSeconds()))
@@ -260,7 +279,7 @@ public class ArchbaseAuthenticationController {
         } catch (Exception e) {
             log.error("Erro ao registrar usuário: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(Map.of("error", e.getMessage()));
+                .body(Map.of("error", safeMessage(e)));
         }
     }
     
@@ -327,7 +346,7 @@ public class ArchbaseAuthenticationController {
         } catch (Exception e) {
             log.error("Erro no login: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(Map.of("error", e.getMessage()));
+                .body(Map.of("error", safeMessage(e)));
         }
     }
 
@@ -393,7 +412,7 @@ public class ArchbaseAuthenticationController {
         } catch (Exception e) {
             log.error("Erro no login social: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(Map.of("error", e.getMessage()));
+                .body(Map.of("error", safeMessage(e)));
         }
     }
     

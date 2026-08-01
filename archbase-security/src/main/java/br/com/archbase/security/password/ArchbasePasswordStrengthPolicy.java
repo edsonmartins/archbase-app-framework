@@ -17,10 +17,17 @@ import java.util.Set;
  * gravava o bcrypt tranquilamente. Expirar a cada 90 dias uma senha de um caractere não protege
  * ninguém.
  *
- * <p><b>Desligada por padrão</b> ({@code min-length=0}): ligar regras de senha numa base existente
- * não invalida as senhas já gravadas, mas passa a recusar trocas que antes passavam — é uma decisão
- * de produto, com impacto em suporte, e não algo que uma atualização de framework deva impor.
- * Habilite com:
+ * <p><b>As regras de composição vêm desligadas</b> ({@code min-length=0} e todos os
+ * {@code require-*} em {@code false}): ligar regras de senha numa base existente não invalida as
+ * senhas já gravadas, mas passa a recusar trocas que antes passavam — é uma decisão de produto, com
+ * impacto em suporte, e não algo que uma atualização de framework deva impor.
+ *
+ * <p><b>Atenção:</b> {@code block-common} vem ligado, então {@link #isEnabled()} é {@code true} na
+ * instalação padrão e {@link #validate(String)} <b>rejeita senha vazia</b> mesmo sem nenhuma outra
+ * regra configurada. Por isso os fluxos que criam usuário legitimamente sem senha (convite, SSO,
+ * provisionamento de login social) precisam pular a chamada — ver {@code UserService.createUser}.
+ *
+ * <p>Habilite as demais regras com:
  *
  * <pre>
  * archbase.security.password.min-length=12

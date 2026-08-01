@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -54,6 +55,22 @@ public class ArchbaseAuthRateLimiter {
     private long blockSeconds;
 
     private final Map<String, Attempt> attempts = new ConcurrentHashMap<>();
+
+    /**
+     * Monta a chave de contagem a partir de um escopo e do identificador do usuário.
+     *
+     * <p>Normaliza o identificador de propósito. A busca do usuário passa pelo banco, e em collation
+     * case-insensitive (o padrão do MySQL, por exemplo) {@code Vitima@x.com} e {@code vitima@x.com}
+     * autenticam contra a mesma linha — mas, sem normalizar, virariam duas contagens separadas.
+     * Alternando maiúsculas o atacante ganharia um orçamento novo de tentativas a cada variação, e
+     * o limitador nunca entraria.
+     */
+    public static String key(String escopo, String identificador) {
+        String normalizado = identificador == null
+                ? ""
+                : identificador.trim().toLowerCase(Locale.ROOT);
+        return escopo + ":" + normalizado;
+    }
 
     /**
      * @return {@code true} se a chave está bloqueada e a operação deve ser recusada sem sequer

@@ -15,7 +15,9 @@ import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
@@ -122,12 +124,15 @@ public class RoleAuthorizationManager implements AuthorizationManager<MethodInvo
             return handleMissingResolver(requiredRoles, invocation);
         }
 
+        // Guarda quem respondeu o quê: para ownerOnly não basta saber que o usuário tem a role e
+        // que alguém o considera proprietário — precisa ser o MESMO resolver.
+        Map<ArchbaseRoleResolver, Set<String>> rolesPorResolver = new LinkedHashMap<>();
         Set<String> userRoles = new HashSet<>();
         for (ArchbaseRoleResolver resolver : roleResolvers) {
             Set<String> resolved = resolver.resolveRoles(user);
-            if (resolved != null) {
-                userRoles.addAll(resolved);
-            }
+            Set<String> seguras = resolved != null ? resolved : Set.of();
+            rolesPorResolver.put(resolver, seguras);
+            userRoles.addAll(seguras);
         }
 
         log.debug("Roles exigidas: {} | Roles do usuário {}: {}", requiredRoles, user.getEmail(), userRoles);
@@ -140,14 +145,29 @@ public class RoleAuthorizationManager implements AuthorizationManager<MethodInvo
             return false;
         }
 
-        // Basta um resolver reconhecer o usuário como proprietário: cada um responde pelo seu
-        // módulo, e exigir unanimidade negaria acesso legítimo por causa de quem não tem opinião.
-        if (requireRole.ownerOnly() && roleResolvers.stream().noneMatch(resolver -> resolver.isOwner(user))) {
+        if (requireRole.ownerOnly() && !isOwnerOfMatchingModule(rolesPorResolver, requiredRoles, user)) {
             log.debug("Acesso negado - método restrito a proprietários e {} não é", user.getEmail());
             return false;
         }
 
         return true;
+    }
+
+    /**
+     * Verdadeiro se algum resolver que <b>forneceu uma das roles exigidas</b> também considera o
+     * usuário proprietário.
+     *
+     * <p>{@code isOwner} não tem namespace: perguntar a todos os resolvers e aceitar qualquer
+     * "sim" deixa um módulo responder por outro. Numa aplicação com um resolver de lojas e outro de
+     * frota, um funcionário da frota que por acaso é dono de uma loja passaria num endpoint de
+     * frota marcado {@code ownerOnly} — a role vem de um módulo e a propriedade de outro.
+     */
+    private boolean isOwnerOfMatchingModule(Map<ArchbaseRoleResolver, Set<String>> rolesPorResolver,
+                                            List<String> requiredRoles,
+                                            UserEntity user) {
+        return rolesPorResolver.entrySet().stream()
+                .filter(entry -> entry.getValue().stream().anyMatch(requiredRoles::contains))
+                .anyMatch(entry -> entry.getKey().isOwner(user));
     }
 
     private boolean handleMissingResolver(List<String> requiredRoles, MethodInvocation invocation) {

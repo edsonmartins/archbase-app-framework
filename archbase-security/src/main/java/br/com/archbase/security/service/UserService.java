@@ -21,6 +21,7 @@ import br.com.archbase.validation.exception.ArchbaseValidationException;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -46,6 +47,25 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
     private final GroupJpaRepository groupJpaRepository;
     private final ProfileJpaRepository profileJpaRepository;
     private final ArchbasePasswordStrengthPolicy passwordStrengthPolicy;
+
+    /**
+     * Volta a permitir gestão de administradores quando o principal autenticado não é um
+     * {@link UserEntity} e, portanto, o privilégio não pode ser verificado aqui.
+     *
+     * <p>{@code UserDetailsService} é ponto de extensão suportado
+     * ({@code @ConditionalOnMissingBean} em {@code ArchbaseSecurityApplicationConfig}). Numa
+     * aplicação que o substitui por um que devolve outro tipo de principal, <b>toda</b> requisição
+     * cai neste caso — inclusive a de um administrador legítimo — e sem esta chave não haveria como
+     * gerir usuários.
+     *
+     * <p>Ligar isto reabre a escalação que a trava fecha: o privilégio deixa de ser verificado e
+     * qualquer autenticado volta a poder criar administrador. Prefira fazer o
+     * {@code UserDetailsService} devolver {@link UserEntity} — é o que o resto do módulo assume
+     * ({@code SecurityAdapter.getLoggedUser} e {@code ArchbaseSecurityService.hasPermission}
+     * também fazem esse cast).
+     */
+    @Value("${archbase.security.admin-guard.allow-unverifiable-principal:false}")
+    private boolean allowUnverifiablePrincipal;
 
     public UserService(UserPersistenceAdapter persistenceAdapter, SecurityAdapter securityAdapter, PasswordEncoder passwordEncoder, UserServiceListener userServiceListener, GroupJpaRepository groupJpaRepository, ProfileJpaRepository profileJpaRepository, ArchbasePasswordStrengthPolicy passwordStrengthPolicy) {
         this.persistenceAdapter =  persistenceAdapter;
@@ -147,6 +167,9 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
      * não por ausência de usuário.
      */
     private boolean isRequestFromUnverifiablePrincipal() {
+        if (allowUnverifiablePrincipal) {
+            return false;
+        }
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         return authentication != null
                 && authentication.isAuthenticated()
@@ -196,8 +219,9 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
         }
         denyAdministratorPromotionByNonAdmin(userDto);
         // Só valida quando há senha. Criação sem senha é legítima (convite, SSO, provisionamento
-        // automático de login social); exigir força aí faria esses fluxos quebrarem no dia em que
-        // um operador ligasse a política — e só em produção, já que ela vem desligada.
+        // automático de login social), e a política rejeita senha vazia já na configuração padrão —
+        // block-common vem ligado, o que basta para isEnabled() ser true. Sem esta guarda, esses
+        // fluxos quebram em qualquer instalação, não só nas que configuram regras de composição.
         if (!StringUtils.isBlank(userDto.getPassword())) {
             passwordStrengthPolicy.validate(userDto.getPassword());
         }
