@@ -48,7 +48,14 @@ public class ArchbaseLogoutService implements LogoutHandler {
         // Um único UPDATE resolve os dois pontos delicados: não navega a associação LAZY do usuário
         // (esta classe roda fora do OpenEntityManagerInView) e não passa por @Version, então um
         // refresh concorrente não derruba a revogação por conflito otimista.
-        int revogados = tokenRepository.revokeAllTokensOfOwnerOf(jwt);
+        String ownerId = tokenRepository.findOwnerIdByToken(jwt).orElse(null);
+        if (ownerId == null) {
+            log.debug("Logout: token apresentado não corresponde a nenhuma sessão registrada");
+            SecurityContextHolder.clearContext();
+            return;
+        }
+
+        int revogados = tokenRepository.revokeAllTokensOfUser(ownerId);
         log.debug("Logout: {} token(s) revogado(s)", revogados);
 
         SecurityContextHolder.clearContext();

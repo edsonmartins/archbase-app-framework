@@ -222,11 +222,13 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
         // automático de login social), e a política rejeita senha vazia já na configuração padrão —
         // block-common vem ligado, o que basta para isEnabled() ser true. Sem esta guarda, esses
         // fluxos quebram em qualquer instalação, não só nas que configuram regras de composição.
+        // O encode também precisa ficar dentro da guarda: BCryptPasswordEncoder.encode(null) lança
+        // IllegalArgumentException. Validar e cifrar são a mesma condição — há senha ou não há.
         if (!StringUtils.isBlank(userDto.getPassword())) {
             passwordStrengthPolicy.validate(userDto.getPassword());
+            userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
         }
         userServiceListener.onBeforeCreate(originalUserDto);
-        userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
         UserDto user = persistenceAdapter.createUser(userDto);
         userServiceListener.onAfterCreate(originalUserDto,user);
         return user;

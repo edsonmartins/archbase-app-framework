@@ -1,6 +1,9 @@
 package br.com.archbase.security.config;
 
+import br.com.archbase.security.service.ArchbaseLogoutService;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -15,6 +18,13 @@ import static org.springframework.security.config.http.SessionCreationPolicy.STA
 
 @Slf4j
 public abstract class BaseArchbaseSecurityConfiguration implements ArchbaseSecurityConfigurator {
+
+    /**
+     * Revoga os tokens da sessão no logout. Opcional para não impor a cadeia de logout a quem já
+     * tem a sua; ausente, o {@code .logout(...)} não é configurado.
+     */
+    @Autowired(required = false)
+    private ArchbaseLogoutService logoutService;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -48,6 +58,19 @@ public abstract class BaseArchbaseSecurityConfiguration implements ArchbaseSecur
                     }
                 })
                 .sessionManagement(session -> session.sessionCreationPolicy(STATELESS))
+                // Registrar o handler é o que faz o logout existir de fato. Sem isto, o
+                // /logout padrão do Spring Security roda apenas o SecurityContextLogoutHandler —
+                // que com sessão STATELESS não faz nada: o cliente recebia sucesso e o access token
+                // continuava valendo até expirar, junto com o refresh.
+                .logout(logout -> {
+                    if (logoutService != null) {
+                        logout.logoutUrl(getLogoutUrl())
+                                .addLogoutHandler(logoutService)
+                                // API stateless: 200, não o redirect 302 para /login?logout.
+                                .logoutSuccessHandler((request, response, authentication) ->
+                                        response.setStatus(HttpServletResponse.SC_OK));
+                    }
+                })
                 .addFilterBefore(getJwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class)
                 // Erros de acesso: 401 quando não há autenticação válida (token ausente/expirado),
                 // 403 quando há mas falta permissão. Sem o entry point o Spring devolvia 403 para
@@ -91,6 +114,14 @@ public abstract class BaseArchbaseSecurityConfiguration implements ArchbaseSecur
                 .ifPresent(url -> log.warn("'{}' está liberado sem autenticação. Se a aplicação expõe "
                         + "endpoints além de health/info (management.endpoints.web.exposure.include), "
                         + "env/configprops/heapdump ficam públicos.", url));
+    }
+
+    /**
+     * URL do logout. Fica junto dos demais endpoints de autenticação em vez do {@code /logout}
+     * padrão do Spring Security, que colide com rotas de aplicação com mais frequência.
+     */
+    protected String getLogoutUrl() {
+        return "/api/v1/auth/logout";
     }
 
     protected abstract CustomAccessDeniedHandler getAccessDeniedHandler();

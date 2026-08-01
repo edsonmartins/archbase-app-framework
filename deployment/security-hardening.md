@@ -27,7 +27,13 @@ Estas correções valem imediatamente porque não quebram uso legítimo:
 - **Tenant não vaza mais entre requisições** quando um endpoint lança exceção.
 - **`companyId` e usuário autenticado propagam para tarefas `@Async`**.
 
-### Duas mudanças de comportamento visíveis
+### Três mudanças de comportamento visíveis
+
+0. **O logout passou a existir.** `ArchbaseLogoutService` nunca era registrado na cadeia de
+   segurança: o `/logout` padrão do Spring rodava só o `SecurityContextLogoutHandler`, que com
+   sessão STATELESS não faz nada — o cliente recebia sucesso e o token seguia válido até expirar.
+   Agora há `POST /api/v1/auth/logout`, que revoga access e refresh da sessão e responde 200.
+   Sobrescreva `getLogoutUrl()` se o caminho conflitar com uma rota existente.
 
 1. **Token de API não pode mais ser recuperado depois de criado.** Se alguma tela lista tokens
    mostrando o valor, ela passará a mostrar vazio para os criados a partir de agora. Exiba o valor

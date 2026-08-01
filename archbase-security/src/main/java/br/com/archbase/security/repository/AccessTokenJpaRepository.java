@@ -48,19 +48,31 @@ public interface AccessTokenJpaRepository extends ArchbaseCommonJpaRepository<Ac
   List<AccessTokenEntity> findExpiredTokensOlderThan(@Param("date") LocalDateTime date);
 
   /**
-   * Revoga, em um único comando, todos os tokens vivos do usuário dono do token informado.
+   * Id do usuário dono do token informado, sem carregar a entidade.
    *
-   * <p>Existe para o logout. Carregar as entidades e salvá-las uma a uma tinha dois problemas:
-   * exigia navegar a associação LAZY do usuário fora de sessão, e o {@code @Version} herdado fazia
-   * um refresh concorrente derrubar toda a transação por conflito otimista — desfazendo inclusive a
-   * revogação do token que o usuário acabou de apresentar, com o cliente lendo a resposta como
-   * logout bem-sucedido. O update em lote não toca associação nem versão.
+   * <p>Projeção em vez de {@code findByToken(...).getUser().getId()}: o logout roda na cadeia de
+   * filtros, fora do {@code OpenEntityManagerInView}, e navegar a associação LAZY ali estoura
+   * {@code LazyInitializationException}.
    */
-  @Modifying
+  @Query("SELECT t.user.id FROM AccessTokenEntity t WHERE t.token = :token")
+  Optional<String> findOwnerIdByToken(@Param("token") String token);
+
+  /**
+   * Revoga, em um único comando, todos os tokens vivos de um usuário.
+   *
+   * <p>Update em lote, e não carregar-e-salvar entidade a entidade, porque o {@code @Version}
+   * herdado fazia um refresh concorrente derrubar toda a transação do logout por conflito otimista
+   * — desfazendo inclusive a revogação do token recém-apresentado, com o cliente lendo a resposta
+   * como logout bem-sucedido.
+   *
+   * <p>Recebe o {@code userId} já resolvido em vez de derivá-lo por subconsulta sobre esta mesma
+   * tabela: {@code UPDATE ... WHERE x = (SELECT ... FROM a_mesma_tabela)} é recusado pelo MySQL e
+   * pelo MariaDB (ERROR 1093), e o framework não pode assumir PostgreSQL aqui.
+   */
+  @Modifying(clearAutomatically = true, flushAutomatically = true)
   @Query("UPDATE AccessTokenEntity t SET t.expired = true, t.revoked = true "
-          + "WHERE t.expired = false AND t.revoked = false "
-          + "AND t.user.id = (SELECT o.user.id FROM AccessTokenEntity o WHERE o.token = :token)")
-  int revokeAllTokensOfOwnerOf(@Param("token") String token);
+          + "WHERE t.expired = false AND t.revoked = false AND t.user.id = :userId")
+  int revokeAllTokensOfUser(@Param("userId") String userId);
 
   /**
    * Conta a quantidade de tokens válidos para um usuário

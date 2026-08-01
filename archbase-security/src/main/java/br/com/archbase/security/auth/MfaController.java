@@ -64,7 +64,12 @@ public class MfaController {
             List<String> recoveryCodes = mfaService.ativar(user.getId(), request.code());
             return ResponseEntity.ok(Map.of("recoveryCodes", recoveryCodes));
         } catch (IllegalArgumentException | IllegalStateException e) {
-            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of("message", e.getMessage()));
+            // Map.of recusa valor nulo: uma exceção sem mensagem faria o próprio catch estourar
+            // com NPE, trocando o 422 pretendido por um 500 sem corpo.
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                    .body(Map.of("message", e.getMessage() != null
+                            ? e.getMessage()
+                            : "Não foi possível ativar o segundo fator."));
         }
     }
 
