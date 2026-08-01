@@ -5,6 +5,8 @@ import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
 import br.com.archbase.query.rsql.jpa.SortUtils;
 import br.com.archbase.security.domain.dto.ApiTokenDto;
 import br.com.archbase.security.persistence.ApiTokenEntity;
+import br.com.archbase.security.util.ApiTokenHasher;
+import br.com.archbase.security.util.TokenMaskUtil;
 import br.com.archbase.security.repository.ApiTokenRepository;
 import jakarta.persistence.EntityManager;
 import lombok.extern.slf4j.Slf4j;
@@ -40,15 +42,28 @@ public class ApiTokenPersistenceAdapter implements FindDataWithFilterQuery<Strin
      * @param token o valor do token
      * @return Optional contendo o ApiTokenEntity se encontrado
      */
+    /**
+     * Condição de casamento do token apresentado.
+     *
+     * <p>Casa pelo hash e, só quando a linha ainda não foi migrada ({@code token_hash IS NULL}),
+     * pelo valor em claro. O segundo ramo existe para quem atualiza o framework sem rodar a
+     * migração — aplicação sem Flyway, por exemplo: sem ele, todos os tokens de API já emitidos
+     * parariam de autenticar no deploy. O {@code ArchbaseApiTokenHashMigrator} preenche os hashes
+     * na subida, então esse ramo tende a nunca casar depois do primeiro startup.
+     */
+    private static final String TOKEN_MATCH =
+            "(token_hash = :tokenHash OR (token_hash IS NULL AND token = :token))";
+
     @Transactional(readOnly = true)
     @SuppressWarnings("unchecked")
     public Optional<ApiTokenEntity> findByToken(String token) {
         String tenantId = ArchbaseTenantContext.getTenantId();
-        log.debug("findByToken - Token={}, TenantId do contexto={}", token, tenantId);
+        log.debug("findByToken - Token={}, TenantId do contexto={}", TokenMaskUtil.mask(token), tenantId);
 
-        String sql = "SELECT * FROM seguranca_token_api WHERE token = :token AND tenant_id = :tenantId";
+        String sql = "SELECT * FROM seguranca_token_api WHERE " + TOKEN_MATCH + " AND tenant_id = :tenantId";
 
         List<ApiTokenEntity> results = entityManager.createNativeQuery(sql, ApiTokenEntity.class)
+                .setParameter("tokenHash", ApiTokenHasher.hash(token))
                 .setParameter("token", token)
                 .setParameter("tenantId", tenantId)
                 .getResultList();
@@ -60,7 +75,7 @@ public class ApiTokenPersistenceAdapter implements FindDataWithFilterQuery<Strin
                     result.getActivated(), result.getExpirationDate());
             return Optional.of(result);
         } else {
-            log.debug("Token não encontrado para token={} e tenantId={}", token, tenantId);
+            log.debug("Token não encontrado para token={} e tenantId={}", TokenMaskUtil.mask(token), tenantId);
             return Optional.empty();
         }
     }
@@ -75,11 +90,12 @@ public class ApiTokenPersistenceAdapter implements FindDataWithFilterQuery<Strin
     @Transactional(readOnly = true)
     @SuppressWarnings("unchecked")
     public Optional<ApiTokenEntity> findByTokenAndTenantId(String token, String tenantId) {
-        log.debug("findByTokenAndTenantId - Token={}, TenantId={}", token, tenantId);
+        log.debug("findByTokenAndTenantId - Token={}, TenantId={}", TokenMaskUtil.mask(token), tenantId);
 
-        String sql = "SELECT * FROM seguranca_token_api WHERE token = :token AND tenant_id = :tenantId";
+        String sql = "SELECT * FROM seguranca_token_api WHERE " + TOKEN_MATCH + " AND tenant_id = :tenantId";
 
         List<ApiTokenEntity> results = entityManager.createNativeQuery(sql, ApiTokenEntity.class)
+                .setParameter("tokenHash", ApiTokenHasher.hash(token))
                 .setParameter("token", token)
                 .setParameter("tenantId", tenantId)
                 .getResultList();
@@ -110,7 +126,7 @@ public class ApiTokenPersistenceAdapter implements FindDataWithFilterQuery<Strin
         String tenantId = ArchbaseTenantContext.getTenantId();
         LocalDateTime now = LocalDateTime.now();
 
-        log.debug("validateToken - Token={}, TenantId do contexto={}, Now={}", token, tenantId, now);
+        log.debug("validateToken - Token={}, TenantId do contexto={}, Now={}", TokenMaskUtil.mask(token), tenantId, now);
 
         // O tenant do CONTEXTO só entra como filtro quando existe. Esta validação acontece dentro
         // da cadeia do Spring Security, que roda ANTES dos filtros de aplicação que resolvem o
@@ -118,11 +134,12 @@ public class ApiTokenPersistenceAdapter implements FindDataWithFilterQuery<Strin
         // 401, sem nada no log apontando a causa. O token é único por si (UUID) e a linha carrega o
         // próprio tenant — que continua sendo a fonte de verdade para quem autentica.
         boolean scoped = tenantId != null && !tenantId.isBlank();
-        String sql = "SELECT * FROM seguranca_token_api WHERE token = :token "
+        String sql = "SELECT * FROM seguranca_token_api WHERE " + TOKEN_MATCH + " "
                 + (scoped ? "AND tenant_id = :tenantId " : "")
                 + "AND bo_revogado = 'N' AND bo_ativado = 'S' AND dh_expiracao > :now";
 
         var query = entityManager.createNativeQuery(sql, ApiTokenEntity.class)
+                .setParameter("tokenHash", ApiTokenHasher.hash(token))
                 .setParameter("token", token)
                 .setParameter("now", now);
         if (scoped) {
@@ -139,8 +156,9 @@ public class ApiTokenPersistenceAdapter implements FindDataWithFilterQuery<Strin
         } else {
             // Buscar para diagnóstico (sem filtros de validação, e sem tenant: se a linha existe em
             // outro tenant, o log tem de dizer isso — era justamente o caso que ficava invisível)
-            String diagSql = "SELECT * FROM seguranca_token_api WHERE token = :token";
+            String diagSql = "SELECT * FROM seguranca_token_api WHERE " + TOKEN_MATCH;
             List<ApiTokenEntity> diagResults = entityManager.createNativeQuery(diagSql, ApiTokenEntity.class)
+                    .setParameter("tokenHash", ApiTokenHasher.hash(token))
                     .setParameter("token", token)
                     .getResultList();
 
@@ -151,7 +169,8 @@ public class ApiTokenPersistenceAdapter implements FindDataWithFilterQuery<Strin
                         t.getExpirationDate() != null && t.getExpirationDate().isBefore(now),
                         t.getExpirationDate(), now);
             } else {
-                log.warn("Token não encontrado no banco de dados para token={} e tenantId={}", token, tenantId);
+                log.warn("Token não encontrado no banco de dados para token={} e tenantId={}",
+                        TokenMaskUtil.mask(token), tenantId);
             }
         }
 

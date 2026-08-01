@@ -2,6 +2,7 @@ package br.com.archbase.security.service;
 
 import br.com.archbase.security.auth.ChangePasswordRequest;
 import br.com.archbase.security.domain.entity.User;
+import br.com.archbase.security.password.ArchbasePasswordStrengthPolicy;
 import br.com.archbase.security.persistence.UserEntity;
 import br.com.archbase.security.repository.UserJpaRepository;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,8 @@ public class ArchbaseUserService {
 
     private final PasswordEncoder passwordEncoder;
     private final UserJpaRepository repository;
+    private final ArchbasePasswordStrengthPolicy passwordStrengthPolicy;
+    private final ArchbaseAuthenticationService authenticationService;
     public void changePassword(ChangePasswordRequest request, Principal connectedUser) {
 
         var user = (UserEntity) ((UsernamePasswordAuthenticationToken) connectedUser).getPrincipal();
@@ -30,6 +33,7 @@ public class ArchbaseUserService {
         if (!request.getNewPassword().equals(request.getConfirmationPassword())) {
             throw new IllegalStateException("Senhas não conferem");
         }
+        passwordStrengthPolicy.validate(request.getNewPassword());
 
         // atualiza a senha
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
@@ -37,6 +41,11 @@ public class ArchbaseUserService {
 
         // salva usuário
         repository.save(user);
+
+        // Revoga as sessões abertas, como o reset por token já fazia. Sem isto, trocar a senha por
+        // suspeita de comprometimento não expulsava ninguém: os tokens emitidos com a senha antiga
+        // seguiam válidos até expirar.
+        authenticationService.revokeAllUserTokens(user);
     }
 
     public void changePassword(ChangePasswordRequest request, User connectedUser) {
@@ -54,6 +63,7 @@ public class ArchbaseUserService {
         if (!request.getNewPassword().equals(request.getConfirmationPassword())) {
             throw new IllegalStateException("Senhas não conferem");
         }
+        passwordStrengthPolicy.validate(request.getNewPassword());
 
         // atualiza a senha
         userEntity.get().setPassword(passwordEncoder.encode(request.getNewPassword()));
@@ -61,6 +71,9 @@ public class ArchbaseUserService {
 
         // salva usuário
         repository.save(userEntity.get());
+
+        // Revoga as sessões abertas — ver comentário na sobrecarga acima.
+        authenticationService.revokeAllUserTokens(userEntity.get());
     }
     
     /**

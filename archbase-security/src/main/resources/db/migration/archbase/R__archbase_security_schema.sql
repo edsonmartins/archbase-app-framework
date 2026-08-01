@@ -40,3 +40,28 @@ comment on column seguranca_token_acesso.tp_uso_token is
 
 -- Sem índice novo de propósito: a busca do filtro é por TOKEN, que já é UNIQUE (e um índice em
 -- varchar(5000) esbarraria no limite de entrada de btree do Postgres).
+
+-- ── 3.0.11: token de API deixa de ser guardado em claro (ApiTokenEntity) ───────────────────────
+-- O token de API é a credencial em si. Guardado em claro, um dump da tabela (backup, réplica de
+-- homologação, SELECT de suporte) entrega acesso direto a toda integração. Passa a valer o SHA-256,
+-- e a autenticação busca por ele.
+--
+-- O valor em claro NÃO é apagado aqui: o hash é preenchido na subida da aplicação
+-- (ArchbaseApiTokenHashMigrator) e a coluna antiga continua servindo de compatibilidade até que
+-- archbase.security.api-token.purge-plaintext=true seja ligado deliberadamente — apagar é
+-- irreversível e não deve acontecer como efeito colateral de uma migration.
+alter table seguranca_token_api
+    add column if not exists token_hash varchar(64);
+
+-- TOKEN passa a ser nulável: nas linhas criadas a partir daqui ele nasce vazio.
+alter table seguranca_token_api
+    alter column token drop not null;
+
+comment on column seguranca_token_api.token_hash is
+    'SHA-256 (hex) do token de API. É por aqui que a autenticação busca.';
+comment on column seguranca_token_api.token is
+    'Valor em claro, apenas em linhas anteriores a 3.0.11. Removível com archbase.security.api-token.purge-plaintext=true.';
+
+-- Consulta quente: toda requisição autenticada por token de API bate neste índice.
+create index if not exists idx_seguranca_token_api_hash
+    on seguranca_token_api (token_hash);

@@ -6,7 +6,10 @@ import br.com.archbase.security.adapter.PasswordResetTokenPersistenceAdapter;
 import br.com.archbase.security.auth.*;
 import br.com.archbase.security.domain.dto.UserDto;
 import br.com.archbase.security.domain.entity.*;
+import br.com.archbase.security.exception.ArchbaseTooManyAttemptsException;
 import br.com.archbase.security.persistence.AccessTokenEntity;
+import br.com.archbase.security.password.ArchbasePasswordStrengthPolicy;
+import br.com.archbase.security.ratelimit.ArchbaseAuthRateLimiter;
 import br.com.archbase.security.persistence.ProfileEntity;
 import br.com.archbase.security.persistence.UserEntity;
 import br.com.archbase.security.persistence.UserGroupEntity;
@@ -52,6 +55,8 @@ public class ArchbaseAuthenticationService {
     private final UserService userService;
     private final PasswordResetTokenPersistenceAdapter passwordResetTokenPersistenceAdapter;
     private final AccessTokenPersistenceAdapter accessTokenPersistenceAdapter;
+    private final ArchbaseAuthRateLimiter rateLimiter;
+    private final ArchbasePasswordStrengthPolicy passwordStrengthPolicy;
 
     // Injection opcional de enrichers - não quebra se não existir nenhum
     @Autowired(required = false)
@@ -64,6 +69,17 @@ public class ArchbaseAuthenticationService {
     // MFA/2FA - opcional; ausente ou desabilitado para o usuário ⇒ fluxo de login inalterado.
     @Autowired(required = false)
     private br.com.archbase.security.mfa.MfaService mfaService;
+
+    /**
+     * Faz o pedido de reset responder igual para e-mail cadastrado e não cadastrado.
+     *
+     * <p>Desligado por padrão porque muda o contrato do endpoint: hoje ele responde 400 com
+     * "usuário não encontrado", e telas que exibem essa mensagem deixariam de recebê-la. Ligue
+     * junto com o ajuste no frontend para "se o e-mail estiver cadastrado, você receberá as
+     * instruções".
+     */
+    @org.springframework.beans.factory.annotation.Value("${archbase.security.prevent-user-enumeration:false}")
+    private boolean preventUserEnumeration;
 
     @Transactional
     public void register(RegisterNewUser request) {
@@ -119,6 +135,13 @@ public class ArchbaseAuthenticationService {
 
     @Transactional
     public AuthenticationResponse authenticate(AuthenticationRequest request) {
+        String rateLimitKey = "login:" + request.getEmail();
+        if (rateLimiter.isBlocked(rateLimitKey)) {
+            log.warn("Login bloqueado por excesso de tentativas: {}", request.getEmail());
+            throw new ArchbaseTooManyAttemptsException(
+                    "Muitas tentativas de login. Tente novamente em alguns minutos.",
+                    rateLimiter.secondsUntilUnblock(rateLimitKey));
+        }
         try {
             // Resolver o tenant ANTES da autenticação, de modo que o
             // authenticationManager.authenticate e o findByEmail subsequente
@@ -146,6 +169,10 @@ public class ArchbaseAuthenticationService {
                             request.getPassword()
                     )
             );
+
+            // Senha conferiu: zera a contagem para o usuário legítimo não carregar o histórico de
+            // tentativas de um atacante que usou o mesmo e-mail.
+            rateLimiter.recordSuccess(rateLimitKey);
 
             var user = repository.findByEmail(request.getEmail())
                     .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
@@ -189,6 +216,9 @@ public class ArchbaseAuthenticationService {
             log.warn("Credenciais expiradas para usuário: {}", request.getEmail());
             throw e; // Re-lançar para tratamento específico no controller
         } catch (AuthenticationException e) {
+            // Só senha errada conta como tentativa. Credencial expirada não entra aqui de propósito:
+            // é uma falha do estado da conta, não um palpite, e trancaria quem já está travado.
+            rateLimiter.recordFailure(rateLimitKey);
             log.warn("Falha na autenticação", e);
             throw new BadCredentialsException("Login ou senha inválido", e);
         } finally {
@@ -217,12 +247,25 @@ public class ArchbaseAuthenticationService {
                 ArchbaseTenantContext.setTenantId(tenant);
             }
             String email = jwtService.extractUsername(challengeToken);
+
+            // Segundo fator é um código de 6 dígitos: sem contagem de tentativas, o desafio de 5
+            // minutos é tempo de sobra para varrer boa parte do espaço.
+            String rateLimitKey = "mfa:" + email;
+            if (rateLimiter.isBlocked(rateLimitKey)) {
+                log.warn("Verificação de MFA bloqueada por excesso de tentativas: {}", email);
+                throw new ArchbaseTooManyAttemptsException(
+                        "Muitas tentativas de verificação. Tente novamente em alguns minutos.",
+                        rateLimiter.secondsUntilUnblock(rateLimitKey));
+            }
+
             var user = repository.findByEmail(email)
                     .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
 
             if (mfaService == null || !mfaService.verificar(user, code)) {
+                rateLimiter.recordFailure(rateLimitKey);
                 throw new BadCredentialsException("Código de verificação inválido");
             }
+            rateLimiter.recordSuccess(rateLimitKey);
 
             // Segundo fator confirmado — emite tokens novos (revoga os antigos).
             accessTokenPersistenceAdapter.markExpiredTokens();
@@ -394,6 +437,13 @@ public class ArchbaseAuthenticationService {
     public void sendResetPasswordEmail(String email)  {
         Optional<UserEntity> usuarioOptional = repository.findByEmail(email);
         if(usuarioOptional.isEmpty()) {
+            if (preventUserEnumeration) {
+                // Responder "não encontrado" transforma o endpoint anônimo de reset numa consulta
+                // de quem tem conta aqui — útil para montar lista de alvos antes de tentar senha.
+                // Com a proteção ligada, e-mail existente e inexistente produzem a mesma resposta.
+                log.info("Solicitação de reset para e-mail não cadastrado (resposta uniforme)");
+                return;
+            }
             throw new ArchbaseValidationException(String.format("Usuário com email %s  não foi encontrado.",email));
         }
         UserEntity user = usuarioOptional.get();
@@ -431,11 +481,23 @@ public class ArchbaseAuthenticationService {
         }
         UserEntity user = usuarioOptional.get();
 
+        // O token de reset tem 8 dígitos numéricos. Contar as tentativas é o que impede varrer o
+        // espaço: sem isso, adivinhá-lo é só uma questão de quantas requisições cabem na validade.
+        String rateLimitKey = "reset:" + request.getEmail();
+        if (rateLimiter.isBlocked(rateLimitKey)) {
+            log.warn("Redefinição de senha bloqueada por excesso de tentativas: {}", request.getEmail());
+            throw new ArchbaseTooManyAttemptsException(
+                    "Muitas tentativas. Tente novamente em alguns minutos.",
+                    rateLimiter.secondsUntilUnblock(rateLimitKey));
+        }
+
         PasswordResetToken token = passwordResetTokenPersistenceAdapter.findToken(user, request.getPasswordResetToken());
 
         if (token == null) {
+            rateLimiter.recordFailure(rateLimitKey);
             throw new ArchbaseValidationException("Token de redefinição de senha inválido.");
         }
+        rateLimiter.recordSuccess(rateLimitKey);
         token.updateExpired();
         passwordResetTokenPersistenceAdapter.save(token);
 
@@ -447,6 +509,7 @@ public class ArchbaseAuthenticationService {
             throw new ArchbaseValidationException("Token de redefinição de senha inválido, favor utilizar o token mais recente.");
         }
 
+        passwordStrengthPolicy.validate(request.getNewPassword());
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         // A troca obrigatória foi cumprida com token válido: limpa a exigência e
         // reinicia a contagem da expiração periódica.
@@ -468,11 +531,23 @@ public class ArchbaseAuthenticationService {
         }
         UserEntity user = usuarioOptional.get();
 
+        // O token de reset tem 8 dígitos numéricos. Contar as tentativas é o que impede varrer o
+        // espaço: sem isso, adivinhá-lo é só uma questão de quantas requisições cabem na validade.
+        String rateLimitKey = "reset:" + request.getEmail();
+        if (rateLimiter.isBlocked(rateLimitKey)) {
+            log.warn("Redefinição de senha bloqueada por excesso de tentativas: {}", request.getEmail());
+            throw new ArchbaseTooManyAttemptsException(
+                    "Muitas tentativas. Tente novamente em alguns minutos.",
+                    rateLimiter.secondsUntilUnblock(rateLimitKey));
+        }
+
         PasswordResetToken token = passwordResetTokenPersistenceAdapter.findToken(user, request.getPasswordResetToken());
 
         if (token == null) {
+            rateLimiter.recordFailure(rateLimitKey);
             throw new ArchbaseValidationException("Token de redefinição de senha inválido.");
         }
+        rateLimiter.recordSuccess(rateLimitKey);
         token.updateExpired();
         passwordResetTokenPersistenceAdapter.save(token);
 
@@ -484,6 +559,7 @@ public class ArchbaseAuthenticationService {
             throw new ArchbaseValidationException("Token de redefinição de senha inválido, favor utilizar o token mais recente.");
         }
 
+        passwordStrengthPolicy.validate(request.getNewPassword());
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         user.markPasswordChanged();
 

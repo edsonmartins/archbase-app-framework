@@ -10,6 +10,7 @@ import br.com.archbase.security.domain.dto.SimpleUserDto;
 import br.com.archbase.security.domain.dto.UserDto;
 import br.com.archbase.security.domain.dto.UserGroupDto;
 import br.com.archbase.security.domain.entity.User;
+import br.com.archbase.security.password.ArchbasePasswordStrengthPolicy;
 import br.com.archbase.security.persistence.QGroupEntity;
 import br.com.archbase.security.persistence.QProfileEntity;
 import br.com.archbase.security.repository.GroupJpaRepository;
@@ -40,14 +41,16 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
     private final UserServiceListener userServiceListener;
     private final GroupJpaRepository groupJpaRepository;
     private final ProfileJpaRepository profileJpaRepository;
+    private final ArchbasePasswordStrengthPolicy passwordStrengthPolicy;
 
-    public UserService(UserPersistenceAdapter persistenceAdapter, SecurityAdapter securityAdapter, PasswordEncoder passwordEncoder, UserServiceListener userServiceListener, GroupJpaRepository groupJpaRepository, ProfileJpaRepository profileJpaRepository) {
+    public UserService(UserPersistenceAdapter persistenceAdapter, SecurityAdapter securityAdapter, PasswordEncoder passwordEncoder, UserServiceListener userServiceListener, GroupJpaRepository groupJpaRepository, ProfileJpaRepository profileJpaRepository, ArchbasePasswordStrengthPolicy passwordStrengthPolicy) {
         this.persistenceAdapter =  persistenceAdapter;
         this.securityAdapter = securityAdapter;
         this.passwordEncoder = passwordEncoder;
         this.userServiceListener = userServiceListener;
         this.groupJpaRepository = groupJpaRepository;
         this.profileJpaRepository = profileJpaRepository;
+        this.passwordStrengthPolicy = passwordStrengthPolicy;
     }
 
     @Override
@@ -153,6 +156,7 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
             throw new ArchbaseValidationException(String.format("Usuário com email %s já cadastrado.",userDto.getEmail()));
         }
         denyAdministratorPromotionByNonAdmin(userDto);
+        passwordStrengthPolicy.validate(userDto.getPassword());
         userServiceListener.onBeforeCreate(originalUserDto);
         userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
         UserDto user = persistenceAdapter.createUser(userDto);
@@ -177,6 +181,7 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
         denyEditingAdministratorByNonAdmin(currentUserDto);
         userServiceListener.onBeforeUpdate(originalUserDto);
         if (!StringUtils.isBlank(userDto.getPassword())) {
+            passwordStrengthPolicy.validate(userDto.getPassword());
             userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
         }
         Optional<UserDto> result = persistenceAdapter.updateUser(id, userDto);

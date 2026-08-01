@@ -39,8 +39,22 @@ public class ApiTokenEntity extends TenantPersistenceEntityBase {
     @JoinColumn(name = "ID_SEGURANCA", nullable = false)
     private UserEntity user;
 
-    @Column(name = "TOKEN", nullable = false)
+    /**
+     * Valor em claro do token. Passa a ser {@code null} nas linhas criadas a partir da 3.0.11 — o
+     * que vale é {@link #tokenHash}. Continua mapeado (e nulável) porque as linhas anteriores ainda
+     * o têm preenchido, e é a partir dele que o hash é calculado na migração.
+     */
+    @Column(name = "TOKEN")
     private String token;
+
+    /**
+     * SHA-256 do token, em hexadecimal. É por aqui que a autenticação busca.
+     *
+     * <p>{@code null} apenas em linha antiga ainda não migrada; ver
+     * {@code ArchbaseApiTokenHashMigrator}.
+     */
+    @Column(name = "TOKEN_HASH", length = 64)
+    private String tokenHash;
 
     @Column(name = "BO_REVOGADO", nullable = false, length = 1)
     @Convert(converter = BooleanToSNConverter.class)
@@ -57,12 +71,13 @@ public class ApiTokenEntity extends TenantPersistenceEntityBase {
     }
 
     @Builder
-    public ApiTokenEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, UserEntity user, String token, Boolean revoked, LocalDateTime expirationDate, Boolean activated) {
+    public ApiTokenEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, UserEntity user, String token, String tokenHash, Boolean revoked, LocalDateTime expirationDate, Boolean activated) {
         super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId);
         this.name = name;
         this.description = description;
         this.user = user;
         this.token = token;
+        this.tokenHash = tokenHash;
         this.revoked = revoked;
         this.expirationDate = expirationDate;
         this.activated = activated;
@@ -81,6 +96,7 @@ public class ApiTokenEntity extends TenantPersistenceEntityBase {
         actionEntity.setDescription(apiToken.getDescription());
         actionEntity.setUser(UserEntity.fromDomain(apiToken.getUser()));
         actionEntity.setToken(apiToken.getToken());
+        actionEntity.setTokenHash(apiToken.getTokenHash());
         actionEntity.setRevoked(apiToken.isRevoked());
         actionEntity.setExpirationDate(apiToken.getExpirationDate());
         actionEntity.setActivated(apiToken.isActivated());
@@ -102,9 +118,11 @@ public class ApiTokenEntity extends TenantPersistenceEntityBase {
                 .description(this.getDescription())
                 .user(userDomain)
                 .token(this.getToken())
+                .tokenHash(this.getTokenHash())
                 .revoked(this.getRevoked())
                 .expirationDate(this.getExpirationDate())
                 .activated(this.getActivated())
+                .tenantId(this.getTenantId())
                 .build();
     }
 

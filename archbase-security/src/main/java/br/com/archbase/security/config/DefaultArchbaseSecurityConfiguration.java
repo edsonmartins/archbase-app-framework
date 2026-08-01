@@ -62,45 +62,96 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
     }
 
+    /**
+     * Libera {@code /actuator/**} sem autenticação. Com
+     * {@code management.endpoints.web.exposure.include=*}, isto expõe {@code env},
+     * {@code configprops} e {@code heapdump} — ou seja, credenciais — para qualquer um.
+     */
+    @Value("${archbase.security.public-paths.actuator:true}")
+    private boolean publicActuator;
+
+    /**
+     * Auto-cadastro anônimo em {@code POST /api/v1/auth/register}. Continua ligado por
+     * compatibilidade, mas a maioria dos backends corporativos não quer cadastro aberto — e ele
+     * vinha ligado sem que ninguém tivesse escolhido isso.
+     */
+    @Value("${archbase.security.public-paths.registration:true}")
+    private boolean publicRegistration;
+
+    @Value("${archbase.security.public-paths.swagger:true}")
+    private boolean publicSwagger;
+
+    @Value("${archbase.security.public-paths.static-files:true}")
+    private boolean publicStaticFiles;
+
+    @Value("${archbase.security.public-paths.bootui:true}")
+    private boolean publicBootUi;
+
+    /**
+     * Rotas de uma aplicação específica que ficaram na whitelist do framework
+     * ({@code /api/v1/assistente-virtual/webhook}, {@code /api/v1/licenca/verificar-tenants/**}) e
+     * hoje são públicas em <b>todo</b> backend que usa o starter, precise delas ou não. Mantidas por
+     * compatibilidade; quem depende delas deve movê-las para
+     * {@code archbase.security.whitelist} e desligar esta opção.
+     *
+     * @deprecated rotas de aplicação não pertencem ao default do framework; será removido.
+     */
+    @Deprecated(since = "3.0.11", forRemoval = true)
+    @Value("${archbase.security.public-paths.legacy-app-routes:true}")
+    private boolean publicLegacyAppRoutes;
+
     @PostConstruct
     public void init() {
         finalWhitelist = Lists.newArrayList(
-                "/api/v1/auth/**","/api/v1/apiToken/activate",
-                "/api/v1/assistente-virtual/webhook",
-                // Swagger UI v3 (OpenAPI)
-                "/v3/api-docs",
-                "/v3/api-docs/**",
-                "/v3/api-docs.yaml",
-                "/swagger-ui/**",
-                "/swagger-ui.html",
-                "/swagger-resources/**",
-                "/webjars/**",
-                // Swagger UI v2
-                "/v2/api-docs/**",
-                "/configuration/ui",
-                "/configuration/security",
-                "/swagger-resources/**",
-                "/swagger-ui/**",
-                "/swagger-ui.html",
-                "/webjars/**",
-                // BootUI: console de desenvolvimento (ativo apenas em dev/local; rejeita acesso não-loopback)
-                "/bootui",
-                "/bootui/**",
-                // Outros caminhos
+                "/api/v1/auth/**", "/api/v1/apiToken/activate",
                 // A rota de erro do container. A cadeia de segurança também filtra o dispatch
                 // ERROR: sem liberá-la, o redespacho do erro é barrado e o status que chega ao
                 // cliente vira 403 — inclusive para um 404 de rota inexistente ou para o 401 que o
                 // entry point acabou de escrever.
-                "/error",
-                "/actuator/**",
-                "/api/files/**",
-                "/static/**",
-                "/*.html",
-                "/*.png",
-                "/*.jpeg",
-                "/*.jpg",
-                "/api/v1/licenca/verificar-tenants/**"
+                "/error"
         );
+
+        if (publicSwagger) {
+            finalWhitelist.addAll(List.of(
+                    // Swagger UI v3 (OpenAPI)
+                    "/v3/api-docs",
+                    "/v3/api-docs/**",
+                    "/v3/api-docs.yaml",
+                    "/swagger-ui/**",
+                    "/swagger-ui.html",
+                    "/swagger-resources/**",
+                    "/webjars/**",
+                    // Swagger UI v2
+                    "/v2/api-docs/**",
+                    "/configuration/ui",
+                    "/configuration/security"));
+        }
+
+        if (publicBootUi) {
+            // BootUI: console de desenvolvimento (ativo apenas em dev/local; rejeita acesso não-loopback)
+            finalWhitelist.addAll(List.of("/bootui", "/bootui/**"));
+        }
+
+        if (publicActuator) {
+            finalWhitelist.add("/actuator/**");
+        }
+
+        if (publicStaticFiles) {
+            finalWhitelist.addAll(List.of(
+                    "/api/files/**",
+                    "/static/**",
+                    "/*.html",
+                    "/*.png",
+                    "/*.jpeg",
+                    "/*.jpg"));
+        }
+
+        if (publicLegacyAppRoutes) {
+            finalWhitelist.addAll(List.of(
+                    "/api/v1/assistente-virtual/webhook",
+                    "/api/v1/licenca/verificar-tenants/**"));
+        }
+
         if (!whitelist.isEmpty()) {
             finalWhitelist.addAll(Arrays.stream(whitelist.split(",")).toList());
         }
@@ -109,6 +160,12 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
     @Override
     protected List<String> getWhiteListUrls() {
         return finalWhitelist;
+    }
+
+    @Override
+    protected List<String> getProtectedPathsWithinWhitelist() {
+        // /api/v1/auth/** precisa continuar anônimo (login, refresh, reset); só o cadastro sai.
+        return publicRegistration ? List.of() : List.of("/api/v1/auth/register");
     }
 
     @Override
