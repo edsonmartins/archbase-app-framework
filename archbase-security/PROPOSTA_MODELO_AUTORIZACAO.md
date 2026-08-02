@@ -220,13 +220,23 @@ limitação.
 
 ---
 
-## "E se alguém atribuir a ação para quem não deve?"
+## O piso no código — princípio aceito
 
-A objeção é correta e importante: `@HasPermission` sozinho é **inteiramente dirigido por dado**.
-Quem controla a tabela de permissões controla o acesso. Um piso no código, que dado nenhum
-consegue afrouxar, é defesa em profundidade legítima.
+> **Ter a ação atribuída não basta.** Uma capacidade sensível deve exigir, além da permissão
+> concedida no admin, que o solicitante satisfaça uma restrição declarada no código — que dado
+> nenhum consegue afrouxar.
 
-Concordo com o risco. O mecanismo é que precisa ser outro — por três razões concretas.
+Este princípio está **aceito** e passa a orientar o desenho. `@HasPermission` sozinho é
+inteiramente dirigido por dado: quem controla a tabela de permissões controla o acesso. Um piso
+no artefato é defesa em profundidade legítima, e a intenção por trás de `@RequireProfile` /
+`@RequireRole` / `@RequirePersona` é essa.
+
+O que falta resolver não é *se* deve haver piso, mas **em que vocabulário ele é escrito** — já
+que nome de papel pertence ao cliente. A resposta está em [Como expressar o
+piso](#como-expressar-o-piso-sem-vocabulário-do-cliente), mais abaixo.
+
+Antes disso, três constatações sobre o estado atual. Elas não contradizem o princípio; dizem que
+ele **ainda não está entregue**, e que há um buraco maior sendo tapado pelo lado errado.
 
 ### 1. O piso de hoje não é piso
 
@@ -260,32 +270,63 @@ concede o que falta. **A correção é `admin-endpoints.policy=admin-only`**, qu
 documentada em `deployment/security-hardening.md`. É a mudança de maior efeito desta conversa
 inteira.
 
-### 3. Um piso pode existir sem vocabulário no código
+### 3. O piso precisa valer contra administrador
 
-O conflito entre "quero um piso no código" e "não quero vocabulário do cliente no código" é
-aparente. Ele some quando o código declara **quão sensível** é a capacidade, em vez de **quem**
-pode usá-la:
+Um piso que o `isAdministrator` atravessa não protege contra o cenário que motiva o princípio.
+Seja qual for a forma escolhida abaixo, ela precisa ser avaliada **antes** e independentemente do
+bypass — o oposto do que os managers fazem hoje.
+
+---
+
+## Como expressar o piso sem vocabulário do cliente
+
+Duas formas, que respondem a perguntas diferentes e **compõem** entre si.
+
+### Eixo A — sensibilidade da capacidade *(o que está sendo feito)*
+
+O código declara **quão sensível** é a operação:
 
 ```java
 @HasPermission(resource = "seguranca.permissao", action = "conceder",
                description = "Conceder permissões a usuários",
-               sensitivity = CRITICA)
+               sensibilidade = CRITICA)
 ```
-
-`CRITICA` é vocabulário do produto, não do cliente — nenhum cliente vai querer renomear o
-conceito de "crítico", como quer renomear `GESTOR`. E o framework pode dar garantias que dado
-nenhum afrouxa:
 
 | Nível | O framework exige, além da permissão |
 |---|---|
-| `NORMAL` | nada — só a permissão |
-| `ALTA` | concessão apenas a perfil ou grupo, nunca direto a usuário; registro em auditoria |
-| `CRITICA` | `isAdministrator` **além** da permissão; quem concede precisa já possuir a capacidade |
+| `NORMAL` | nada |
+| `ALTA` | concessão só a perfil ou grupo, nunca direto a usuário; registro em auditoria |
+| `CRITICA` | reautenticação ou segundo fator recente; quem concede precisa já possuir a capacidade |
 
-Isso entrega exatamente o que você quer — "não basta ter a ação atribuída" — sem congelar nomes
-de papel no artefato. E, diferente de hoje, o piso vale **inclusive para administradores** onde o
-nível assim exigir, porque a regra passa a ser do framework e não uma anotação que o bypass
-atravessa.
+### Eixo B — patamar mínimo do solicitante *(quem está fazendo)*
+
+Mais próximo da sua formulação — "garantir que esse alguém passe por estas restrições". O código
+declara o **patamar mínimo**, em vocabulário do produto:
+
+```java
+@HasPermission(resource = "financeiro.fechamento", action = "reabrir",
+               description = "Reabrir fechamento financeiro",
+               patamarMinimo = ADMINISTRADOR_TENANT)
+```
+
+O patamar é um eixo curto e fixo, do produto — algo como
+`LEITOR < OPERADOR < SUPERVISOR < ADMINISTRADOR_TENANT < ADMINISTRADOR_PLATAFORMA`. O cliente
+**mapeia os papéis dele** para esses patamares no admin: `COORDENADOR` → `SUPERVISOR`,
+`LÍDER DE CÉLULA` → `OPERADOR`. Cada cliente com sua nomenclatura, todos falando um eixo comum.
+
+É a mesma ideia de `@RequireProfile("ADMIN")`, com uma diferença decisiva: `ADMIN` é nome que o
+cliente quer trocar; `ADMINISTRADOR_TENANT` é patamar do produto, que ele apenas *aponta* quem
+ocupa.
+
+### Qual adotar
+
+**Os dois, nesta ordem.** O eixo B é o que atende diretamente ao princípio e é mais fácil de
+explicar ao time — a anotação passa a dizer "além da permissão, precisa ser pelo menos X".
+O eixo A cobre o que patamar não alcança: obrigar auditoria, proibir concessão direta a usuário,
+exigir segundo fator. Começar por B e acrescentar A quando aparecer capacidade que peça.
+
+O custo do eixo B é uma amarração nova a manter: papel do cliente → patamar. É pouco (dezenas de
+papéis, não centenas de capacidades) e cabe na mesma interface de admin que já existe.
 
 ### O que fazer nesta ordem
 
@@ -350,6 +391,9 @@ Este documento propõe; não decide. Quatro pontos precisam da sua palavra:
    efeito.
 4. **Negação explícita** — existe hoje algum caso real que a união não resolve?
 
-5. **Nível de sensibilidade na capacidade** — é a forma proposta de ter o piso no código sem
-   congelar nome de papel. Aceita a ideia, ou prefere manter `@RequireProfile` como piso,
-   assumindo que administradores o atravessam?
+5. **Como expressar o piso** — patamar mínimo do solicitante (eixo B), sensibilidade da
+   capacidade (eixo A), ou os dois? O princípio já está aceito; a pergunta é só a forma.
+
+6. **O piso vale contra administrador?** Se sim, `isAdministrator` deixa de ser bypass absoluto —
+   o que é a mudança de comportamento mais profunda desta proposta, e precisa ser decidida
+   conscientemente.
