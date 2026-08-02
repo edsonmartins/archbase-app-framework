@@ -260,6 +260,9 @@ archbase.security.permission.cache.enabled=true
 # Validade da senha em dias (0 = sem expiração periódica)
 archbase.security.password.expiration-days=0
 
+# Pre-validacao: nao sobe se uma protecao habilitada nao puder funcionar (fail|warn|off)
+archbase.security.hardening.validation=fail
+
 # Security hardening (auditoria 3.0.11)
 # Os defaults abaixo PRESERVAM o comportamento anterior à auditoria. Enquanto não forem
 # alterados, a proteção correspondente está inerte — ver deployment/security-hardening.md.
@@ -269,6 +272,12 @@ archbase.security.jwt.strict-token-use=false                # recusa token sem o
 archbase.security.jwt.accept-token-query-param=true         # aceita credencial em ?token=
 archbase.security.prevent-user-enumeration=false            # resposta uniforme no reset de senha
 archbase.security.api-token.purge-plaintext=false           # IRREVERSÍVEL: apaga o token em claro
+archbase.security.api-token.hash-enabled=true                # false = grava o token em claro
+archbase.security.admin-guard.enabled=true                   # trava contra criacao/promocao de admin
+archbase.security.admin-guard.allow-unverifiable-principal=false
+archbase.security.password-change.revoke-sessions=false      # true = desloga ao trocar a senha
+archbase.security.logout.enabled=true
+archbase.security.logout.url=/api/v1/auth/logout
 archbase.security.public-paths.actuator=true
 archbase.security.public-paths.registration=true            # auto-cadastro anônimo
 archbase.security.public-paths.legacy-app-routes=true       # rotas de aplicação (deprecado)

@@ -4,6 +4,7 @@ import br.com.archbase.security.service.ArchbaseLogoutService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -25,6 +26,20 @@ public abstract class BaseArchbaseSecurityConfiguration implements ArchbaseSecur
      */
     @Autowired(required = false)
     private ArchbaseLogoutService logoutService;
+
+    /**
+     * Registra o endpoint de logout que revoga os tokens da sessão.
+     *
+     * <p>Ligado por padrão. Desligue se a aplicação já tem o próprio fluxo de logout — o
+     * {@code LogoutFilter} do Spring intercepta a URL antes do DispatcherServlet, então um
+     * controller mapeado no mesmo caminho deixaria de ser chamado.
+     */
+    @Value("${archbase.security.logout.enabled:true}")
+    private boolean logoutEnabled;
+
+    /** Caminho do logout. Ajuste se colidir com uma rota já existente na aplicação. */
+    @Value("${archbase.security.logout.url:/api/v1/auth/logout}")
+    private String logoutUrl;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -63,7 +78,7 @@ public abstract class BaseArchbaseSecurityConfiguration implements ArchbaseSecur
                 // que com sessão STATELESS não faz nada: o cliente recebia sucesso e o access token
                 // continuava valendo até expirar, junto com o refresh.
                 .logout(logout -> {
-                    if (logoutService != null) {
+                    if (logoutService != null && logoutEnabled) {
                         logout.logoutUrl(getLogoutUrl())
                                 .addLogoutHandler(logoutService)
                                 // API stateless: 200, não o redirect 302 para /login?logout.
@@ -121,7 +136,7 @@ public abstract class BaseArchbaseSecurityConfiguration implements ArchbaseSecur
      * padrão do Spring Security, que colide com rotas de aplicação com mais frequência.
      */
     protected String getLogoutUrl() {
-        return "/api/v1/auth/logout";
+        return logoutUrl;
     }
 
     protected abstract CustomAccessDeniedHandler getAccessDeniedHandler();

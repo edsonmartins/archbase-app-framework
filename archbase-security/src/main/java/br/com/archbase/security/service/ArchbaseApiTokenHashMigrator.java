@@ -7,6 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,7 +47,12 @@ public class ArchbaseApiTokenHashMigrator {
     @Value("${archbase.security.api-token.purge-plaintext:false}")
     private boolean purgePlaintext;
 
+    /**
+     * Roda antes do {@code ArchbaseSecurityHardeningValidator}: a checagem de
+     * {@code purge-plaintext} avalia o resultado desta migração.
+     */
     @EventListener(ApplicationReadyEvent.class)
+    @Order(Ordered.LOWEST_PRECEDENCE - 100)
     @Transactional
     public void migrate() {
         if (!migrationEnabled) {

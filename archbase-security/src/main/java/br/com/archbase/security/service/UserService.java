@@ -67,6 +67,20 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
     @Value("${archbase.security.admin-guard.allow-unverifiable-principal:false}")
     private boolean allowUnverifiablePrincipal;
 
+    /**
+     * Trava que impede um não-administrador de criar/promover administrador e de editar a conta de
+     * um administrador.
+     *
+     * <p>Ligada por padrão: sem ela, qualquer autenticado que alcance {@code POST /api/v1/user}
+     * vira administrador enviando um campo. Desligue apenas se algum fluxo legítimo da aplicação
+     * provisiona administradores autenticado como conta de serviço não-administrativa — e prefira,
+     * nesse caso, marcar a conta de serviço como administradora.
+     *
+     * <pre>archbase.security.admin-guard.enabled=false</pre>
+     */
+    @Value("${archbase.security.admin-guard.enabled:true}")
+    private boolean adminGuardEnabled;
+
     public UserService(UserPersistenceAdapter persistenceAdapter, SecurityAdapter securityAdapter, PasswordEncoder passwordEncoder, UserServiceListener userServiceListener, GroupJpaRepository groupJpaRepository, ProfileJpaRepository profileJpaRepository, ArchbasePasswordStrengthPolicy passwordStrengthPolicy) {
         this.persistenceAdapter =  persistenceAdapter;
         this.securityAdapter = securityAdapter;
@@ -135,7 +149,7 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
      * da primeira estar ligada.
      */
     private void denyAdministratorPromotionByNonAdmin(UserDto userDto) {
-        if (!Boolean.TRUE.equals(userDto.getIsAdministrator())) {
+        if (!adminGuardEnabled || !Boolean.TRUE.equals(userDto.getIsAdministrator())) {
             return;
         }
         if (isRequestFromUnverifiablePrincipal()) {
@@ -182,7 +196,7 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
      * seria tomada de conta direta.
      */
     private void denyEditingAdministratorByNonAdmin(UserDto currentUserDto) {
-        if (!Boolean.TRUE.equals(currentUserDto.getIsAdministrator())) {
+        if (!adminGuardEnabled || !Boolean.TRUE.equals(currentUserDto.getIsAdministrator())) {
             return;
         }
         if (isRequestFromUnverifiablePrincipal()) {

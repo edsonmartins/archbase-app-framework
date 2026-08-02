@@ -45,6 +45,19 @@
         @Autowired
         private ArchbaseEmailService emailService;
 
+        /**
+         * Guarda apenas o hash do token de API. Ligado por padrão.
+         *
+         * <p>Desligue somente se alguma tela precisa exibir o valor do token depois da criação —
+         * e saiba que isso mantém a credencial em texto puro no banco, onde um dump (backup,
+         * réplica de homologação, SELECT de suporte) entrega acesso direto a toda integração.
+         *
+         * <pre>archbase.security.api-token.hash-enabled=false</pre>
+         */
+        @org.springframework.beans.factory.annotation.Value(
+                "${archbase.security.api-token.hash-enabled:true}")
+        private boolean hashEnabled;
+
         public boolean activateToken(String token, String tenantId) {
             // O token de API é a credencial em si: registrá-lo no log entrega acesso a quem lê o
             // log (agregador, arquivo, ticket de suporte). Só o prefixo mascarado sai daqui.
@@ -105,14 +118,16 @@
 
             String token = UUID.randomUUID().toString();
 
-            // Só o hash é persistido: a coluna em claro fica nula. A partir daqui o valor do token
-            // existe apenas nesta resposta e no e-mail de ativação — não há como recuperá-lo depois,
-            // que é justamente a propriedade que se quer.
+            // Por padrão só o hash é persistido: a coluna em claro fica nula e o valor do token
+            // existe apenas nesta resposta e no e-mail de ativação — não há como recuperá-lo
+            // depois, que é justamente a propriedade que se quer. Com hash-enabled=false o valor
+            // continua gravado em claro, para aplicações cuja tela lista o token; o hash é gravado
+            // de qualquer forma, então a autenticação é a mesma nos dois modos.
             ApiTokenEntity apiToken = ApiTokenEntity.builder()
                     .id(UUID.randomUUID().toString())
                     .createdByUser(securityAdapter.getLoggedUser().getUserName())
                     .createEntityDate(LocalDateTime.now())
-                    .token(null)
+                    .token(hashEnabled ? null : token)
                     .tokenHash(ApiTokenHasher.hash(token))
                     .name(name)
                     .description(description)

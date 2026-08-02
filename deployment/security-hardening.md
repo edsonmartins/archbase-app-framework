@@ -27,6 +27,19 @@ Estas correções valem imediatamente porque não quebram uso legítimo:
 - **Tenant não vaza mais entre requisições** quando um endpoint lança exceção.
 - **`companyId` e usuário autenticado propagam para tarefas `@Async`**.
 
+### Mudanças de comportamento que continuam ativas por padrão
+
+Estas não têm chave porque desligá-las seria reabrir a vulnerabilidade. Confira se alguma atinge
+um fluxo seu **antes** de atualizar:
+
+| Mudança | Quem pode sentir |
+|---|---|
+| `@RequireProfile`/`@RequireRole`/`@RequirePersona` **na classe** passam a ser aplicadas (antes liberavam tudo) | Quem anotou classe e "funcionava" — os usuários passam a ser avaliados de verdade. Levante os pontos com: `grep -rn "@Require" --include=*.java src/main` |
+| Não-administrador não cria/promove administrador nem edita conta de administrador | Provisionamento automatizado rodando como conta de serviço não-admin. Escape: `archbase.security.admin-guard.enabled=false` |
+| App com `UserDetailsService` próprio (principal ≠ `UserEntity`) é bloqueado na gestão de usuários | Escape: `archbase.security.admin-guard.allow-unverifiable-principal=true` |
+| Access token deixa de ser aceito em `/auth/refresh-token` | Cliente que mandava o access token no refresh. Tokens antigos seguem aceitos |
+| `CryptoUtil` passou a UTF-8 | Só onde o valor foi cifrado em JVM com `file.encoding` ≠ UTF-8: recifre com `ArchbaseColumnReencryptor` |
+
 ### Três mudanças de comportamento visíveis
 
 0. **O logout passou a existir.** `ArchbaseLogoutService` nunca era registrado na cadeia de
@@ -42,6 +55,66 @@ Estas correções valem imediatamente porque não quebram uso legítimo:
    vazio) e checagens de permissão, mas é contexto que antes não existia ali. Desligue com
    `archbase.multitenancy.async.propagate-security-context=false` se alguma tarefa dependia da
    ausência.
+
+### Chaves que revertem comportamento, se você precisar
+
+Nenhuma delas precisa de preparo — são interruptores diretos:
+
+```properties
+# Troca de senha autenticada NÃO desloga (padrão). Ligue quando o frontend estiver pronto
+# para reautenticar; é a postura correta quando a troca é por suspeita de comprometimento.
+archbase.security.password-change.revoke-sessions=false
+
+# Token de API volta a ser gravado em claro, para telas que listam o valor.
+# Custo: um dump do banco entrega acesso a toda integração.
+archbase.security.api-token.hash-enabled=true
+
+# Endpoint de logout do framework.
+archbase.security.logout.enabled=true
+archbase.security.logout.url=/api/v1/auth/logout
+```
+
+---
+
+## Validação automática de pré-requisitos
+
+Várias proteções dependem de algo que o framework não controla: um bean que você precisa registrar,
+linhas que precisam existir no banco, uma migração que precisa ter rodado. Ligar a chave sem esse
+preparo não dá erro na hora — dá comportamento errado depois, no meio de uma requisição.
+
+Por isso, **a aplicação valida na subida e não sobe se uma proteção habilitada não puder funcionar**,
+dizendo o que fazer:
+
+```
+═══ Configuração de segurança inconsistente ═══
+
+Proteções foram habilitadas sem os pré-requisitos atendidos. ...
+
+  1) archbase.security.api-token.purge-plaintext=true, mas 12 token(s) de API ainda
+     não têm hash calculado. Apagar o valor em claro agora deixaria essas
+     integrações sem meio de autenticar, de forma irreversível.
+     O que fazer: suba uma vez SEM purge-plaintext (a migração de hash roda na
+     inicialização), confirme no log a linha "hash calculado", e só então ligue.
+```
+
+Para diagnosticar sem impedir a subida (nunca como estado permanente):
+
+```properties
+archbase.security.hardening.validation=warn    # ou: off
+```
+
+O validador também registra em WARN as proteções que estão **inertes** — por exemplo
+`admin-endpoints.policy=permit` —, para que o estado real apareça a cada deploy.
+
+### O que é verificado
+
+| Chave ligada | Pré-requisito verificado | Se faltar |
+|---|---|---|
+| `api-token.purge-plaintext=true` | Nenhum token de API sem hash; e `hash-enabled=true` | **Não sobe** |
+| `require-role.no-resolver-policy=deny` | Existe ao menos um bean `ArchbaseRoleResolver` | **Não sobe** |
+| `admin-endpoints.policy=permission` | `Resource` + `Action` MANAGE cadastrados para os 7 recursos | **Não sobe** |
+| `jwt.strict-token-use=true` | Nenhuma sessão ativa emitida antes da atualização | **Não sobe** |
+| `logout.enabled=true` | Nenhum endpoint da aplicação mapeado na URL do logout | **Não sobe** |
 
 ---
 

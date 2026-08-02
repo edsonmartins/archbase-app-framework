@@ -21,6 +21,10 @@ public class ArchbaseUserService {
     private final UserJpaRepository repository;
     private final ArchbasePasswordStrengthPolicy passwordStrengthPolicy;
     private final ArchbaseAuthenticationService authenticationService;
+
+    @org.springframework.beans.factory.annotation.Value(
+            "${archbase.security.password-change.revoke-sessions:false}")
+    private boolean revokeSessionsOnPasswordChange;
     public void changePassword(ChangePasswordRequest request, Principal connectedUser) {
 
         var user = (UserEntity) ((UsernamePasswordAuthenticationToken) connectedUser).getPrincipal();
@@ -42,10 +46,7 @@ public class ArchbaseUserService {
         // salva usuário
         repository.save(user);
 
-        // Revoga as sessões abertas, como o reset por token já fazia. Sem isto, trocar a senha por
-        // suspeita de comprometimento não expulsava ninguém: os tokens emitidos com a senha antiga
-        // seguiam válidos até expirar.
-        authenticationService.revokeAllUserTokens(user);
+        revokeSessionsIfEnabled(user);
     }
 
     public void changePassword(ChangePasswordRequest request, User connectedUser) {
@@ -72,8 +73,25 @@ public class ArchbaseUserService {
         // salva usuário
         repository.save(userEntity.get());
 
-        // Revoga as sessões abertas — ver comentário na sobrecarga acima.
-        authenticationService.revokeAllUserTokens(userEntity.get());
+        revokeSessionsIfEnabled(userEntity.get());
+    }
+
+    /**
+     * Encerra as sessões abertas depois da troca de senha — <b>desligado por padrão</b>.
+     *
+     * <p>O reset por token sempre revogou; a troca autenticada, não. Ligar isto é a postura
+     * correta quando a troca acontece por suspeita de comprometimento (do contrário, os tokens
+     * emitidos com a senha antiga seguem válidos até expirar), mas é a mudança mais visível para o
+     * usuário final de toda esta revisão: ele passa a ser deslogado ao trocar a própria senha.
+     * Quem opera decide quando absorver isso, e o frontend costuma precisar de ajuste.
+     *
+     * <pre>archbase.security.password-change.revoke-sessions=true</pre>
+     */
+    private void revokeSessionsIfEnabled(UserEntity user) {
+        if (!revokeSessionsOnPasswordChange) {
+            return;
+        }
+        authenticationService.revokeAllUserTokens(user);
     }
     
     /**
