@@ -46,10 +46,14 @@ public class ArchbaseSecurityService {
      */
     public AccessDecision decide(Authentication authentication, String action, String resource,
                                  String tenantId, String companyId, String projectId) {
-        AccessSubject subject = subjectOf(authentication);
-        AccessRequirement requirement =
-                AccessRequirement.of(resource, action, tenantId, companyId, projectId);
-        return evaluator().decide(subject, requirement);
+        return decide(authentication, AccessRequirement.of(resource, action, tenantId, companyId, projectId));
+    }
+
+    /**
+     * Avalia um requisito já montado — a porta que os adaptadores de anotação usam.
+     */
+    public AccessDecision decide(Authentication authentication, AccessRequirement requirement) {
+        return evaluator().decide(subjectOf(authentication), requirement);
     }
 
     /**

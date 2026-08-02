@@ -34,6 +34,39 @@ public final class AccessReasonCodes {
     /** Nenhuma permissão encontrada para o usuário, seus grupos ou seu perfil. */
     public static final String NO_GRANT = "NO_GRANT";
 
+    /** Concedido por satisfazer as restrições declaradas, sem capacidade a consultar no catálogo. */
+    public static final String GRANTED_RESTRICTIONS_ONLY = "GRANTED_RESTRICTIONS_ONLY";
+
+    /** O administrador foi isentado desta tranca por {@code allowSystemAdmin}. */
+    public static final String RESTRICTION_WAIVED_ADMINISTRATOR = "RESTRICTION_WAIVED_ADMINISTRATOR";
+
+    /** O usuário não tem o perfil exigido por {@code @RequireProfile}. */
+    public static final String PROFILE_NOT_MATCHED = "PROFILE_NOT_MATCHED";
+
+    /** O usuário não tem a persona exigida por {@code @RequirePersona}. */
+    public static final String PERSONA_NOT_MATCHED = "PERSONA_NOT_MATCHED";
+
+    /** O usuário não tem o papel exigido por {@code @RequireRole}. */
+    public static final String ROLE_NOT_MATCHED = "ROLE_NOT_MATCHED";
+
+    /** {@code @RequireRole} avaliada sem nenhum {@code ArchbaseRoleResolver}, com política deny. */
+    public static final String ROLE_RESOLVER_MISSING = "ROLE_RESOLVER_MISSING";
+
+    /** {@code requirePlatformAdmin} exigido de quem não é administrador. */
+    public static final String PLATFORM_ADMIN_REQUIRED = "PLATFORM_ADMIN_REQUIRED";
+
+    /** {@code ownerOnly} não confirmado pelo SPI. */
+    public static final String NOT_OWNER = "NOT_OWNER";
+
+    /** Conta desativada ou bloqueada, onde a tranca exige conta ativa. */
+    public static final String ACCOUNT_NOT_ACTIVE = "ACCOUNT_NOT_ACTIVE";
+
+    /**
+     * O requisito não declara nem capacidade nem restrição — nada a avaliar. É erro de programação
+     * do adaptador, e negar é a resposta segura.
+     */
+    public static final String EMPTY_REQUIREMENT = "EMPTY_REQUIREMENT";
+
     /** Há permissão, mas nenhuma cujo escopo alcance o tenant, a empresa ou o projeto pedidos. */
     public static final String OUT_OF_SCOPE = "OUT_OF_SCOPE";
 

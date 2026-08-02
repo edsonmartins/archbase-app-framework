@@ -217,7 +217,7 @@ identificador consultado.
 |---|---|---|
 | **0** | Testes de caracterização do comportamento atual | não |
 | **A** | `AccessSubject`, `AccessRequirement`, `AccessDecision`, `ArchbaseAccessEvaluator`; `hasPermission` delega; correção do cast do principal | **não** |
-| **B** | Os cinco managers viram adaptadores; `ResourcePersistenceAdapter` passa a usar o core | **não** |
+| **B** | Os quatro managers de anotação viram adaptadores; a regra das trancas vai para os `RestrictionEvaluator` | **não** |
 | **C** | Endpoints de diagnóstico + simulação | **não** — só leitura |
 | **D** | `EFFECT` (GRANT/DENY), `MINIMUM_LEVEL`, `ACCESS_LEVEL` + DDL no `R__` | só quando preenchidos |
 | **E** | `minimumLevel` na anotação, `@Target(TYPE)` com herança de `resource` | **não** |
@@ -230,6 +230,17 @@ O refactor troca o motor de decisão de um sistema em produção. `ArchbaseSecur
 cobre parte do comportamento; falta caracterizar o que **não** está coberto e o que só existe nos
 outros managers. Nenhuma linha da fase A entra antes de a fase 0 passar verde no comportamento
 atual.
+
+### O que ficou fora da fase B, e por quê
+
+**`SecurityAdminAuthorizationManager` continua como está.** Ele não avalia uma tranca declarada por
+método: aplica uma *política* global (`permit` / `admin-only` / `permission`) sobre um marcador.
+Modelar política dentro do requisito acrescentaria conceito ao core em troca de pouco — e o ramo que
+de fato decide por capacidade, `permission`, já passa pelo core através de `hasPermission`.
+
+**`ResourcePersistenceAdapter` foi para a fase C.** Ele não decide, *lista* — devolve as capacidades
+de um usuário sobre um recurso. Unificá-lo exige a operação "listar capacidades de um sujeito", que
+é exatamente o que o endpoint de efetivo constrói. Feito na fase B, seria escrito duas vezes.
 
 ### A correção que precede o piloto
 

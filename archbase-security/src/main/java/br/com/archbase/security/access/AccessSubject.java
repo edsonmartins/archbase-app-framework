@@ -21,6 +21,10 @@ import java.util.Set;
  * @param administrator {@code Boolean} e não {@code boolean}: a coluna aceita nulo, e nulo não é o
  *                      mesmo que {@code false}. Ver {@link AccessReasonCodes#PRINCIPAL_INCOMPLETE}.
  * @param securityIds   união de usuário, grupos e perfil — as origens que o catálogo consulta
+ * @param principal     a entidade de origem, mantida <b>apenas</b> para alimentar SPIs que
+ *                      antecedem o core e recebem {@code UserEntity} — {@code ArchbaseRoleResolver}
+ *                      é o caso. Nada dentro do core a consulta; ler dela reintroduz o risco de
+ *                      lazy loading que o record existe para evitar. Pode ser {@code null}.
  */
 public record AccessSubject(
         String userId,
@@ -31,7 +35,8 @@ public record AccessSubject(
         String profileId,
         String profileName,
         Set<String> groupIds,
-        Set<String> securityIds) {
+        Set<String> securityIds,
+        UserEntity principal) {
 
     public AccessSubject {
         groupIds = groupIds == null ? Set.of() : Set.copyOf(groupIds);
@@ -80,7 +85,8 @@ public record AccessSubject(
                 profileId,
                 profileName,
                 grupos,
-                ids);
+                ids,
+                user);
     }
 
     /** {@code true} apenas quando a flag está explicitamente marcada. Nulo não é administrador. */

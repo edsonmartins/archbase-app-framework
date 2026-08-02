@@ -4,10 +4,14 @@ import br.com.archbase.security.persistence.PermissionEntity;
 import br.com.archbase.security.repository.PermissionJpaRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Implementação de referência dos portões.
@@ -38,9 +42,22 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
     private static final Logger log = LoggerFactory.getLogger(DefaultArchbaseAccessEvaluator.class);
 
     private final PermissionJpaRepository permissionRepository;
+    private final Map<RestrictionKind, RestrictionEvaluator> restrictionEvaluators;
 
-    public DefaultArchbaseAccessEvaluator(PermissionJpaRepository permissionRepository) {
+    @Autowired
+    public DefaultArchbaseAccessEvaluator(PermissionJpaRepository permissionRepository,
+                                          List<RestrictionEvaluator> restrictionEvaluators) {
         this.permissionRepository = permissionRepository;
+        this.restrictionEvaluators = restrictionEvaluators == null
+                ? Map.of()
+                : restrictionEvaluators.stream()
+                        .collect(Collectors.toMap(RestrictionEvaluator::kind, e -> e, (a, b) -> a,
+                                () -> new EnumMap<>(RestrictionKind.class)));
+    }
+
+    /** Sem trancas — usado onde só há capacidade a avaliar. */
+    public DefaultArchbaseAccessEvaluator(PermissionJpaRepository permissionRepository) {
+        this(permissionRepository, List.of());
     }
 
     @Override
@@ -74,8 +91,41 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
 
         chain.add(GateOutcome.passed(Gate.IDENTITY, "Usuário " + subject.label() + " resolvido"));
 
+        // ---------------------------------------------------------------- 3. RESTRICTION
+
+        for (Restriction restriction : requirement.restrictions()) {
+            RestrictionEvaluator avaliador = restrictionEvaluators.get(restriction.kind());
+
+            if (avaliador == null) {
+                // Tranca declarada sem quem a avalie é falha de configuração, não permissão.
+                chain.add(GateOutcome.denied(Gate.RESTRICTION, AccessReasonCodes.EMPTY_REQUIREMENT,
+                        "Nenhum RestrictionEvaluator registrado para " + restriction.kind()));
+                return AccessDecision.denied(Gate.RESTRICTION, AccessReasonCodes.EMPTY_REQUIREMENT,
+                        "Restrição " + restriction.kind() + " declarada, mas nenhum avaliador "
+                                + "correspondente está registrado.", chain);
+            }
+
+            RestrictionEvaluator.RestrictionResult resultado =
+                    avaliador.evaluate(subject, restriction, requirement);
+
+            if (!resultado.passed()) {
+                chain.add(GateOutcome.denied(Gate.RESTRICTION, resultado.reasonCode(),
+                        restriction.kind() + ": " + resultado.detail()));
+                String mensagem = restriction.message() == null || restriction.message().isBlank()
+                        ? "Acesso negado pela restrição " + restriction.kind() + "."
+                        : restriction.message();
+                return AccessDecision.denied(Gate.RESTRICTION, resultado.reasonCode(), mensagem, chain);
+            }
+
+            chain.add(GateOutcome.passed(Gate.RESTRICTION, resultado.reasonCode(),
+                    restriction.kind() + ": " + resultado.detail()));
+        }
+
         // ---------------------------------------------------------------- 5. GRANT (administrador)
 
+        // Depois das trancas, e não antes: @RequireProfile(allowSystemAdmin = false) nega o
+        // administrador que não tem o perfil, e sempre negou. Um atalho no topo transformaria a
+        // isenção declarada por anotação em desvio global.
         if (subject.isAdministrator() && subject.enabled()) {
             chain.add(GateOutcome.passed(Gate.GRANT, AccessReasonCodes.GRANTED_ADMINISTRATOR,
                     "isAdministrator encerra a decisão sem consultar o catálogo"));
@@ -84,6 +134,25 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
         }
 
         // ---------------------------------------------------------------- 5. GRANT (catálogo)
+
+        if (!requirement.hasCapability()) {
+            if (requirement.restrictions().isEmpty()) {
+                // Nem capacidade nem tranca: nada a avaliar. É erro do adaptador, e liberar por
+                // ausência de critério seria o pior desfecho possível.
+                chain.add(GateOutcome.denied(Gate.GRANT, AccessReasonCodes.EMPTY_REQUIREMENT,
+                        "Requisito sem capacidade e sem restrição"));
+                return AccessDecision.denied(Gate.GRANT, AccessReasonCodes.EMPTY_REQUIREMENT,
+                        "O requisito de acesso não declara capacidade nem restrição — nada a avaliar.",
+                        chain);
+            }
+
+            // Tranca pura: passar nas restrições concede, porque não há catálogo a consultar. É a
+            // razão pela qual uma anotação de restrição sozinha não substitui @HasPermission.
+            chain.add(GateOutcome.passed(Gate.GRANT, AccessReasonCodes.GRANTED_RESTRICTIONS_ONLY,
+                    "Sem capacidade declarada — as restrições respondem sozinhas"));
+            return AccessDecision.granted(AccessReasonCodes.GRANTED_RESTRICTIONS_ONLY,
+                    "Acesso concedido por satisfazer as restrições declaradas.", null, null, chain);
+        }
 
         List<PermissionEntity> permissoes = permissionRepository
                 .findBySecurityIdsAndActionNameAndResourceName(

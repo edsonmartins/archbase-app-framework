@@ -1,6 +1,8 @@
 package br.com.archbase.security.config;
 
 import br.com.archbase.ddd.context.ArchbaseTenantContext;
+import br.com.archbase.security.access.AccessDecision;
+import br.com.archbase.security.access.AccessRequirement;
 import br.com.archbase.security.annotation.HasPermission;
 import br.com.archbase.security.service.ArchbaseSecurityService;
 import br.com.archbase.security.util.AuthorizationAnnotationUtils;
@@ -40,22 +42,24 @@ public class CustomAuthorizationManager implements AuthorizationManager<MethodIn
         }
 
         try {
-            String tenantId = hasPermission.tenantId().isEmpty() ? 
+            String tenantId = hasPermission.tenantId().isEmpty() ?
                 ArchbaseTenantContext.getTenantId() : hasPermission.tenantId();
-            String companyId = hasPermission.companyId().isEmpty() ? 
+            String companyId = hasPermission.companyId().isEmpty() ?
                 ArchbaseTenantContext.getCompanyId() : hasPermission.companyId();
-            
-            boolean hasAccess = securityService.hasPermission(
-                authentication.get(), 
-                hasPermission.action(), 
-                hasPermission.resource(),
-                tenantId, 
-                companyId, 
-                hasPermission.projectId()
-            );
-            
-            return new AuthorizationDecision(hasAccess);
-            
+
+            String origem = AuthorizationAdapters.origin(methodInvocation);
+            AccessDecision decisao = securityService.decide(
+                    authentication.get(),
+                    AccessRequirement.of(
+                            hasPermission.resource(),
+                            hasPermission.action(),
+                            tenantId,
+                            companyId,
+                            hasPermission.projectId()).withOrigin(origem));
+
+            AuthorizationAdapters.log(log, decisao, origem);
+            return new AuthorizationDecision(decisao.allowed());
+
         } catch (Exception e) {
             // Falha ao AVALIAR a permissão não é o mesmo que "não tem permissão", mas negar é a
             // opção segura. O que não pode é negar em silêncio: sem este log, um erro de consulta ou

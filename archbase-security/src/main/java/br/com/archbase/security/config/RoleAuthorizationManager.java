@@ -1,63 +1,41 @@
 package br.com.archbase.security.config;
 
+import br.com.archbase.security.access.AccessDecision;
+import br.com.archbase.security.access.AccessRequirement;
+import br.com.archbase.security.access.Restriction;
 import br.com.archbase.security.annotations.RequireRole;
-import br.com.archbase.security.persistence.UserEntity;
+import br.com.archbase.security.service.ArchbaseSecurityService;
 import br.com.archbase.security.spi.ArchbaseRoleResolver;
 import br.com.archbase.security.util.AuthorizationAnnotationUtils;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aopalliance.intercept.MethodInvocation;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.authorization.AuthorizationManager;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 /**
- * AuthorizationManager para processar a anotação {@link RequireRole}.
+ * Adaptador de {@code @RequireRole} para o core.
  *
- * <p>As roles de {@code @RequireRole} são do domínio da aplicação, não do Archbase; quem as conhece
- * é a implementação de {@link ArchbaseRoleResolver} registrada pelo projeto. Sem esse bean o
- * framework não tem o que comparar — veja
- * {@code archbase.security.require-role.no-resolver-policy} para escolher o que fazer nesse caso.
+ * <p>Não decide nada: lê a anotação, monta um {@link AccessRequirement} e delega. A regra — o SPI
+ * {@link ArchbaseRoleResolver}, a política para a ausência dele e o tratamento de {@code ownerOnly}
+ * — vive em {@code RoleRestrictionEvaluator}.
+ *
+ * <p>As roles de {@code @RequireRole} são do domínio da aplicação, não do Archbase. Sem um
+ * {@link ArchbaseRoleResolver} registrado o framework não tem o que comparar, e
+ * {@code archbase.security.require-role.no-resolver-policy} decide — com padrão {@code permit}, que
+ * <b>não é controle de acesso</b>.
  */
 @Component
+@RequiredArgsConstructor
 @Slf4j
 public class RoleAuthorizationManager implements AuthorizationManager<MethodInvocation> {
 
-    /** Nega o acesso quando não há {@link ArchbaseRoleResolver} registrado. */
-    private static final String POLICY_DENY = "deny";
-
-    /**
-     * Lista, e não bean único: uma aplicação modular pode registrar um resolver por módulo, e
-     * injetar {@code ArchbaseRoleResolver} direto derrubaria a subida com
-     * {@code NoUniqueBeanDefinitionException}. As roles de todos os resolvers são unidas.
-     */
-    @Autowired(required = false)
-    private List<ArchbaseRoleResolver> roleResolvers = List.of();
-
-    /**
-     * O que fazer quando {@code @RequireRole} é avaliada sem nenhum {@link ArchbaseRoleResolver}
-     * registrado: {@code permit} (padrão) ou {@code deny}.
-     *
-     * <p>O padrão é {@code permit} apenas por compatibilidade: até esta versão a validação de roles
-     * não existia — o manager liberava todo usuário ativo, ignorando os valores da anotação — e
-     * mudar isso de uma vez tiraria do ar aplicações que hoje passam por esses métodos. Registre um
-     * resolver e mude para {@code deny}; enquanto estiver em {@code permit} sem resolver,
-     * {@code @RequireRole} <b>não</b> é um controle de acesso, e o log avisa em cada método afetado.
-     */
-    @Value("${archbase.security.require-role.no-resolver-policy:permit}")
-    private String noResolverPolicy;
-
-    /** Métodos já avisados, para o alerta sair uma vez por método em vez de a cada requisição. */
-    private final Set<String> warnedMethods = ConcurrentHashMap.newKeySet();
+    private final ArchbaseSecurityService securityService;
 
     @Override
     public AuthorizationDecision authorize(Supplier<? extends Authentication> authentication, MethodInvocation methodInvocation) {
@@ -67,118 +45,29 @@ public class RoleAuthorizationManager implements AuthorizationManager<MethodInvo
             // Nega: o pointcut casou, então a anotação existe (possivelmente na classe) e a
             // resolução é que falhou. Liberar aqui é o defeito, não o comportamento.
             log.error("Interceptação de @RequireRole sem anotação resolvível em {}#{} — acesso negado",
-                    methodInvocation.getMethod().getDeclaringClass().getName(),
+                    AuthorizationAdapters.declaringClass(methodInvocation),
                     methodInvocation.getMethod().getName());
             return new AuthorizationDecision(false);
         }
 
-        try {
-            Authentication auth = authentication.get();
-
-            if (auth == null || !auth.isAuthenticated()) {
-                log.debug("Usuário não autenticado - acesso negado");
-                return new AuthorizationDecision(false);
-            }
-
-            UserEntity user = (UserEntity) auth.getPrincipal();
-
-            if (!user.isEnabled()) {
-                log.debug("Usuário inativo ou bloqueado: {}", user.getEmail());
-                return new AuthorizationDecision(false);
-            }
-
-            // Permite bypass para administradores do sistema
-            if (requireRole.allowSystemAdmin() && Boolean.TRUE.equals(user.getIsAdministrator())) {
-                log.debug("Acesso permitido para administrador do sistema: {}", user.getEmail());
-                return new AuthorizationDecision(true);
-            }
-
-            // Verificação de admin da plataforma
-            if (requireRole.requirePlatformAdmin() && !Boolean.TRUE.equals(user.getIsAdministrator())) {
-                log.debug("Acesso negado - usuário não é admin da plataforma: {}", user.getEmail());
-                return new AuthorizationDecision(false);
-            }
-
-            boolean hasAccess = validateRoleAccess(user, requireRole, methodInvocation);
-
-            log.debug("Resultado da validação de role para usuário {}: {}", user.getEmail(), hasAccess);
-
-            return new AuthorizationDecision(hasAccess);
-
-        } catch (Exception e) {
-            log.error("Erro ao validar acesso por role", e);
+        Authentication auth = authentication.get();
+        if (auth == null || !auth.isAuthenticated()) {
+            log.debug("Usuário não autenticado - acesso negado");
             return new AuthorizationDecision(false);
         }
-    }
 
-    /**
-     * Compara as roles exigidas pela anotação com as roles que o {@link ArchbaseRoleResolver}
-     * devolve para o usuário.
-     */
-    private boolean validateRoleAccess(UserEntity user, RequireRole requireRole, MethodInvocation invocation) {
-        List<String> requiredRoles = Arrays.asList(requireRole.value());
+        Restriction restricao = Restriction.role(
+                Arrays.asList(requireRole.value()),
+                requireRole.requireAll(),
+                requireRole.allowSystemAdmin(),
+                requireRole.requirePlatformAdmin(),
+                requireRole.ownerOnly(),
+                requireRole.context(),
+                requireRole.message());
 
-        if (roleResolvers == null || roleResolvers.isEmpty()) {
-            return handleMissingResolver(requiredRoles, invocation);
-        }
-
-        Set<String> userRoles = new HashSet<>();
-        for (ArchbaseRoleResolver resolver : roleResolvers) {
-            Set<String> resolved = resolver.resolveRoles(user);
-            if (resolved != null) {
-                userRoles.addAll(resolved);
-            }
-        }
-
-        log.debug("Roles exigidas: {} | Roles do usuário {}: {}", requiredRoles, user.getEmail(), userRoles);
-
-        boolean hasRole = requireRole.requireAll()
-                ? userRoles.containsAll(requiredRoles)
-                : requiredRoles.stream().anyMatch(userRoles::contains);
-
-        if (!hasRole) {
-            return false;
-        }
-
-        return !requireRole.ownerOnly() || isOwner(user);
-    }
-
-    /**
-     * Responde {@code ownerOnly}.
-     *
-     * <p>Com <b>um</b> resolver a pergunta é direta. Com mais de um ela não tem resposta: o SPI
-     * expõe {@code isOwner(user)} sem qualquer noção de domínio, então nada liga a propriedade que
-     * um resolver afirma à role que outro forneceu. Aceitar qualquer "sim" deixaria um módulo
-     * responder por outro — dono de loja passando num endpoint de frota; e tentar casar resolver
-     * com role, como uma versão anterior deste código fazia, nega o proprietário legítimo quando o
-     * resolver de propriedade não é o mesmo que fornece roles.
-     *
-     * <p>Diante de uma pergunta sem resposta, nega e diz por quê. Quem precisa de {@code ownerOnly}
-     * com vários resolvers deve consolidá-los num só, que conhece os dois lados.
-     */
-    private boolean isOwner(UserEntity user) {
-        if (roleResolvers.size() > 1) {
-            log.error("@RequireRole(ownerOnly=true) com {} ArchbaseRoleResolver registrados: "
-                    + "isOwner() não identifica o domínio, então não há como saber qual resolver "
-                    + "responde por este método. Acesso negado. Consolide em um único resolver.",
-                    roleResolvers.size());
-            return false;
-        }
-        return roleResolvers.get(0).isOwner(user);
-    }
-
-    private boolean handleMissingResolver(List<String> requiredRoles, MethodInvocation invocation) {
-        boolean deny = POLICY_DENY.equalsIgnoreCase(noResolverPolicy);
-        String signature = invocation.getMethod().getDeclaringClass().getName()
-                + "#" + invocation.getMethod().getName();
-
-        if (warnedMethods.add(signature)) {
-            log.warn("@RequireRole({}) em {} não pode ser validada: nenhum bean ArchbaseRoleResolver "
-                            + "registrado. Política atual: {}. Registre um ArchbaseRoleResolver e configure "
-                            + "archbase.security.require-role.no-resolver-policy=deny.",
-                    requiredRoles, signature, deny ? "negar" : "PERMITIR (sem controle de acesso efetivo)");
-        }
-
-        return !deny;
+        String origem = AuthorizationAdapters.origin(methodInvocation);
+        AccessDecision decisao = securityService.decide(auth, AccessRequirement.ofRestrictions(origem, restricao));
+        AuthorizationAdapters.log(log, decisao, origem);
+        return new AuthorizationDecision(decisao.allowed());
     }
 }
