@@ -81,6 +81,72 @@ Quem pode aprovar é decisão de negócio, muda sem deploy, e vive no admin. É 
 hoje não existe — e é por isso que `SYSTEM_ADMIN`, `GESTOR` e `OPERADOR` acabaram cravados em 15
 métodos.
 
+### Regra 1b — Capacidade não é vocabulário
+
+Esta é a chave para multi-cliente, e é onde a confusão nasce de verdade.
+
+Há dois tipos de nome no sistema, e eles têm donos diferentes:
+
+| | **Capacidade** | **Vocabulário** |
+|---|---|---|
+| Exemplo | `tms.ordemservico:aprovar` | `GESTOR`, `TIME-SAC`, `SUPERVISOR` |
+| O que é | o que o software **sabe fazer** | como o cliente **chama seus papéis** |
+| Dono | o produto | **o cliente** |
+| Muda quando | o endpoint muda | o cliente quiser, a qualquer momento |
+| Onde vive | no código, junto do método | **só no banco**, por tenant |
+| Versionado com | o artefato | nada — é dado |
+
+`tms.ordemservico:aprovar` **não é vocabulário** — é o nome de uma capacidade, tão estável quanto
+o endpoint que ela protege. Um cliente não quer renomeá-la, do mesmo jeito que não quer renomear
+`POST /ordens-servico/{id}/aprovar`. Já `GESTOR` é vocabulário puro: o cliente A chama de
+`GESTOR`, o B de `COORDENADOR`, o C de `LÍDER DE CÉLULA` — e os três estão certos.
+
+O erro de hoje é que **vocabulário entrou no código**. `@RequireRole({"SYSTEM_ADMIN", "GESTOR"})`
+congela, no artefato, um nome que pertence ao cliente. Todo cliente novo herda a nomenclatura de
+quem veio antes, ou exige alteração de código para chamar as coisas pelo nome dele.
+
+```mermaid
+flowchart LR
+    subgraph PROD["Plano do produto — igual para todos"]
+        C1["tms.ordemservico:aprovar"]
+        C2["ticket.sac:encerrar"]
+        C3["frota.pneu:enviar_recapagem"]
+    end
+
+    subgraph CLI_A["Cliente A — vocabulário dele"]
+        A1[GESTOR]
+        A2[TIME-SAC]
+    end
+
+    subgraph CLI_B["Cliente B — outro vocabulário"]
+        B1[COORDENADOR]
+        B2[CÉLULA ATENDIMENTO]
+        B3[APROVADOR]
+    end
+
+    A1 --> C1
+    A2 --> C2
+    B1 --> C2
+    B3 --> C1
+    B1 --> C3
+
+    style PROD fill:#1a3a5c,color:#fff
+```
+
+**Regra prática:** se o nome pode mudar de cliente para cliente, ele **não pode aparecer em
+`.java`**. O código declara capacidades; o cliente inventa os papéis e amarra um no outro pelo
+admin — que é exatamente o que a interface já faz hoje para ações.
+
+**E as "regras" diferentes por cliente?** Regra de acesso é uma amarração papel→capacidade
+diferente, e resolve-se no admin sem deploy. Se a variação for de *processo* — "aqui aprovação
+exige duas pessoas" — isso é regra de negócio, não de autorização, e não deve ser absorvida por
+este modelo. Autorização responde "pode?", não "como".
+
+**Como o cliente não começa do zero:** o produto entrega um **template de papéis** — um conjunto
+sugerido de papéis já amarrados às capacidades, aplicado no onboarding e imediatamente
+renomeável. É dado, não código. É o papel que `RBAC_SEEDS_GESTOR_RQ.md` tentou cumprir; a
+diferença é que o template vira seed executável por tenant, em vez de documento.
+
 ### Regra 2 — Três níveis de atribuição, com propósito distinto
 
 | Nível | Cardinalidade | Para que serve | Exemplo |
@@ -178,8 +244,13 @@ Ordem sugerida, do mais barato ao mais estrutural:
    permissões concedidas, só aguardando alguém apontar para eles.
 3. **Reconciliar os documentos.** `RBAC_ROLES_PERMISSIONS.md` e `RBAC_SEEDS_GESTOR_RQ.md`
    descrevem sistemas que não existem. Corrigir ou marcar como proposta.
-4. **Escolher um vocabulário.** Hoje são quatro (`SYSTEM_ADMIN`/`GESTOR`/`OPERADOR` no código,
-   dois conjuntos nos documentos, `TIME-SAC`/`MASTER-TOTAL` no banco).
+4. **Tirar o vocabulário do código — não unificá-lo.** Havia aqui, numa versão anterior deste
+   documento, a recomendação de "escolher um vocabulário". Estava errada: num produto multi-cliente
+   o vocabulário **tem** que ser plural, porque é do cliente. O que precisa ser único é o plano de
+   **capacidades**. Concretamente: os 15 `@RequireRole({"SYSTEM_ADMIN", ...})` viram
+   `@HasPermission` sobre capacidades, e `SYSTEM_ADMIN`/`GESTOR`/`OPERADOR` deixam de existir no
+   código — passam a ser papéis que o Gestor-RQ define no admin, como qualquer outro cliente
+   definiria os dele.
 5. **Só então** avaliar as Fases 2 e 3.
 
 ---
@@ -188,7 +259,12 @@ Ordem sugerida, do mais barato ao mais estrutural:
 
 Este documento propõe; não decide. Quatro pontos precisam da sua palavra:
 
-1. **`@HasPermission` como única forma de autorizar** — aceita depreciar as outras três?
+1. **`@HasPermission` como única forma de autorizar** — aceita depreciar as outras três? É o que
+   tira o vocabulário do código e viabiliza cada cliente com a sua nomenclatura.
+
+1b. **Template de papéis por tenant** — o produto deve entregar um conjunto inicial de papéis já
+   amarrado às capacidades, aplicável no onboarding e renomeável? Sem isso, cada cliente novo
+   monta as amarrações do zero, no admin, para centenas de capacidades.
 2. **Herança por nome de recurso** (Fase 3) — resolve o problema que vocês sentem, ou o catálogo
    plano é suficiente?
 3. **`active` passar a valer** (Fase 2) — sabendo que 57% das permissões do Gestor-RQ mudariam de
