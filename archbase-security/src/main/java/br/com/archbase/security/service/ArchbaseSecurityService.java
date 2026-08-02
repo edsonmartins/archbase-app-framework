@@ -1,5 +1,10 @@
 package br.com.archbase.security.service;
 
+import br.com.archbase.security.access.AccessDecision;
+import br.com.archbase.security.access.AccessRequirement;
+import br.com.archbase.security.access.AccessSubject;
+import br.com.archbase.security.access.ArchbaseAccessEvaluator;
+import br.com.archbase.security.access.DefaultArchbaseAccessEvaluator;
 import br.com.archbase.security.domain.dto.ResourcePermissionsDto;
 import br.com.archbase.security.domain.entity.User;
 import br.com.archbase.security.persistence.PermissionEntity;
@@ -21,25 +26,60 @@ public class ArchbaseSecurityService {
     @Autowired
     private PermissionJpaRepository permissionRepository;
 
+    /**
+     * O core de decisão. Opcional na injeção para que o serviço continue construível fora do
+     * contêiner — ver {@link #evaluator()}.
+     */
+    @Autowired(required = false)
+    private ArchbaseAccessEvaluator accessEvaluator;
+
     public boolean hasPermission(Authentication authentication, String action, String resource, String tenantId, String companyId, String projectId) {
-        UserEntity userEntity = (UserEntity) authentication.getPrincipal();
-        if (userEntity.getIsAdministrator() && userEntity.isEnabled()){
-            return  true;
-        }
-        Set<String> securityIds = collectSecurityIds(userEntity);
-        List<PermissionEntity> permissions = permissionRepository.findBySecurityIdsAndActionNameAndResourceName(
-                securityIds, action, resource);
+        return decide(authentication, action, resource, tenantId, companyId, projectId).allowed();
+    }
 
-        if (permissions.stream().anyMatch(PermissionEntity::allowAllTenantsAndCompaniesAndProjects)){
-            return true;
-        }
+    /**
+     * A mesma decisão de {@link #hasPermission}, com o motivo junto.
+     *
+     * <p>A informação de qual grupo ou perfil concedeu o acesso sempre veio da consulta e era
+     * descartada pelo {@code anyMatch}. É ela que permite explicar um acesso sem abrir grupo por
+     * grupo no admin, e é a base da tela de efetivo do usuário e da simulação.
+     */
+    public AccessDecision decide(Authentication authentication, String action, String resource,
+                                 String tenantId, String companyId, String projectId) {
+        AccessSubject subject = subjectOf(authentication);
+        AccessRequirement requirement =
+                AccessRequirement.of(resource, action, tenantId, companyId, projectId);
+        return evaluator().decide(subject, requirement);
+    }
 
-        // Verifica permissão considerando tenantId, empresaId e projetoId se fornecidos
-        return permissions.stream().anyMatch(permission ->
-                (tenantId == null || permission.getTenantId() == null || tenantId.equals(permission.getTenantId())) &&
-                        (companyId == null || permission.getCompanyId() == null || companyId.equals(permission.getCompanyId())) &&
-                        (projectId == null || permission.getProjectId() == null || projectId.equals(permission.getProjectId()))
-        );
+    /**
+     * Resolve o sujeito do {@link Authentication}.
+     *
+     * <p>Devolve {@code null} quando o principal não é um {@code UserEntity} — em vez do
+     * {@code ClassCastException} de antes, que virava negação com stack trace apontando para o
+     * lugar errado. A decisão continua sendo negar; o que muda é que agora ela diz por quê.
+     */
+    private AccessSubject subjectOf(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof UserEntity userEntity)) {
+            return null;
+        }
+        return AccessSubject.of(userEntity);
+    }
+
+    /**
+     * O avaliador injetado pelo Spring; fora do contêiner, um padrão construído sobre o repositório.
+     *
+     * <p>A construção tardia existe para que o serviço continue utilizável com
+     * {@code new ArchbaseSecurityService()} — como fazem os testes unitários que já cobriam este
+     * comportamento antes do core.
+     */
+    private ArchbaseAccessEvaluator evaluator() {
+        ArchbaseAccessEvaluator atual = this.accessEvaluator;
+        if (atual == null) {
+            atual = new DefaultArchbaseAccessEvaluator(permissionRepository);
+            this.accessEvaluator = atual;
+        }
+        return atual;
     }
 
     /**
