@@ -9,7 +9,16 @@ permissions:
   contents: write
 
 jobs:
+  # Porta de entrada da publicação. Até aqui, um `git tag v*` ia direto para o Maven Central com
+  # -DskipTests: nada era verificado antes de o artefato sair. Roda a mesma suíte do CI de
+  # desenvolvimento, sobre o commit exato da tag — inclusive os testes de compatibilidade com
+  # PostgreSQL e MySQL.
+  test:
+    uses: ./.github/workflows/tests.yml
+
   publish:
+    # Sem isto o job de teste rodaria em paralelo com a publicação e não impediria nada.
+    needs: test
     runs-on: self-hosted
     timeout-minutes: 60
 
