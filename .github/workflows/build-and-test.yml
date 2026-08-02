@@ -117,18 +117,23 @@ jobs:
         if: always()
         run: |
           set -e
+          # Nome COMPLETO da classe, e não sufixo: o glob 'TEST-*PostgresCompatibilidadeTest.xml'
+          # também casa com SyncPostgresCompatibilidadeTest, e o `head -1` pegava o que o find
+          # devolvesse primeiro — ordem que muda entre máquinas. Na primeira execução do CI isso
+          # fez o guard conferir o teste do sync duas vezes e nunca olhar os do security.
+          #
           # Lista literal, sem variável: `for x in $VAR` depende de word-splitting, que nem todo
           # shell faz do mesmo jeito — e a falha seria silenciosa (uma "classe" só, inexistente).
           FALHOU=0
           for classe in \
-            PostgresCompatibilidadeTest \
-            MySqlCompatibilidadeTest \
-            SyncPostgresCompatibilidadeTest \
-            SyncMySqlCompatibilidadeTest \
-            DdlEntreguePostgresTest \
-            DdlEntregueMySqlTest
+            br.com.archbase.security.integration.PostgresCompatibilidadeTest \
+            br.com.archbase.security.integration.MySqlCompatibilidadeTest \
+            br.com.archbase.offline.sync.integration.SyncPostgresCompatibilidadeTest \
+            br.com.archbase.offline.sync.integration.SyncMySqlCompatibilidadeTest \
+            br.com.archbase.offline.sync.integration.DdlEntreguePostgresTest \
+            br.com.archbase.offline.sync.integration.DdlEntregueMySqlTest
           do
-            arquivo=$(find . -path '*/surefire-reports/TEST-*'"$classe"'.xml' | head -1)
+            arquivo=$(find . -name "TEST-$classe.xml" -path '*/surefire-reports/*' | head -1)
             if [ -z "$arquivo" ]; then
               echo "::error::$classe não produziu relatório — não foi executado."
               FALHOU=1
