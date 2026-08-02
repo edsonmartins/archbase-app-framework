@@ -27,7 +27,10 @@ public interface UserJpaRepository extends ArchbaseCommonJpaRepository<UserEntit
      * @param email Email do usuário
      * @return true se existe algum usuário com esse email em qualquer tenant
      */
-    @Query(value = "SELECT CASE WHEN COUNT(*) > 0 THEN true ELSE false END FROM SEGURANCA WHERE TP_SEGURANCA = 'USUARIO' AND EMAIL = :email", nativeQuery = true)
+    // Nome de tabela em minúsculas: no MySQL sobre Linux os identificadores são case-sensitive
+    // (lower_case_table_names=0) e o Hibernate cria `seguranca`, então `SEGURANCA` não é encontrada.
+    // PostgreSQL e H2 dobram para minúsculas e escondem o problema.
+    @Query(value = "SELECT CASE WHEN COUNT(*) > 0 THEN true ELSE false END FROM seguranca WHERE TP_SEGURANCA = 'USUARIO' AND EMAIL = :email", nativeQuery = true)
     boolean existsByEmailIgnoringTenant(@Param("email") String email);
 
     /**
@@ -41,6 +44,7 @@ public interface UserJpaRepository extends ArchbaseCommonJpaRepository<UserEntit
      *         no Postgres o alias não-quotado é rebaixado para minúsculas e o matching por nome da
      *         projeção falha (erro 500). Object[] mapeia por posição e é imune a isso.
      */
-    @Query(value = "SELECT TENANT_ID, NOME, DESCRICAO FROM SEGURANCA WHERE TP_SEGURANCA = 'USUARIO' AND EMAIL = :email AND TENANT_ID IS NOT NULL", nativeQuery = true)
+    // Minúsculas pelo mesmo motivo da consulta acima (case-sensitivity no MySQL/Linux).
+    @Query(value = "SELECT TENANT_ID, NOME, DESCRICAO FROM seguranca WHERE TP_SEGURANCA = 'USUARIO' AND EMAIL = :email AND TENANT_ID IS NOT NULL", nativeQuery = true)
     List<Object[]> findTenantsByEmailIgnoringTenant(@Param("email") String email);
 }

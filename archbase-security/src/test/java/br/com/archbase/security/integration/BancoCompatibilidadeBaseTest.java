@@ -5,8 +5,6 @@ import br.com.archbase.security.persistence.UserEntity;
 import br.com.archbase.security.repository.AccessTokenJpaRepository;
 import br.com.archbase.security.repository.UserJpaRepository;
 import br.com.archbase.security.service.ArchbaseJwtService;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -25,6 +23,8 @@ import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -36,22 +36,37 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Exercita a autenticação de ponta a ponta com Spring + H2: login, uso do token, refresh e logout,
- * passando pela cadeia de filtros de verdade.
+ * Cenários que precisam rodar em <b>todos</b> os bancos suportados.
  *
- * <p><b>Por que este teste existe.</b> Toda a auditoria de segurança passou por build verde e
- * testes unitários verdes — e ainda assim três rodadas de revisão encontraram defeitos que só
- * aparecem em runtime: {@code @Value} que não é injetado porque o objeto foi criado com
- * {@code new}, associação LAZY tocada fora de sessão, {@code @Transactional} que não se aplica,
- * handler que nunca chegou a ser registrado na cadeia, JPQL que o banco recusa. Nenhum teste
- * unitário com mock alcança isso: é preciso subir o contexto e mandar requisição.
+ * <p><b>Por que existe.</b> O teste com H2 prova a lógica, não a portabilidade. Esta auditoria já
+ * produziu dois construtos que só funcionam no PostgreSQL: a migration com
+ * {@code add column if not exists} e um {@code UPDATE} com subconsulta sobre a própria tabela, que
+ * o MySQL recusa com ERROR 1093. O primeiro foi encontrado por leitura, o segundo por revisão — e
+ * os dois passaram por build verde. Enquanto o SQL não roda contra o banco de verdade, "é
+ * portável" é opinião.
  *
- * <p>Cada cenário abaixo corresponde a um defeito real que escapou de alguma rodada.
+ * <p>As subclasses fornecem o container. Os containers são efêmeros e geram as próprias
+ * credenciais a cada execução; nada de ambiente real é usado aqui.
+ *
+ * <p>Sem Docker, as subclasses se desabilitam em vez de falhar.
+ *
+ * <p><b>Rodando localmente.</b> Com Docker Desktop funciona direto. Com colima ou outro runtime
+ * cujo socket não esteja em {@code /var/run/docker.sock}, aponte o Testcontainers para ele:
+ *
+ * <pre>
+ * export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
+ * export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
+ * </pre>
+ *
+ * <p><b>Limitação conhecida no MySQL.</b> O índice único de {@code SEGURANCA_TOKEN_ACESSO.TOKEN}
+ * não é criado: a coluna é {@code varchar(5000)} e, em utf8mb4, o índice passaria de 3072 bytes.
+ * O Hibernate registra o erro do DDL e segue; a aplicação funciona, mas sem a garantia de
+ * unicidade no banco. É anterior a esta auditoria e depende de uma decisão de esquema
+ * (encurtar a coluna, indexar um hash, ou abrir mão da constraint).
  */
 @SpringBootTest(classes = ArchbaseSecurityTestApplication.class)
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:h2:mem:archbase-security-it;DB_CLOSE_DELAY=-1",
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "archbase.security.jwt.secret-key=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
         "archbase.security.jwt.token-expiration=3600000",
@@ -63,11 +78,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "archbase.security.cors.allow-credentials=false",
         "archbase.app.tenant.default.id=tenant-teste"
 })
-@DisplayName("Autenticação de ponta a ponta (Spring + H2)")
-class AutenticacaoIntegrationTest {
+abstract class BancoCompatibilidadeBaseTest {
 
-    private static final String EMAIL = "usuario@vendax.com.br";
-    private static final String SENHA = "senha-de-teste";
+    protected static final String EMAIL = "usuario@vendax.com.br";
+    protected static final String SENHA = "senha-de-teste";
 
     @Autowired
     MockMvc mockMvc;
@@ -108,65 +122,44 @@ class AutenticacaoIntegrationTest {
         userRepository.save(user);
     }
 
-    // ─────────────────────────── cenários ───────────────────────────
+    @Test
+    @DisplayName("o esquema das entidades de segurança é criado neste banco")
+    void esquemaCriado() {
+        assertThat(userRepository.findByEmail(EMAIL)).isPresent();
+    }
 
     @Test
-    @DisplayName("login devolve access e refresh, e o access autentica uma requisição")
-    void loginEUsoDoToken() throws Exception {
+    @DisplayName("login emite o par de credenciais e o access autentica")
+    void loginFunciona() throws Exception {
         JsonNode login = login();
 
-        String accessToken = login.get("access_token").asText();
-        String refreshToken = login.get("refresh_token").asText();
-        assertThat(accessToken).isNotBlank();
-        assertThat(refreshToken).isNotBlank();
-
         mockMvc.perform(get("/api/v1/user/findAll?page=0&size=10")
-                        .header("Authorization", "Bearer " + accessToken))
+                        .header("Authorization", "Bearer " + login.get("access_token").asText()))
                 .andExpect(status().isOk());
     }
 
     @Test
-    @DisplayName("refresh token renova o par de credenciais")
-    void refreshRenova() throws Exception {
+    @DisplayName("refresh renova o par")
+    void refreshFunciona() throws Exception {
         String refreshToken = login().get("refresh_token").asText();
 
-        var resposta = mockMvc.perform(post("/api/v1/auth/refresh-token")
+        mockMvc.perform(post("/api/v1/auth/refresh-token")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("token", refreshToken))))
-                .andExpect(status().isOk())
-                .andReturn();
-
-        JsonNode json = objectMapper.readTree(resposta.getResponse().getContentAsString());
-        assertThat(json.get("access_token").asText()).isNotBlank();
-        assertThat(json.get("refresh_token").asText()).isNotBlank();
+                .andExpect(status().isOk());
     }
 
+    /**
+     * O cenário que motivou esta classe.
+     *
+     * <p>O logout executa um {@code UPDATE ... WHERE t.user.id = :userId} em lote. A versão
+     * anterior derivava o {@code userId} por subconsulta sobre a mesma tabela e o MySQL a recusava
+     * com ERROR 1093 — logout quebrado, sem nada revogado, num defeito que nenhum teste em H2
+     * revelaria.
+     */
     @Test
-    @DisplayName("access token não é aceito como refresh — confusão de tipo de credencial")
-    void accessTokenNaoServeComoRefresh() throws Exception {
-        String accessToken = login().get("access_token").asText();
-
-        mockMvc.perform(post("/api/v1/auth/refresh-token")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("token", accessToken))))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    @DisplayName("desafio de MFA não vira credencial pelo /refresh-token — o bypass original")
-    void desafioMfaNaoViraCredencial() throws Exception {
-        UserEntity user = userRepository.findByEmail(EMAIL).orElseThrow();
-        String desafio = jwtService.generateMfaChallengeToken(user).token();
-
-        mockMvc.perform(post("/api/v1/auth/refresh-token")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("token", desafio))))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    @DisplayName("logout revoga a sessão: access deixa de autenticar e refresh deixa de renovar")
-    void logoutEncerraASessao() throws Exception {
+    @DisplayName("logout executa o UPDATE em lote e encerra a sessão")
+    void logoutFuncionaNesteBanco() throws Exception {
         JsonNode login = login();
         String accessToken = login.get("access_token").asText();
         String refreshToken = login.get("refresh_token").asText();
@@ -186,31 +179,45 @@ class AutenticacaoIntegrationTest {
     }
 
     @Test
-    @DisplayName("senha errada devolve 401 e não emite token")
-    void senhaErradaNaoAutentica() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/authenticate")
+    @DisplayName("desafio de MFA não vira credencial pelo /refresh-token")
+    void desafioMfaRecusado() throws Exception {
+        UserEntity user = userRepository.findByEmail(EMAIL).orElseThrow();
+        String desafio = jwtService.generateMfaChallengeToken(user).token();
+
+        mockMvc.perform(post("/api/v1/auth/refresh-token")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(
-                                Map.of("email", EMAIL, "password", "errada"))))
+                        .content(objectMapper.writeValueAsString(Map.of("token", desafio))))
                 .andExpect(status().isUnauthorized());
     }
-
-    @Test
-    @DisplayName("requisição sem credencial é recusada com 401")
-    void semCredencialRecebe401() throws Exception {
-        mockMvc.perform(get("/api/v1/user/findAll?page=0&size=10"))
-                .andExpect(status().isUnauthorized());
-    }
-
-    // ─────────────────────────── apoio ───────────────────────────
 
     private JsonNode login() throws Exception {
         var resposta = mockMvc.perform(post("/api/v1/auth/authenticate")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 Map.of("email", EMAIL, "password", SENHA))))
-                .andExpect(status().isOk())
                 .andReturn();
+
+        // Corpo e exceção na mensagem: o /authenticate não tem catch genérico, então uma falha de
+        // banco vira 500 sem nada no log — e o teste sozinho diria apenas "esperava 200, veio 500".
+        assertThat(resposta.getResponse().getStatus())
+                .withFailMessage("login falhou: status=%d, corpo=%s, exceção=%s",
+                        resposta.getResponse().getStatus(),
+                        resposta.getResponse().getContentAsString(),
+                        resposta.getResolvedException() != null
+                                ? resposta.getResolvedException().toString()
+                                : descreveCausa(resposta.getRequest().getAttribute("jakarta.servlet.error.exception")))
+                .isEqualTo(200);
         return objectMapper.readTree(resposta.getResponse().getContentAsString());
+    }
+
+    private String descreveCausa(Object excecao) {
+        if (!(excecao instanceof Throwable t)) {
+            return "não capturada";
+        }
+        StringBuilder sb = new StringBuilder(t.toString());
+        for (Throwable causa = t.getCause(); causa != null; causa = causa.getCause()) {
+            sb.append(" <- ").append(causa);
+        }
+        return sb.toString();
     }
 }
