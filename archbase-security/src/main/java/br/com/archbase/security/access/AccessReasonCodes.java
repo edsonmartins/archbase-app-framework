@@ -67,6 +67,17 @@ public final class AccessReasonCodes {
      */
     public static final String EMPTY_REQUIREMENT = "EMPTY_REQUIREMENT";
 
+    /**
+     * O nível do sujeito não alcança o mínimo da capacidade.
+     *
+     * <p>É a negação que responde ao risco de alguém atribuir uma capacidade sensível a quem não
+     * deveria: a concessão existe, e mesmo assim não vale.
+     */
+    public static final String LEVEL_TOO_LOW = "LEVEL_TOO_LOW";
+
+    /** Uma permissão com {@code effect = DENY} alcançou o escopo pedido. */
+    public static final String EXPLICIT_DENY = "EXPLICIT_DENY";
+
     /** Há permissão, mas nenhuma cujo escopo alcance o tenant, a empresa ou o projeto pedidos. */
     public static final String OUT_OF_SCOPE = "OUT_OF_SCOPE";
 

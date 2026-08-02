@@ -1,6 +1,7 @@
 package br.com.archbase.security.persistence;
 
 import br.com.archbase.ddd.domain.base.TenantPersistenceEntityBase;
+import br.com.archbase.security.access.AccessLevel;
 import br.com.archbase.security.domain.dto.ActionDto;
 import br.com.archbase.security.domain.dto.ResourceDto;
 import br.com.archbase.security.domain.entity.Action;
@@ -45,12 +46,24 @@ public class ActionEntity extends TenantPersistenceEntityBase {
     @Column(name = "VERSAO_ACAO", nullable = true)
     private String actionVersion;
 
+    /**
+     * O nível mínimo que esta capacidade exige — o piso do portão {@code LEVEL}.
+     *
+     * <p>Nulo significa <b>sem piso</b>, e é como toda ação existente nasce: a coluna entra vazia e
+     * o portão passa direto. O valor é semeado pelo código, em
+     * {@code @HasPermission(minimumLevel = ...)}, no primeiro registro da ação; a partir daí quem
+     * manda é o admin, igual já acontece com a descrição.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "MINIMUM_LEVEL", nullable = true, length = 30)
+    private AccessLevel minimumLevel;
+
     public ActionEntity() {
         super();
     }
 
     @Builder
-    public ActionEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, ResourceEntity resource, String category, Boolean active, String actionVersion) {
+    public ActionEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, ResourceEntity resource, String category, Boolean active, String actionVersion, AccessLevel minimumLevel) {
         super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId);
         this.name = name;
         this.description = description;
@@ -58,6 +71,7 @@ public class ActionEntity extends TenantPersistenceEntityBase {
         this.category = category;
         this.active = active;
         this.actionVersion = actionVersion;
+        this.minimumLevel = minimumLevel;
     }
 
     public static ActionEntity fromDomain(Action action) {

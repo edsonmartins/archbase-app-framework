@@ -36,6 +36,7 @@ public record AccessSubject(
         String profileName,
         Set<String> groupIds,
         Set<String> securityIds,
+        AccessLevel level,
         UserEntity principal) {
 
     public AccessSubject {
@@ -86,7 +87,17 @@ public record AccessSubject(
                 profileName,
                 grupos,
                 ids,
+                user.getProfile() == null ? null : user.getProfile().getAccessLevel(),
                 user);
+    }
+
+    /**
+     * O mesmo sujeito, com o nível substituído — usado quando um
+     * {@link ArchbaseAccessLevelResolver} da aplicação responde por ele.
+     */
+    public AccessSubject withLevel(AccessLevel novoNivel) {
+        return new AccessSubject(userId, userName, email, administrator, enabled,
+                profileId, profileName, groupIds, securityIds, novoNivel, principal);
     }
 
     /** {@code true} apenas quando a flag está explicitamente marcada. Nulo não é administrador. */

@@ -257,12 +257,17 @@ As colunas entram em `src/main/resources/db/migration/archbase/R__archbase_secur
 que já existe e é entregue pelo framework.
 
 ```sql
-alter table SEGURANCA_ACAO       add column if not exists MINIMUM_LEVEL varchar(30);
-alter table SEGURANCA_PERFIL     add column if not exists ACCESS_LEVEL  varchar(30);
-alter table SEGURANCA_PERMISSAO  add column if not exists EFFECT        varchar(10) default 'GRANT';
+alter table seguranca_acao       add column if not exists minimum_level varchar(30);
+alter table seguranca            add column if not exists access_level  varchar(30);
+alter table seguranca_permissao  add column if not exists effect        varchar(10);
 ```
 
-Todas nulas ou com default — nenhum `not null`, nenhum backfill obrigatório.
+Todas nulas — nenhum `not null`, nenhum backfill, nenhum default. `effect` nulo **é** `GRANT`, que
+é o que toda concessão existente significa.
+
+**Correção do plano:** a coluna de nível não vai numa tabela `SEGURANCA_PERFIL`, que não existe.
+`SecurityEntity` é `SINGLE_TABLE` com discriminador `TP_SEGURANCA`, então usuário, grupo e perfil
+moram todos em `seguranca` — e a coluna só faz sentido nas linhas de perfil.
 
 **Duas ressalvas herdadas, que o plano não resolve e não piora:**
 - o arquivo é **específico de PostgreSQL** (`add column if not exists`); MySQL e Oracle não sobem
@@ -290,12 +295,20 @@ liga uma flag — mesma disciplina das flags de endurecimento, com pré-validaç
 
 ```properties
 archbase.security.permission.require-active=false      # alinha o backend ao frontend
-archbase.security.permission.deny-effect-enabled=true   # honra effect=DENY
 archbase.security.access-level.enabled=false            # liga o portão 4
-archbase.security.access-level.applies-to-administrator=false
+archbase.security.access-level.default=READER           # nível de quem não tem perfil
 archbase.security.sync.mode=apply                       # apply | report
 archbase.security.diagnostics.enabled=false             # expõe overview/effective/simulate
 ```
+
+Duas flags que o plano previa e que a implementação dispensou:
+
+- **`deny-effect-enabled`** — desnecessária. `effect` nasce nulo em toda linha existente e nulo é
+  `GRANT`; a negação só existe onde alguém a declarar. Uma flag para desligar algo que ninguém
+  ligou é só mais um botão para errar.
+- **`access-level.applies-to-administrator`** — sem sentido. O administrador é `TENANT_ADMIN` por
+  definição, o topo da escala, e nenhuma capacidade pode exigir mais do que isso. O portão nunca o
+  barra, e não há o que configurar.
 
 `require-active` é o mais sensível: ligá-lo **tira acesso** de quem depende de permissão sobre ação
 inativa — 57% das concessões no gestor-rq. Rodar `effective?requireActive=true` antes, nome a nome.

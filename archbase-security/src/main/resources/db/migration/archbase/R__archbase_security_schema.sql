@@ -77,3 +77,39 @@ comment on column seguranca_token_api.token is
 -- Consulta quente: toda requisição autenticada por token de API bate neste índice.
 create index if not exists idx_seguranca_token_api_hash
     on seguranca_token_api (token_hash);
+
+-- ---------------------------------------------------------------------------------------------
+-- CORE ÚNICO DE AUTORIZAÇÃO — nível mínimo e negação explícita
+--
+-- As três colunas abaixo entram NULAS, e o comportamento só muda quando alguém as preenche ou liga
+-- a flag correspondente. Um sistema existente sobe idêntico.
+-- ---------------------------------------------------------------------------------------------
+
+-- O piso que a capacidade exige. Nulo = sem piso, que é como toda ação existente fica.
+-- O valor é semeado pelo código em @HasPermission(minimumLevel = ...) no primeiro registro da ação;
+-- a partir daí quem manda é o admin, igual já acontece com a descrição.
+alter table seguranca_acao
+    add column if not exists minimum_level varchar(30);
+
+-- O nível que o perfil confere. Mora no perfil, e não no grupo, porque o perfil é um por usuário e
+-- um piso ordinal precisa de valor único. SEGURANCA é a tabela única da hierarquia de segurança
+-- (usuário, grupo e perfil), então a coluna só faz sentido nas linhas de perfil.
+alter table seguranca
+    add column if not exists access_level varchar(30);
+
+-- Se a linha de permissão soma ou subtrai. Nulo = GRANT, que é o que toda concessão existente
+-- significa. DENY vence qualquer concessão de qualquer origem DENTRO DO MESMO ESCOPO — é o que
+-- permite tirar uma pessoa de algo que o time inteiro tem, sem criar um grupo paralelo só para isso.
+alter table seguranca_permissao
+    add column if not exists effect varchar(10);
+
+comment on column seguranca_acao.minimum_level is
+    'Nivel minimo exigido pela capacidade: READER < OPERATOR < SUPERVISOR < TENANT_ADMIN. Nulo = sem piso. So e avaliado com archbase.security.access-level.enabled=true.';
+comment on column seguranca.access_level is
+    'Nivel conferido pelo perfil. Aplica-se apenas a linhas de perfil. Nulo cai em archbase.security.access-level.default.';
+comment on column seguranca_permissao.effect is
+    'GRANT (padrao, inclusive quando nulo) ou DENY. A negacao vence a concessao dentro do escopo em que foi declarada.';
+
+-- Consulta quente: a negação é procurada em toda decisão que encontra concessão.
+create index if not exists idx_seguranca_permissao_effect
+    on seguranca_permissao (effect);

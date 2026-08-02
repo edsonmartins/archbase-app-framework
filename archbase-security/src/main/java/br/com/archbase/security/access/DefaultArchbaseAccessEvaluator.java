@@ -44,10 +44,18 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
     private final PermissionJpaRepository permissionRepository;
     private final Map<RestrictionKind, RestrictionEvaluator> restrictionEvaluators;
 
+    /**
+     * A política de nível. Opcional: {@code null} deixa o portão {@link Gate#LEVEL} fora da
+     * avaliação, que é o que se quer nos testes de unidade que não exercitam nível.
+     */
+    private final ArchbaseAccessLevelPolicy levelPolicy;
+
     @Autowired
     public DefaultArchbaseAccessEvaluator(PermissionJpaRepository permissionRepository,
-                                          List<RestrictionEvaluator> restrictionEvaluators) {
+                                          List<RestrictionEvaluator> restrictionEvaluators,
+                                          ArchbaseAccessLevelPolicy levelPolicy) {
         this.permissionRepository = permissionRepository;
+        this.levelPolicy = levelPolicy;
         this.restrictionEvaluators = restrictionEvaluators == null
                 ? Map.of()
                 : restrictionEvaluators.stream()
@@ -55,9 +63,15 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
                                 () -> new EnumMap<>(RestrictionKind.class)));
     }
 
+    /** Sem política de nível — o portão LEVEL não é avaliado. */
+    public DefaultArchbaseAccessEvaluator(PermissionJpaRepository permissionRepository,
+                                          List<RestrictionEvaluator> restrictionEvaluators) {
+        this(permissionRepository, restrictionEvaluators, null);
+    }
+
     /** Sem trancas — usado onde só há capacidade a avaliar. */
     public DefaultArchbaseAccessEvaluator(PermissionJpaRepository permissionRepository) {
-        this(permissionRepository, List.of());
+        this(permissionRepository, List.of(), null);
     }
 
     @Override
@@ -169,15 +183,14 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
 
         // ---------------------------------------------------------------- 2. SCOPE
 
-        PermissionEntity concedente = null;
+        List<PermissionEntity> noEscopo = new ArrayList<>();
         for (PermissionEntity permissao : permissoes) {
             if (permissao.allowAllTenantsAndCompaniesAndProjects() || alcancaEscopo(permissao, requirement)) {
-                concedente = permissao;
-                break;
+                noEscopo.add(permissao);
             }
         }
 
-        if (concedente == null) {
+        if (noEscopo.isEmpty()) {
             chain.add(GateOutcome.denied(Gate.SCOPE, AccessReasonCodes.OUT_OF_SCOPE,
                     "Há " + permissoes.size() + " permissão(ões) para " + requirement.capability()
                             + ", nenhuma alcança tenant=" + requirement.tenantId()
@@ -189,6 +202,46 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
         }
 
         chain.add(GateOutcome.passed(Gate.SCOPE, "Escopo compatível"));
+
+        // ---------------------------------------------------------------- negação explícita
+        //
+        // DENY vence, em qualquer nível — perfil, grupo ou direto — e só dentro do escopo em que
+        // foi declarado, que é a mesma semântica que a concessão sempre teve. É o que permite tirar
+        // uma pessoa de algo que o time inteiro tem, sem criar um grupo paralelo só para excluí-la.
+        for (PermissionEntity permissao : noEscopo) {
+            if (permissao.isDeny()) {
+                String quem = nomeDe(permissao);
+                chain.add(GateOutcome.denied(Gate.GRANT, AccessReasonCodes.EXPLICIT_DENY,
+                        "Negação explícita registrada em " + quem));
+                return AccessDecision.denied(Gate.GRANT, AccessReasonCodes.EXPLICIT_DENY,
+                        "Acesso negado explicitamente para " + requirement.capability()
+                                + " em " + quem + ". A negação vence qualquer concessão.", chain);
+            }
+        }
+
+        PermissionEntity concedente = noEscopo.get(0);
+
+        // ---------------------------------------------------------------- 4. LEVEL
+        //
+        // Avaliado aqui, e não antes do catálogo, por dois motivos. O mínimo é propriedade da ação,
+        // que só se conhece depois de consultá-la — e, para quem investiga, "ninguém te concedeu" é
+        // resposta mais útil do que "seu nível é baixo" quando as duas coisas são verdade.
+        if (levelPolicy != null && levelPolicy.isEnabled()) {
+            AccessLevel minimo = concedente.getAction() == null ? null : concedente.getAction().getMinimumLevel();
+            AccessLevel doSujeito = levelPolicy.levelOf(subject);
+
+            if (!doSujeito.reaches(minimo)) {
+                chain.add(GateOutcome.denied(Gate.LEVEL, AccessReasonCodes.LEVEL_TOO_LOW,
+                        "Nível " + doSujeito + "; " + requirement.capability() + " exige " + minimo));
+                return AccessDecision.denied(Gate.LEVEL, AccessReasonCodes.LEVEL_TOO_LOW,
+                        "A permissão está concedida, mas " + requirement.capability() + " exige nível "
+                                + minimo + " e o usuário alcança " + doSujeito
+                                + ". Ter a capacidade atribuída não basta.", chain);
+            }
+
+            chain.add(GateOutcome.passed(Gate.LEVEL,
+                    "Nível " + doSujeito + (minimo == null ? " (capacidade sem mínimo)" : " ≥ " + minimo)));
+        }
 
         String concedidoPor = concedente.getSecurity() == null ? null : concedente.getSecurity().getId();
         String concedidoPorNome = concedente.getSecurity() == null ? null : concedente.getSecurity().getName();
@@ -218,5 +271,13 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
 
     private boolean alcanca(String pedido, String daPermissao) {
         return pedido == null || daPermissao == null || pedido.equals(daPermissao);
+    }
+
+    private String nomeDe(PermissionEntity permissao) {
+        if (permissao.getSecurity() == null) {
+            return "origem desconhecida";
+        }
+        String nome = permissao.getSecurity().getName();
+        return nome == null ? permissao.getSecurity().getId() : nome;
     }
 }

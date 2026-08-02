@@ -284,6 +284,15 @@ archbase.security.public-paths.legacy-app-routes=true       # rotas de aplicaç�
 archbase.app.tenant.fail-on-missing=false                   # recusa acesso sem tenant no contexto
 archbase.app.tenant.accept-query-param=true                 # aceita X-TENANT-ID na query string
 
+# Core único de autorização (ver archbase-security/MODELO_CORE_AUTORIZACAO.md)
+# Cinco portões: IDENTITY, SCOPE, RESTRICTION, LEVEL, GRANT. Os quatro primeiros só NEGAM;
+# só o GRANT concede. Todos os defaults abaixo reproduzem o comportamento anterior ao core.
+archbase.security.access-level.enabled=false                # liga o portão LEVEL (piso por capacidade)
+archbase.security.access-level.default=READER               # nível de quem não tem perfil, ou perfil sem nível
+archbase.security.diagnostics.enabled=false                 # expõe /api/v1/security/diagnostics/*
+# Os endpoints de diagnóstico exigem isAdministrator MESMO quando ligados — não dependem de
+# admin-endpoints.policy, cujo padrão permit deixaria qualquer autenticado entrar.
+
 # Rate limiting dos fluxos de credencial (ligado por padrão)
 archbase.security.rate-limit.enabled=true
 archbase.security.rate-limit.max-attempts=10

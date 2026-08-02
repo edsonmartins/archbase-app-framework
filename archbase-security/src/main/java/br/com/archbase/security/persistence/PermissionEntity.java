@@ -1,6 +1,7 @@
 package br.com.archbase.security.persistence;
 
 import br.com.archbase.ddd.domain.base.TenantPersistenceEntityBase;
+import br.com.archbase.security.access.PermissionEffect;
 import br.com.archbase.security.domain.dto.PermissionDto;
 import br.com.archbase.security.domain.dto.ProfileDto;
 import br.com.archbase.security.domain.dto.SecurityDto;
@@ -36,18 +37,40 @@ public class PermissionEntity extends TenantPersistenceEntityBase {
     @Column(name="PROJECT_ID", nullable = true)
     private String projectId;
 
+    /**
+     * Se esta linha soma ou subtrai.
+     *
+     * <p>Nulo é {@link PermissionEffect#GRANT} — é o que toda concessão existente significa, e a
+     * coluna nasce vazia para todas elas. {@code DENY} vence qualquer concessão de qualquer origem
+     * dentro do mesmo escopo: é o que permite excluir uma pessoa de algo que o time inteiro tem,
+     * sem criar um grupo paralelo só para isso.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name="EFFECT", nullable = true, length = 10)
+    private PermissionEffect effect;
+
+    /** O efeito desta linha, com nulo resolvido para {@code GRANT}. */
+    public PermissionEffect effectOrGrant() {
+        return effect == null ? PermissionEffect.GRANT : effect;
+    }
+
+    public boolean isDeny() {
+        return effectOrGrant() == PermissionEffect.DENY;
+    }
+
     public PermissionEntity() {
         super();
     }
 
     @Builder
-    public PermissionEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, SecurityEntity security, ActionEntity action, String tenantId1, String companyId, String projectId) {
+    public PermissionEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, SecurityEntity security, ActionEntity action, String tenantId1, String companyId, String projectId, PermissionEffect effect) {
         super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId);
         this.security = security;
         this.action = action;
         this.tenantId = tenantId1;
         this.companyId = companyId;
         this.projectId = projectId;
+        this.effect = effect;
     }
 
     public static PermissionEntity fromDomain(Permission permission) {
