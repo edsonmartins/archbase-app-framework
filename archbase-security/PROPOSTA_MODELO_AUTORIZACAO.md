@@ -220,12 +220,91 @@ limitação.
 
 ---
 
+## "E se alguém atribuir a ação para quem não deve?"
+
+A objeção é correta e importante: `@HasPermission` sozinho é **inteiramente dirigido por dado**.
+Quem controla a tabela de permissões controla o acesso. Um piso no código, que dado nenhum
+consegue afrouxar, é defesa em profundidade legítima.
+
+Concordo com o risco. O mecanismo é que precisa ser outro — por três razões concretas.
+
+### 1. O piso de hoje não é piso
+
+`@RequireProfile` e `@RequirePersona` têm `allowSystemAdmin() default true`, e o manager devolve
+`true` **antes** de qualquer verificação de perfil:
+
+```java
+if (requireProfile.allowSystemAdmin() && user.getIsAdministrator() && user.isEnabled()) {
+    return new AuthorizationDecision(true);   // sai aqui
+}
+```
+
+Quem é `isAdministrator` atravessa as três anotações e o `@HasPermission`. No Gestor-RQ há **4
+usuários assim**. Contra o cenário que preocupa — alguém com poder de administração concedendo
+indevidamente — a proteção atual não oferece piso nenhum: quem pode conceder, pode passar.
+
+E `@RequireRole` não valida coisa alguma sem um `ArchbaseRoleResolver`, que ninguém implementa.
+Dos três, o único que hoje restringe de fato é `@RequireProfile` — e só contra não-administradores.
+
+### 2. O vazamento está na concessão, não na verificação
+
+O endpoint que concede permissão é `POST /api/v1/resource/permissions`, no `ResourceController`.
+Ele está sob `archbase.security.admin-endpoints.policy`, cujo **padrão é `permit`**. Com a
+configuração padrão do framework:
+
+> **qualquer usuário autenticado pode conceder qualquer permissão a si mesmo.**
+
+Não é preciso um administrador distraído — basta qualquer conta. Enquanto isso for verdade,
+nenhuma anotação adicional no lado da verificação resolve, porque o atacante simplesmente se
+concede o que falta. **A correção é `admin-endpoints.policy=admin-only`**, que já existe e está
+documentada em `deployment/security-hardening.md`. É a mudança de maior efeito desta conversa
+inteira.
+
+### 3. Um piso pode existir sem vocabulário no código
+
+O conflito entre "quero um piso no código" e "não quero vocabulário do cliente no código" é
+aparente. Ele some quando o código declara **quão sensível** é a capacidade, em vez de **quem**
+pode usá-la:
+
+```java
+@HasPermission(resource = "seguranca.permissao", action = "conceder",
+               description = "Conceder permissões a usuários",
+               sensitivity = CRITICA)
+```
+
+`CRITICA` é vocabulário do produto, não do cliente — nenhum cliente vai querer renomear o
+conceito de "crítico", como quer renomear `GESTOR`. E o framework pode dar garantias que dado
+nenhum afrouxa:
+
+| Nível | O framework exige, além da permissão |
+|---|---|
+| `NORMAL` | nada — só a permissão |
+| `ALTA` | concessão apenas a perfil ou grupo, nunca direto a usuário; registro em auditoria |
+| `CRITICA` | `isAdministrator` **além** da permissão; quem concede precisa já possuir a capacidade |
+
+Isso entrega exatamente o que você quer — "não basta ter a ação atribuída" — sem congelar nomes
+de papel no artefato. E, diferente de hoje, o piso vale **inclusive para administradores** onde o
+nível assim exigir, porque a regra passa a ser do framework e não uma anotação que o bypass
+atravessa.
+
+### O que fazer nesta ordem
+
+1. `admin-endpoints.policy=admin-only` — fecha o buraco real, hoje, sem escrever código.
+2. Auditoria de concessão: registrar quem concedeu o quê a quem. Hoje não há registro.
+3. Proibir autoconcessão: quem concede não pode ser o destinatário.
+4. Só então avaliar o nível de sensibilidade, que é a formalização do piso.
+
+Os itens 1 a 3 cobrem o cenário que preocupa com muito menos superfície do que manter três
+sistemas de anotação em paralelo.
+
+---
+
 ## O que aposentar
 
 | Anotação | Situação | Destino |
 |---|---|---|
 | `@HasPermission` | completa, integrada ao catálogo | **única recomendada** |
-| `@RequireProfile` | funciona, mas crava papel no código | desencorajar; migrar para permissão |
+| `@RequireProfile` | é o único que restringe de fato, mas crava vocabulário do cliente no código e é atravessado por administrador | manter enquanto não existir nível de sensibilidade; migrar depois |
 | `@RequireRole` | não valida nada sem resolver | `@Deprecated` |
 | `@RequirePersona` | ignora `context`/`contextData`; tem nomes de negócio de um cliente dentro do framework | `@Deprecated` |
 
@@ -270,3 +349,7 @@ Este documento propõe; não decide. Quatro pontos precisam da sua palavra:
 3. **`active` passar a valer** (Fase 2) — sabendo que 57% das permissões do Gestor-RQ mudariam de
    efeito.
 4. **Negação explícita** — existe hoje algum caso real que a união não resolve?
+
+5. **Nível de sensibilidade na capacidade** — é a forma proposta de ter o piso no código sem
+   congelar nome de papel. Aceita a ideia, ou prefere manter `@RequireProfile` como piso,
+   assumindo que administradores o atravessam?
