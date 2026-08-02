@@ -131,6 +131,105 @@ Duas regras que surpreendem:
 
 ---
 
+## O catálogo: Resource e Action
+
+Esta é a parte mais granular do módulo — e a que mais confunde, porque **`@HasPermission` não é
+só uma checagem: é também uma declaração**. A anotação alimenta um catálogo no banco, e é desse
+catálogo que as permissões são concedidas.
+
+Existem **dois catálogos**, separados pelo campo `TIPO` do recurso, com ciclos de vida opostos:
+
+```mermaid
+flowchart TD
+    subgraph API["Recursos TIPO = API — automático"]
+        A1["@HasPermission<br/>resource, action, description"] --> A2[ArchbaseActionSynchronizationService]
+        A2 -->|"@PostConstruct, na subida"| A3{scan-packages<br/>configurado?}
+        A3 -->|não| A4([Nada acontece.<br/>Só um WARN no log])
+        A3 -->|sim| A5[Varre os pacotes com Reflections]
+        A5 --> A6[Cria Resource e Action<br/>que não existem]
+        A5 --> A7[DESATIVA Action e Resource<br/>sem anotação correspondente]
+    end
+
+    subgraph VIEW["Recursos TIPO = VIEW — manual"]
+        V1[POST /api/v1/resource/register] --> V2[Cria Resource + Actions<br/>do corpo da requisição]
+        V2 --> V3([Para permissões de tela,<br/>botão, menu — não de endpoint])
+    end
+
+    A6 --> CAT[(Catálogo)]
+    A7 --> CAT
+    V2 --> CAT
+    CAT --> G["POST /api/v1/resource/permissions<br/>concede Action a User, Group ou Profile"]
+    G --> CHK[Avaliação de @HasPermission]
+
+    style A4 fill:#c62828,color:#fff
+    style A7 fill:#ef6c00,color:#fff
+```
+
+### Por que `description` é obrigatório
+
+Não é burocracia: o texto vira a **descrição da Action** no catálogo, exibida na tela de
+concessão de permissões. Como a Action é criada a partir da anotação, o framework exige a
+descrição no momento em que ela é declarada. Por isso não tem valor padrão — e por isso todo
+exemplo da documentação antiga, que omite o campo, não compila.
+
+### As cinco armadilhas
+
+**1. Sem `archbase.security.scan-packages`, nada é sincronizado.** A propriedade tem padrão
+vazio; quando vazia, o serviço registra um `WARN` e retorna. O sintoma é desconcertante: os
+métodos estão anotados, o catálogo está vazio, e `@HasPermission` **nega todo mundo** — porque
+sem Action não existe permissão que possa apontar para ela.
+
+```properties
+archbase.security.scan-packages=com.suaempresa.seuapp
+```
+
+**2. A sincronização roda apenas no tenant padrão.** `Resource` e `Action` são entidades
+`@TenantId`, e o `@PostConstruct` acontece fora de qualquer requisição — o resolvedor de tenant
+cai no `archbase.app.tenant.default.id`. Numa aplicação multi-tenant, os demais tenants ficam
+**sem catálogo API**, e `@HasPermission` nega para todos eles. Nesse cenário, popule o catálogo
+por tenant (migration ou chamada a `/resource/register`) em vez de contar com a varredura.
+
+**3. Desativar no admin não tira o acesso.** A consulta que decide a autorização casa
+**apenas por nome de ação e nome de recurso**:
+
+```sql
+WHERE u.id IN :securityIds AND a.name = :actionName AND r.name = :resourceName
+```
+
+Não há filtro por `active` nem por `type`. Ou seja: uma Action marcada como inativa — pela
+sincronização ou pelo admin — **continua concedendo acesso**. O campo `active` serve à
+apresentação no admin, não à decisão. Quem desativar um recurso esperando cortar o acesso não
+vai cortar.
+
+**4. Renomear a anotação deixa a permissão órfã.** Trocar `action = "CREATE"` por
+`action = "CRIAR"` cria uma Action nova, **sem nenhuma permissão concedida** — o método passa a
+negar todo mundo. A Action antiga é desativada, mas suas permissões continuam no banco e, pelo
+item anterior, continuariam valendo se algum método voltasse a usar aquele nome. Renomear
+`resource` ou `action` é, na prática, revogar o acesso ao método e deixar lixo para trás.
+
+**5. Nome colide entre os dois catálogos.** `ensureResourceExists` busca o recurso **só pelo
+nome**, sem filtrar tipo: um recurso `VIEW` inativo criado pelo admin com o mesmo nome de um
+usado em `@HasPermission` é reativado e convertido para `API`. E como a consulta de autorização
+também ignora o tipo, uma permissão concedida sobre um recurso `VIEW` satisfaz um
+`@HasPermission` de endpoint com o mesmo par de nomes. **Trate o espaço de nomes de recursos
+como único**, independentemente do tipo.
+
+### Concessão
+
+Conceder é sempre pelo **id da Action**, nunca pelo nome:
+
+```
+GET  /api/v1/resource/permissions                     lista o catálogo com os ids
+POST /api/v1/resource/permissions                     { actionId, securityId, type }
+                                                      type = USER | GROUP | PROFILE
+GET  /api/v1/resource/permissions/{resourceName}      o que o usuário logado pode neste recurso
+```
+
+Como `User`, `Group` e `Profile` são a mesma tabela, `securityId` aceita qualquer um dos três — é
+o campo `type` que diz ao serviço onde procurar o id.
+
+---
+
 ## Qual anotação usar
 
 ```mermaid
@@ -141,7 +240,7 @@ flowchart TD
     Q0 -->|Papel do domínio<br/>da aplicação| RR["@RequireRole"]
     Q0 -->|Persona de negócio| RPE["@RequirePersona"]
 
-    HP --> HPN[Cadastre Resource e Action.<br/>Sem cadastro, ninguém passa]
+    HP --> HPN["Catálogo alimentado na subida<br/>da API (precisa de scan-packages)<br/>ou pelo admin. Sem catálogo,<br/>ninguém passa"]
     RP --> RPN[Usa apenas o perfil ÚNICO<br/>do usuário. Sem perfil, nega]
     RR --> RRN[Exige um bean<br/>ArchbaseRoleResolver.<br/>Sem ele, não valida nada]
     RPE --> RPEN[Mapeia perfil → persona<br/>por nome. context e<br/>contextData são IGNORADOS]
@@ -153,7 +252,8 @@ flowchart TD
 Recomendação prática, em ordem de preferência:
 
 1. **`@HasPermission`** — é a única com modelo de dados completo por trás e escopo multi-tenant.
-   Use como padrão.
+   Use como padrão. Antes, garanta que o catálogo está sendo alimentado — ver
+   [O catálogo: Resource e Action](#o-catálogo-resource-e-action).
 2. **`@RequireProfile`** — atalho útil quando a regra é mesmo "só o perfil X". Lembre que o
    usuário tem **um** perfil, não vários: `requireAll = true` com dois perfis nunca passa.
 3. **`@RequireRole`** — só faz sentido se a aplicação registrar `ArchbaseRoleResolver`. Sem isso
@@ -259,6 +359,13 @@ archbase.security.cors.allowed-headers=*
 archbase.security.cors.allow-credentials=false
 ```
 
+Além dessas, uma que **não impede a subida mas desliga silenciosamente** todo o catálogo de
+permissões de endpoint — se você usa `@HasPermission`, ela é obrigatória na prática:
+
+```properties
+archbase.security.scan-packages=com.suaempresa.seuapp
+```
+
 `whitelist` pode ficar vazia, mas **precisa estar declarada**. As demais propriedades do módulo
 têm padrão e estão listadas no `CLAUDE.md`; as de endurecimento de segurança, em
 [deployment/security-hardening.md](../deployment/security-hardening.md).
@@ -305,6 +412,16 @@ inalcançável por administrador, nem registro de que o bypass ocorreu.
 **`getAuthorities()` vazio desliga o Spring Security padrão.** Qualquer expressão `hasRole`,
 `hasAuthority` ou `@Secured` nega silenciosamente. Falha fechada, mas quem não souber vai perder
 tempo. Vale documentar no lugar mais visível ou popular as authorities a partir do perfil.
+
+**O campo `active` do catálogo não participa da autorização.** Desativar um recurso ou uma ação
+pelo admin não corta acesso nenhum — a consulta casa só por nome. Ou a consulta passa a filtrar
+`active`, ou o campo deveria sumir da tela para não sugerir um efeito que não tem. Hoje ele é uma
+promessa quebrada na interface.
+
+**O catálogo automático não é multi-tenant.** A varredura roda no `@PostConstruct`, fora de
+requisição, e grava só no tenant padrão. Ou a sincronização passa a iterar os tenants conhecidos,
+ou a documentação precisa dizer que aplicações multi-tenant devem popular o catálogo por outro
+caminho. Hoje não diz nem uma coisa nem outra.
 
 **Token de acesso stateful a cada requisição.** Toda chamada autenticada faz uma consulta em
 `SEGURANCA_TOKEN_ACESSO`. É o que dá revogação imediata, mas é uma leitura por requisição — vale
