@@ -62,8 +62,18 @@ public class ArchbaseAuthenticationService {
     @Autowired(required = false)
     private List<AuthenticationResponseEnricher> enrichers;
 
-    // Injection do business delegate - usa implementação padrão se não existir customizada
-    @Autowired
+    /**
+     * Delegate de regra de negócio da aplicação. <b>Opcional</b> — todo uso abaixo é guardado por
+     * {@code businessDelegate != null}.
+     *
+     * <p>Era {@code @Autowired} obrigatório, e o único candidato,
+     * {@link DefaultAuthenticationBusinessDelegate}, é um {@code @Component} anotado com
+     * {@code @ConditionalOnMissingBean} — condição que só é confiável em classe de
+     * autoconfiguração, não em componente varrido: a avaliação depende da ordem do scan. Quando
+     * ela decidia não registrar, o contexto inteiro falhava na subida por dependência não
+     * satisfeita, num serviço que já estava escrito para funcionar sem o delegate.
+     */
+    @Autowired(required = false)
     private AuthenticationBusinessDelegate businessDelegate;
 
     // MFA/2FA - opcional; ausente ou desabilitado para o usuário ⇒ fluxo de login inalterado.

@@ -111,6 +111,23 @@
                 </exclusion>
             </exclusions>
         </dependency>
+        <!--
+          Escopo de teste apenas: o módulo não impõe a stack web a quem o consome, mas o teste de
+          integração precisa de um contexto web real para exercitar a cadeia de filtros do Spring
+          Security (é lá que moram o filtro JWT e o LogoutFilter).
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- No Spring Boot 4 o suporte a MockMvc saiu do spring-boot-test-autoconfigure e passou
+             a viver num artefato próprio (pacote org.springframework.boot.webmvc.test.autoconfigure). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
