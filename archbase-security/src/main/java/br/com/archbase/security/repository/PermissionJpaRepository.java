@@ -61,4 +61,24 @@ public interface PermissionJpaRepository extends ArchbaseCommonJpaRepository<Per
             "JOIN FETCH a.resource r " +
             "WHERE p.security.id IN :securityIds")
     List<PermissionEntity> findAllBySecurityIds(@Param("securityIds") Set<String> securityIds);
+
+    /**
+     * Quantas concessões apontam para ação ou recurso inativo.
+     *
+     * <p>É o número que importa antes de ligar
+     * {@code archbase.security.permission.require-active}: são exatamente as permissões que a tela
+     * já ignora e que o {@code @HasPermission} ainda honra. No gestor-rq eram 1.279 de 2.229.
+     */
+    @Query("SELECT COUNT(p) FROM PermissionEntity p "
+            + "JOIN p.action a JOIN a.resource r "
+            + "WHERE a.active = false OR r.active = false")
+    long countPointingToInactive();
+
+    /** Total de concessões, para dar denominador ao número acima. */
+    @Query("SELECT COUNT(p) FROM PermissionEntity p")
+    long countAll();
+
+    /** Quantas concessões cada tipo de destinatário recebeu — usuário, grupo ou perfil. */
+    @Query("SELECT TYPE(p.security), COUNT(p) FROM PermissionEntity p GROUP BY TYPE(p.security)")
+    List<Object[]> countGroupedBySecurityType();
 }

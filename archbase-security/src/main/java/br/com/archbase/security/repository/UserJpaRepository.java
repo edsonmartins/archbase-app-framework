@@ -16,6 +16,28 @@ public interface UserJpaRepository extends ArchbaseCommonJpaRepository<UserEntit
 
     Optional<UserEntity> findByEmail(String email);
 
+    /**
+     * Carrega o usuário com grupos e perfil já materializados.
+     *
+     * <p>Existe para o diagnóstico e a simulação, que montam um {@code AccessSubject} fora do
+     * escopo transacional de uma requisição autenticada. Sem o fetch join, tocar
+     * {@code getGroups()} ali é {@code LazyInitializationException}.
+     */
+    @Query("SELECT DISTINCT u FROM UserEntity u "
+            + "LEFT JOIN FETCH u.groups ug "
+            + "LEFT JOIN FETCH ug.group "
+            + "LEFT JOIN FETCH u.profile "
+            + "WHERE u.id = :id")
+    Optional<UserEntity> findByIdWithGroupsAndProfile(@Param("id") String id);
+
+    /** Idem, por e-mail — o identificador que quem opera o admin tem em mãos. */
+    @Query("SELECT DISTINCT u FROM UserEntity u "
+            + "LEFT JOIN FETCH u.groups ug "
+            + "LEFT JOIN FETCH ug.group "
+            + "LEFT JOIN FETCH u.profile "
+            + "WHERE u.email = :email")
+    Optional<UserEntity> findByEmailWithGroupsAndProfile(@Param("email") String email);
+
     boolean existsByEmail(String email);
 
     /**
