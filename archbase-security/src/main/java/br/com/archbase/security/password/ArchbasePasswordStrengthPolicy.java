@@ -22,12 +22,12 @@ import java.util.Set;
  * senhas já gravadas, mas passa a recusar trocas que antes passavam — é uma decisão de produto, com
  * impacto em suporte, e não algo que uma atualização de framework deva impor.
  *
- * <p><b>Atenção:</b> {@code block-common} vem ligado, então {@link #isEnabled()} é {@code true} na
- * instalação padrão e {@link #validate(String)} <b>rejeita senha vazia</b> mesmo sem nenhuma outra
- * regra configurada. Por isso os fluxos que criam usuário legitimamente sem senha (convite, SSO,
- * provisionamento de login social) precisam pular a chamada — ver {@code UserService.createUser}.
+ * <p>Com tudo desligado, {@link #isEnabled()} devolve {@code false} e {@link #validate(String)} não
+ * faz nada — nem sequer rejeita senha vazia. Ainda assim, os fluxos que criam usuário legitimamente
+ * sem senha (convite, SSO, provisionamento de login social) devem pular a chamada, para não
+ * quebrarem no dia em que alguém ligar a política — ver {@code UserService.createUser}.
  *
- * <p>Habilite as demais regras com:
+ * <p>Habilite com:
  *
  * <pre>
  * archbase.security.password.min-length=12
@@ -67,8 +67,15 @@ public class ArchbasePasswordStrengthPolicy {
     @Value("${archbase.security.password.require-special:false}")
     private boolean requireSpecial;
 
-    /** Recusa as senhas da lista {@link #COMUNS}. Vale mesmo com as demais regras desligadas. */
-    @Value("${archbase.security.password.block-common:true}")
+    /**
+     * Recusa as senhas da lista {@link #COMUNS}.
+     *
+     * <p>Desligado por padrão, como todo o resto desta política. Ligado, ele sozinho faz
+     * {@link #isEnabled()} devolver {@code true} — e aí uma troca de senha que antes passava
+     * ("senha", "123456") passa a ser recusada. Isso é desejável, mas é mudança de comportamento e
+     * cabe a quem opera decidir quando absorvê-la.
+     */
+    @Value("${archbase.security.password.block-common:false}")
     private boolean blockCommon;
 
     public boolean isEnabled() {

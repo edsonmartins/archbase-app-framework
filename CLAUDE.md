@@ -281,13 +281,13 @@ archbase.security.rate-limit.max-attempts=10
 archbase.security.rate-limit.window-seconds=900
 archbase.security.rate-limit.block-seconds=900
 
-# Força de senha (desligada por padrão; min-length=0 desliga tudo menos block-common)
+# Força de senha (inteiramente desligada por padrão)
 archbase.security.password.min-length=0
 archbase.security.password.require-digit=false
 archbase.security.password.require-uppercase=false
 archbase.security.password.require-lowercase=false
 archbase.security.password.require-special=false
-archbase.security.password.block-common=true
+archbase.security.password.block-common=false
 
 # RSQL
 archbase.rsql.enabled=true

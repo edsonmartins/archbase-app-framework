@@ -3,6 +3,7 @@ package br.com.archbase.multitenancy.async;
 import br.com.archbase.ddd.context.ArchbaseTenantContext;
 import org.springframework.core.task.TaskDecorator;
 import org.springframework.lang.NonNull;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -53,6 +54,9 @@ public class ArchbaseTenantAwareTaskDecorator implements TaskDecorator {
         return () -> {
             String previousTenantId = ArchbaseTenantContext.getTenantId();
             String previousCompanyId = ArchbaseTenantContext.getCompanyId();
+            // Capturado sempre, mesmo com a propagação desligada: é o que a thread tinha antes, e
+            // é para cá que ela precisa voltar.
+            Authentication previousAuthentication = SecurityContextHolder.getContext().getAuthentication();
 
             try {
                 ArchbaseTenantContext.setTenantId(tenantId);
@@ -63,13 +67,28 @@ public class ArchbaseTenantAwareTaskDecorator implements TaskDecorator {
                 runnable.run();
             } finally {
                 restore(previousTenantId, previousCompanyId);
-                // Sempre, inclusive com a propagação desligada. Guardar esta limpeza atrás do
-                // mesmo if da instalação deixava a thread do pool carregando o que a própria
-                // tarefa tivesse posto no holder — e a tarefa seguinte, submetida por outro
-                // caminho, herdava aquela identidade. É o mesmo defeito do tenant, do outro lado.
-                SecurityContextHolder.clearContext();
+                restoreSecurityContext(previousAuthentication);
             }
         };
+    }
+
+    /**
+     * Repõe a autenticação que a thread tinha antes da tarefa; se não tinha nenhuma, limpa.
+     *
+     * <p>Restaurar, e não simplesmente limpar: uma política de rejeição {@code CallerRunsPolicy}
+     * faz a tarefa rodar na <b>thread da requisição</b> quando a fila enche, e um
+     * {@code clearContext()} incondicional apagaria a autenticação no meio dela — o resto da
+     * requisição seguiria sem principal. Limpar quando não havia nada antes é o que impede a
+     * thread do pool de carregar identidade de uma tarefa para a seguinte.
+     */
+    private void restoreSecurityContext(Authentication previousAuthentication) {
+        if (previousAuthentication == null) {
+            SecurityContextHolder.clearContext();
+            return;
+        }
+        SecurityContext restored = SecurityContextHolder.createEmptyContext();
+        restored.setAuthentication(previousAuthentication);
+        SecurityContextHolder.setContext(restored);
     }
 
     private void restore(String previousTenantId, String previousCompanyId) {
