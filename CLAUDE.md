@@ -290,6 +290,7 @@ archbase.app.tenant.accept-query-param=true                 # aceita X-TENANT-ID
 archbase.security.access-level.enabled=false                # liga o portão LEVEL (piso por capacidade)
 archbase.security.access-level.default=READER               # nível de quem não tem perfil, ou perfil sem nível
 archbase.security.diagnostics.enabled=false                 # expõe /api/v1/security/diagnostics/*
+archbase.security.sync.mode=apply                           # apply | report — report não escreve nada
 # Os endpoints de diagnóstico exigem isAdministrator MESMO quando ligados — não dependem de
 # admin-endpoints.policy, cujo padrão permit deixaria qualquer autenticado entrar.
 

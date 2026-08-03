@@ -68,7 +68,8 @@ public class ArchbaseAccessLevelPolicy {
             }
         }
 
-        return subject.level() != null ? subject.level() : padrao();
+        // NONE gravado no perfil é "não declarado", e não um degrau abaixo de READER.
+        return AccessLevel.isUnset(subject.level()) ? padrao() : subject.level();
     }
 
     /**

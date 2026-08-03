@@ -1,5 +1,6 @@
 package br.com.archbase.security.config;
 
+import br.com.archbase.security.access.AccessLevel;
 import br.com.archbase.security.spi.ArchbaseRoleResolver;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -84,6 +85,15 @@ public class ArchbaseSecurityHardeningValidator {
     @Value("${archbase.security.admin-guard.enabled:true}")
     private boolean adminGuardEnabled;
 
+    @Value("${archbase.security.access-level.enabled:false}")
+    private boolean accessLevelEnabled;
+
+    @Value("${archbase.security.access-level.default:READER}")
+    private String accessLevelDefault;
+
+    @Value("${archbase.security.diagnostics.enabled:false}")
+    private boolean diagnosticsEnabled;
+
     @Value("${archbase.security.admin-guard.allow-unverifiable-principal:false}")
     private boolean allowUnverifiablePrincipal;
 
@@ -107,6 +117,8 @@ public class ArchbaseSecurityHardeningValidator {
         validarPoliticaDeEndpointsAdministrativos(bloqueios);
         validarStrictTokenUse(bloqueios);
         validarConflitoDeRotaDoLogout(bloqueios);
+        validarNivelDeAcesso(bloqueios, avisos);
+        validarDiagnostico(avisos);
         coletarProtecoesInertes(avisos);
 
         avisos.forEach(aviso -> log.warn("[segurança] {}", aviso));
@@ -242,6 +254,65 @@ public class ArchbaseSecurityHardeningValidator {
     }
 
     /** Proteções que estão desligadas ou inertes — não impedem a subida, mas precisam ser vistas. */
+    /**
+     * O portão de nível ligado sem nível para comparar.
+     *
+     * <p>É a armadilha desta entrega: ligar {@code access-level.enabled} num sistema onde todos os
+     * perfis têm {@code ACCESS_LEVEL} nulo joga todo mundo no nível padrão — e se o padrão for
+     * {@code READER}, qualquer capacidade com mínimo acima disso passa a negar em massa, no primeiro
+     * deploy, sem que ninguém tenha mudado permissão nenhuma.
+     */
+    private void validarNivelDeAcesso(List<String> bloqueios, List<String> avisos) {
+        if (!accessLevelEnabled) {
+            return;
+        }
+
+        AccessLevel padrao = AccessLevel.parse(accessLevelDefault);
+        if (padrao == null) {
+            bloqueios.add("archbase.security.access-level.default='" + accessLevelDefault
+                    + "' não é um nível válido. Use READER, OPERATOR, SUPERVISOR ou TENANT_ADMIN.\n"
+                    + "     O portão de nível está ligado (access-level.enabled=true) e não há como\n"
+                    + "     saber que nível atribuir a quem não tem perfil.");
+            return;
+        }
+
+        long perfisSemNivel = contar(
+                "SELECT COUNT(*) FROM seguranca WHERE tp_seguranca = 'SEGURANCA_PERFIL' AND access_level IS NULL");
+        long acoesComMinimo = contar(
+                "SELECT COUNT(*) FROM seguranca_acao WHERE minimum_level IS NOT NULL");
+
+        if (acoesComMinimo == 0) {
+            avisos.add("archbase.security.access-level.enabled=true, mas nenhuma ação tem "
+                    + "MINIMUM_LEVEL preenchido: o portão está ligado e não barra nada. "
+                    + "Declare minimumLevel em @HasPermission ou preencha o mínimo no admin.");
+            return;
+        }
+
+        if (perfisSemNivel > 0) {
+            avisos.add(perfisSemNivel + " perfil(is) sem ACCESS_LEVEL, com o portão de nível ligado: "
+                    + "essas pessoas caem no padrão " + padrao + ", e "
+                    + acoesComMinimo + " ação(ões) têm mínimo declarado. "
+                    + "Rode GET /api/v1/security/diagnostics/users/{id}/effective para ver quem perde o quê "
+                    + "antes de manter isso em produção.");
+        }
+    }
+
+    /**
+     * O diagnóstico exposto sem administrador que o alcance.
+     *
+     * <p>Os endpoints exigem {@code isAdministrator}. Ligá-los sem nenhum administrador cadastrado
+     * publica uma superfície que ninguém consegue usar — e que continua respondendo 403 a todo
+     * mundo, o que costuma virar horas de investigação no lugar errado.
+     */
+    private void validarDiagnostico(List<String> avisos) {
+        if (!diagnosticsEnabled) {
+            return;
+        }
+        avisos.add("archbase.security.diagnostics.enabled=true: /api/v1/security/diagnostics/* está "
+                + "publicado. Os endpoints exigem isAdministrator, mas revelam a estrutura de acesso "
+                + "do tenant — mantenha ligado apenas enquanto durar a investigação.");
+    }
+
     private void coletarProtecoesInertes(List<String> avisos) {
         if ("permit".equalsIgnoreCase(adminEndpointsPolicy)) {
             avisos.add("archbase.security.admin-endpoints.policy=permit: qualquer usuário "

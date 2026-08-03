@@ -220,9 +220,26 @@ identificador consultado.
 | **B** | Os quatro managers de anotação viram adaptadores; a regra das trancas vai para os `RestrictionEvaluator` | **não** |
 | **C** | Endpoints de diagnóstico + simulação | **não** — só leitura |
 | **D** | `EFFECT` (GRANT/DENY), `MINIMUM_LEVEL`, `ACCESS_LEVEL` + DDL no `R__` | só quando preenchidos |
-| **E** | `minimumLevel` na anotação, `@Target(TYPE)` com herança de `resource` | **não** |
-| **F** | Varredura: modo `report`, execução por tenant | corrige desativação silenciosa |
+| **E** | `minimumLevel` em `@HasPermission`, `@ArchbaseResource` na classe | **não** |
+| **F** | Varredura: modo `report` | corrige desativação silenciosa |
 | **G** | Flags + pré-validação na subida | — |
+
+### Correção da fase E: `@ArchbaseResource`, e não `@HasPermission` na classe
+
+O plano dizia "`@Target(TYPE)` com herança do `resource`". Implementado assim, seria uma armadilha:
+uma capacidade é *recurso + ação*, e a ação é sempre por método. `@HasPermission` na classe teria de
+carregar uma ação, e **todo método herdaria a mesma** — um `DELETE` passaria a exigir apenas `view`
+porque foi isso que a classe declarou. Leria como proteção e seria grosseria.
+
+`@ArchbaseResource` na classe declara **só o recurso**, que é a parte que de fato se repete.
+`@HasPermission` segue sendo `@Target(METHOD)`.
+
+### O que ficou fora da fase F
+
+**Execução por tenant.** A varredura roda em `@PostConstruct`, uma vez, no tenant padrão — logo, uma
+aplicação multi-tenant só ganha catálogo em um tenant. Corrigir exige saber de onde sai a lista de
+tenants, e o framework não tem esse registro. Continua em aberto, como já estava anotado em *O que a
+revisão não cobre*.
 
 ### Fase 0 vem primeiro, e não é formalidade
 

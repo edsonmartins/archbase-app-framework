@@ -19,6 +19,17 @@ package br.com.archbase.security.access;
  */
 public enum AccessLevel {
 
+    /**
+     * Ausência de nível — <b>não é um degrau</b>.
+     *
+     * <p>Existe porque anotação Java não aceita {@code null} como valor padrão: é o que
+     * {@code @HasPermission.minimumLevel()} devolve quando o desenvolvedor não declarou piso algum.
+     * Como mínimo, é alcançado por qualquer um. Como nível de uma pessoa, significa "não declarado"
+     * e cai em {@code archbase.security.access-level.default} — nunca se comporta como um degrau
+     * abaixo de {@link #READER}.
+     */
+    NONE,
+
     /** Consulta: listar, ver, exportar, monitorar. */
     READER,
 
@@ -31,9 +42,14 @@ public enum AccessLevel {
     /** Segurança e identidade: conceder, revogar, resetar senha, ver auditoria. */
     TENANT_ADMIN;
 
-    /** {@code true} se este nível alcança o mínimo exigido. */
+    /** {@code true} se este nível alcança o mínimo exigido. {@code null} e {@link #NONE} não exigem nada. */
     public boolean reaches(AccessLevel minimum) {
-        return minimum == null || this.ordinal() >= minimum.ordinal();
+        return minimum == null || minimum == NONE || this.ordinal() >= minimum.ordinal();
+    }
+
+    /** {@code true} quando o valor não representa nível declarado. */
+    public static boolean isUnset(AccessLevel nivel) {
+        return nivel == null || nivel == NONE;
     }
 
     /**
@@ -49,7 +65,9 @@ public enum AccessLevel {
             return null;
         }
         try {
-            return AccessLevel.valueOf(valor.trim().toUpperCase());
+            AccessLevel nivel = AccessLevel.valueOf(valor.trim().toUpperCase());
+            // NONE não é degrau: como texto configurado, é o mesmo que não ter dito nada.
+            return nivel == NONE ? null : nivel;
         } catch (IllegalArgumentException naoReconhecido) {
             return null;
         }
