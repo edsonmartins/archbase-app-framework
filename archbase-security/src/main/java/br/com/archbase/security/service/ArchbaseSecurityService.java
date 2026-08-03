@@ -223,6 +223,12 @@ public class ArchbaseSecurityService {
         Map<String, Set<String>> resourceActions = new LinkedHashMap<>();
 
         for (PermissionEntity permission : permissions) {
+            // Negação não é concessão. Sem esta exclusão, uma linha DENY entrava na lista como se
+            // a pessoa tivesse a capacidade — a mesma divergência entre tela e decisão que o core
+            // existe para eliminar.
+            if (permission.isDeny()) {
+                continue;
+            }
             if (permission.getAction() != null && permission.getAction().getResource() != null) {
                 String resourceName = permission.getAction().getResource().getName();
                 String actionName = permission.getAction().getName();

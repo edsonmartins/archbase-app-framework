@@ -137,6 +137,20 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
      * toca {@code groups}, associação lazy — o que só funciona dentro de uma requisição web, com a
      * sessão que o Open Session In View mantém aberta.
      */
+    /**
+     * Exclui as negações das listagens do admin.
+     *
+     * <p>Estas consultas respondem "o que foi concedido a esta pessoa/grupo/perfil". Uma linha
+     * {@code DENY} listada aí afirma o oposto do que o avaliador decide — e é a mesma divergência
+     * entre tela e decisão que o core existe para eliminar. Exibir as negações para que o admin
+     * possa removê-las é útil, mas exige que o DTO carregue o efeito; enquanto não carregar,
+     * mostrá-las é mentir.
+     */
+    private BooleanExpression naoENegacao(QPermissionEntity permission) {
+        return permission.effect.isNull()
+                .or(permission.effect.ne(br.com.archbase.security.access.PermissionEffect.DENY));
+    }
+
     private String loggedUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()
@@ -158,7 +172,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
         List<Tuple> userPermissions = queryFactory
                 .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.USER), permission.id)
                 .from(permission)
-                .where(permission.security.id.eq(userId).and(permission.action.active.isTrue()))
+                .where(permission.security.id.eq(userId).and(permission.action.active.isTrue()).and(naoENegacao(permission)))
                 .fetch();
 
         List<Tuple> profilePermissions = queryFactory
@@ -166,7 +180,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                 .from(permission)
                 .join(permission.security, profile._super)
                 .join(user).on(user.profile.eq(profile))
-                .where(user.id.eq(userId).and(permission.action.active.isTrue()))
+                .where(user.id.eq(userId).and(permission.action.active.isTrue()).and(naoENegacao(permission)))
                 .fetch();
 
         List<Tuple> groupPermissions = queryFactory
@@ -174,7 +188,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                 .from(permission)
                 .join(permission.security, group._super)
                 .join(userGroup).on(userGroup.group.eq(group))
-                .where(userGroup.user.id.eq(userId).and(permission.action.active.isTrue()))
+                .where(userGroup.user.id.eq(userId).and(permission.action.active.isTrue()).and(naoENegacao(permission)))
                 .fetch();
 
         List<Tuple> permissionsTuple = new ArrayList<>();
@@ -195,7 +209,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                 .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.PROFILE), permission.id)
                 .from(permission)
                 .join(permission.security, profile._super)
-                .where(profile.id.eq(profileId).and(permission.action.active.isTrue()))
+                .where(profile.id.eq(profileId).and(permission.action.active.isTrue()).and(naoENegacao(permission)))
                 .fetch();
 
         return groupTuplesToResourcePermissions(profilePermissions, permission);
@@ -211,7 +225,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                 .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.GROUP), permission.id)
                 .from(permission)
                 .join(permission.security, group._super)
-                .where(group.id.eq(groupId).and(permission.action.active.isTrue()))
+                .where(group.id.eq(groupId).and(permission.action.active.isTrue()).and(naoENegacao(permission)))
                 .fetch();
 
 

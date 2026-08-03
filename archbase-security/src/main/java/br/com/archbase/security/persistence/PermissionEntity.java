@@ -1,6 +1,7 @@
 package br.com.archbase.security.persistence;
 
 import br.com.archbase.ddd.domain.base.TenantPersistenceEntityBase;
+import br.com.archbase.security.access.PermissionEffectConverter;
 import br.com.archbase.security.access.PermissionEffect;
 import br.com.archbase.security.domain.dto.PermissionDto;
 import br.com.archbase.security.domain.dto.ProfileDto;
@@ -52,7 +53,7 @@ public class PermissionEntity extends TenantPersistenceEntityBase {
      * dentro do mesmo escopo: é o que permite excluir uma pessoa de algo que o time inteiro tem,
      * sem criar um grupo paralelo só para isso.
      */
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = PermissionEffectConverter.class)
     @Column(name="EFFECT", nullable = true, length = 10)
     private PermissionEffect effect;
 

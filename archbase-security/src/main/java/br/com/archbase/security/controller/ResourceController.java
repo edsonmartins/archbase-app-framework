@@ -1,5 +1,6 @@
 package br.com.archbase.security.controller;
 
+import br.com.archbase.security.access.PermissionEffect;
 import br.com.archbase.query.rsql.jpa.SortUtils;
 import br.com.archbase.security.domain.dto.*;
 import br.com.archbase.security.domain.dto.ResourcePermissionsDto;
@@ -114,7 +115,27 @@ public class ResourceController {
             PermissionDto existingPermission = resourceService.findPermission(security.getId(), action.get().getId());
 
             if (existingPermission != null) {
-                return ResponseEntity.ok(ResouceActionPermissionDto.fromPermissionDto(existingPermission));
+                // Devolver a linha existente e ignorar o pedido tornava a NEGAÇÃO inalcançável
+                // exatamente no caso para o qual ela existe: "o time tem pelo perfil, tire desta
+                // pessoa" pressupõe que já há uma linha para o par (segurança, ação). O endpoint
+                // respondia 200 com a concessão antiga, nada era gravado, e a tela reportava
+                // sucesso enquanto o acesso continuava aberto.
+                PermissionEffect efeitoPedido = grantPermission.getEffect() == null
+                        ? PermissionEffect.GRANT : grantPermission.getEffect();
+
+                boolean mudou = efeitoPedido != existingPermission.getEffect()
+                        || !java.util.Objects.equals(grantPermission.getCompanyId(), existingPermission.getCompanyId())
+                        || !java.util.Objects.equals(grantPermission.getProjectId(), existingPermission.getProjectId());
+
+                if (!mudou) {
+                    return ResponseEntity.ok(ResouceActionPermissionDto.fromPermissionDto(existingPermission));
+                }
+
+                existingPermission.setEffect(efeitoPedido);
+                existingPermission.setCompanyId(grantPermission.getCompanyId());
+                existingPermission.setProjectId(grantPermission.getProjectId());
+                PermissionDto atualizada = resourceService.grantPermission(existingPermission);
+                return ResponseEntity.ok(ResouceActionPermissionDto.fromPermissionDto(atualizada));
             }
 
             PermissionDto permission = PermissionDto.builder()

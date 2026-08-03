@@ -1,9 +1,11 @@
 package br.com.archbase.security.persistence;
 
+import br.com.archbase.security.access.AccessLevelConverter;
 import br.com.archbase.security.access.AccessLevel;
 import br.com.archbase.security.domain.dto.ProfileDto;
 import br.com.archbase.security.domain.entity.Profile;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -34,7 +36,7 @@ public class ProfileEntity extends SecurityEntity {
      * perfil implementa {@code ArchbaseAccessLevelResolver}.
      */
     @Setter
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = AccessLevelConverter.class)
     @Column(name = "ACCESS_LEVEL", nullable = true, length = 30)
     private AccessLevel accessLevel;
 

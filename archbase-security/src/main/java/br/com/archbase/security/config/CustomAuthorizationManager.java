@@ -68,7 +68,11 @@ public class CustomAuthorizationManager implements AuthorizationManager<MethodIn
                             hasPermission.action(),
                             tenantId,
                             companyId,
-                            hasPermission.projectId()).withOrigin(origem));
+                            // Vazio vira NULO, como tenant e empresa. Encaminhado cru, o padrão ""
+                            // da anotação nunca casa um PROJECT_ID gravado: a concessão estreitada
+                            // por projeto dava 403 permanente, e a negação por projeto nunca valia.
+                            hasPermission.projectId().isEmpty() ? null : hasPermission.projectId())
+                            .withOrigin(origem));
 
             AuthorizationAdapters.log(log, decisao, origem);
             return new AuthorizationDecision(decisao.allowed());

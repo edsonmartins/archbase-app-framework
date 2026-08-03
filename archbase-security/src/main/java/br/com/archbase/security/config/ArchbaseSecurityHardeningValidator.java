@@ -15,6 +15,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.context.ApplicationContext;
 
+import javax.sql.DataSource;
+
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -58,6 +63,13 @@ public class ArchbaseSecurityHardeningValidator {
 
     @Autowired(required = false)
     private ApplicationContext applicationContext;
+
+    /**
+     * Usado pelas checagens que rodam <b>sempre</b>, para que a falha delas não contamine a
+     * transação de {@code validate()} — ver {@link #contarOuVazio(String)}.
+     */
+    @Autowired(required = false)
+    private DataSource dataSource;
 
     @Value("${archbase.security.hardening.validation:fail}")
     private String validationMode;
@@ -408,10 +420,21 @@ public class ArchbaseSecurityHardeningValidator {
      * <p>Necessário onde a ausência de resposta não pode ser lida como "está tudo bem".
      */
     private OptionalLong contarOuVazio(String sql) {
-        try {
-            Object resultado = entityManager.createNativeQuery(sql).getSingleResult();
-            return resultado == null ? OptionalLong.empty()
-                    : OptionalLong.of(Long.parseLong(resultado.toString()));
+        if (dataSource == null) {
+            return OptionalLong.empty();
+        }
+        // Conexão JDBC própria, e NÃO o EntityManager. Uma consulta que falha pelo EntityManager
+        // marca a transação como rollback-only: capturar a exceção não desfaz isso, e o commit da
+        // transação de `validate()` estoura UnexpectedRollbackException — que, escapando de um
+        // listener de ApplicationReadyEvent, DERRUBA A SUBIDA.
+        //
+        // Esta é a única checagem incondicional do validador, e a que mais provavelmente falha
+        // (aplicação que usa os beans sem o schema). Fazer o diagnóstico impedir o boot da
+        // aplicação que ele deveria apenas diagnosticar seria o pior desfecho possível.
+        try (Connection conexao = dataSource.getConnection();
+             Statement statement = conexao.createStatement();
+             ResultSet rs = statement.executeQuery(sql)) {
+            return rs.next() ? OptionalLong.of(rs.getLong(1)) : OptionalLong.empty();
         } catch (Exception e) {
             log.debug("Checagem não pôde ser executada: {}", e.getMessage());
             return OptionalLong.empty();

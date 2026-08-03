@@ -244,8 +244,8 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
         // DENY vence, em qualquer nível — perfil, grupo ou direto — e só dentro do escopo em que
         // foi declarado, que é a mesma semântica que a concessão sempre teve. É o que permite tirar
         // uma pessoa de algo que o time inteiro tem, sem criar um grupo paralelo só para excluí-la.
-        for (PermissionEntity permissao : noEscopo) {
-            if (permissao.isDeny()) {
+        for (PermissionEntity permissao : permissoes) {
+            if (permissao.isDeny() && negacaoAlcanca(permissao, requirement)) {
                 return negado(chain, permissao, requirement);
             }
         }
@@ -310,6 +310,35 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
     }
 
     /**
+     * Escopo de uma <b>negação</b> — regra oposta à da concessão.
+     *
+     * <p>Em {@link #alcanca}, nulo de qualquer lado significa "não restringe", e o resultado
+     * pende para o permissivo: é o certo para uma concessão. Aplicada a uma negação, a mesma regra
+     * pende para o lado errado — uma negação estreitada a {@code companyId = "A"} passaria a valer
+     * em <b>toda</b> requisição que não carregasse empresa, bloqueando a pessoa em todo lugar. O
+     * oposto do que {@code PermissionEffect} documenta.
+     *
+     * <p>Aqui, portanto: um estreitamento declarado pela negação só vale se a requisição o
+     * <b>confirmar</b>. Sem contexto de empresa na requisição, uma negação por empresa não se
+     * aplica — não há como afirmar que se está naquela empresa.
+     *
+     * <p><b>Empresa e projeto apenas.</b> O tenant de uma permissão é o discriminador da linha,
+     * preenchido em toda aplicação multi-tenant — não é estreitamento que alguém declare. Exigir
+     * que a requisição o confirmasse faria <b>nenhuma</b> negação valer nos endpoints que não
+     * carregam tenant explícito, que são a maioria. O isolamento entre tenants já vem do filtro do
+     * Hibernate: a consulta só devolve linhas do tenant corrente.
+     */
+    private boolean negacaoAlcanca(PermissionEntity negacao, AccessRequirement requirement) {
+        return confirmado(requirement.companyId(), negacao.getCompanyId())
+                && confirmado(requirement.projectId(), negacao.getProjectId());
+    }
+
+    /** Sem estreitamento declarado, vale sempre; com estreitamento, a requisição precisa bater. */
+    private boolean confirmado(String pedido, String daNegacao) {
+        return daNegacao == null || daNegacao.equals(pedido);
+    }
+
+    /**
      * A negação, entre as que alcançam o escopo pedido — ou {@code null} se não houver.
      *
      * <p>Usada no caminho do administrador, onde só as negações são consultadas.
@@ -323,7 +352,7 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
             return null;
         }
         return negacoes.stream()
-                .filter(p -> alcancaEscopo(p, requirement))
+                .filter(p -> negacaoAlcanca(p, requirement))
                 .findFirst()
                 .orElse(null);
     }

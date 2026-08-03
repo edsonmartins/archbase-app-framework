@@ -1,6 +1,7 @@
 package br.com.archbase.security.persistence;
 
 import br.com.archbase.ddd.domain.base.TenantPersistenceEntityBase;
+import br.com.archbase.security.access.AccessLevelConverter;
 import br.com.archbase.security.access.AccessLevel;
 import br.com.archbase.security.domain.dto.ActionDto;
 import br.com.archbase.security.domain.dto.ResourceDto;
@@ -73,7 +74,7 @@ public class ActionEntity extends TenantPersistenceEntityBase {
      * {@code @HasPermission(minimumLevel = ...)}, no primeiro registro da ação; a partir daí quem
      * manda é o admin, igual já acontece com a descrição.
      */
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = AccessLevelConverter.class)
     @Column(name = "MINIMUM_LEVEL", nullable = true, length = 30)
     private AccessLevel minimumLevel;
 

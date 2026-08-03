@@ -422,6 +422,42 @@ class NivelENegacaoTest {
         }
 
         @Test
+        @DisplayName("negação por empresa NÃO vale quando a requisição não carrega empresa")
+        void denyPorEmpresaNaoValeSemContextoDeEmpresa() {
+            // A regra de escopo da CONCESSÃO — nulo de qualquer lado não restringe — pende para o
+            // permissivo, e está certa para conceder. Aplicada à negação, pende para o lado errado:
+            // uma negação estreitada a "empresa-a" passaria a valer em toda requisição que não
+            // carregasse empresa, bloqueando a pessoa em TODO lugar. É o oposto do que
+            // PermissionEffect documenta, e do que o leitor de capacidades assume ao não suprimir
+            // negações com escopo.
+            catalogoResponde(
+                    permissao(grupo("GESTORES-FROTA"), null, null),
+                    negacao(usuario("user-1"), "empresa-a"));
+
+            AccessDecision decisao = avaliador(false, "READER")
+                    .decide(AccessSubject.of(usuario("user-1")), AccessRequirement.of(RECURSO, ACAO));
+
+            assertThat(decisao.allowed())
+                    .as("sem contexto de empresa, não há como afirmar que se está na empresa negada")
+                    .isTrue();
+        }
+
+        @Test
+        @DisplayName("negação por empresa vale quando a requisição confirma a empresa")
+        void denyPorEmpresaValeComContexto() {
+            catalogoResponde(
+                    permissao(grupo("GESTORES-FROTA"), null, null),
+                    negacao(usuario("user-1"), "empresa-a"));
+
+            AccessDecision decisao = avaliador(false, "READER")
+                    .decide(AccessSubject.of(usuario("user-1")),
+                            AccessRequirement.of(RECURSO, ACAO, null, "empresa-a", null));
+
+            assertThat(decisao.allowed()).isFalse();
+            assertThat(decisao.reasonCode()).isEqualTo(AccessReasonCodes.EXPLICIT_DENY);
+        }
+
+        @Test
         @DisplayName("a negação é avaliada antes do nível — o motivo mais forte prevalece")
         void negacaoAntesDoNivel() {
             UserEntity user = usuario("user-1");
