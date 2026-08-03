@@ -120,6 +120,11 @@ public class ResourceController {
             PermissionDto permission = PermissionDto.builder()
                     .action(action.get())
                     .security(security)
+                    // Nulo é GRANT. Declarar DENY aqui é o que permite tirar de uma pessoa algo
+                    // que o time inteiro tem, sem criar um grupo paralelo só para excluí-la.
+                    .effect(grantPermission.getEffect())
+                    .companyId(grantPermission.getCompanyId())
+                    .projectId(grantPermission.getProjectId())
                     .build();
             PermissionDto savedPermission = resourceService.grantPermission(permission);
             return ResponseEntity.ok(ResouceActionPermissionDto.fromPermissionDto(savedPermission));

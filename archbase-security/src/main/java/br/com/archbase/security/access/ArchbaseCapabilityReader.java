@@ -92,7 +92,11 @@ public class ArchbaseCapabilityReader {
             SecurityEntity destinatario = permissao.getSecurity();
 
             EffectiveCapability.Situation situacao;
-            if (negadas.contains(chave(permissao))) {
+            // A propria linha de negacao NUNCA e concessao, tenha escopo ou nao. Sem esta
+            // condicao, uma negacao estreitada por empresa nao entrava em `negadas` e caia no
+            // ramo de "ativa" — sendo listada como EFFECTIVE. Bastava existir a negacao, sem
+            // nenhuma concessao, para a tela renderizar o botao que o backend recusa.
+            if (permissao.isDeny() || negadas.contains(chave(permissao))) {
                 situacao = EffectiveCapability.Situation.DENIED;
             } else if (acaoAtiva && recursoAtivo) {
                 situacao = EffectiveCapability.Situation.EFFECTIVE;

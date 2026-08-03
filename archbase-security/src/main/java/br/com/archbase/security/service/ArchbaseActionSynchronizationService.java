@@ -164,7 +164,48 @@ public class ArchbaseActionSynchronizationService {
     private String resolveResourceName(Method method, HasPermission permission) {
         // Mesma função do interceptador que decide. Duas implementações da mesma resolução já
         // produziram o defeito de catalogar com um nome e consultar com outro.
-        return AuthorizationAnnotationUtils.resolveResourceName(method, permission.resource());
+        String pelaDeclarante = AuthorizationAnnotationUtils.resolveResourceName(method, permission.resource());
+        if (StringUtils.isNotEmpty(pelaDeclarante)) {
+            return pelaDeclarante;
+        }
+        return resourceDeSubclasseConcreta(method);
+    }
+
+    /**
+     * O recurso declarado numa <b>subclasse concreta</b> do controller que declara o método.
+     *
+     * <p>Fecha a assimetria que sobrava entre a varredura e o interceptador. O interceptador parte
+     * da classe ALVO do proxy — a concreta — e enxerga um {@code @ArchbaseResource} posto ali. A
+     * varredura parte de {@code method.getDeclaringClass()}, e com {@code @HasPermission} herdado
+     * de um controller abstrato não enxergava nada: a capacidade era exigida em runtime e nunca
+     * catalogada, então ninguém conseguia concedê-la e todo não-administrador levava 403 permanente.
+     *
+     * <p>Ambíguo é tratado como não resolvido: se mais de uma subclasse concreta declara recursos
+     * <b>diferentes</b>, não há como saber qual das capacidades o método representa — e escolher
+     * uma catalogaria a errada em silêncio.
+     */
+    private String resourceDeSubclasseConcreta(Method method) {
+        if (reflections == null) {
+            return null;
+        }
+        Class<?> declarante = method.getDeclaringClass();
+
+        Set<String> candidatos = reflections.getTypesAnnotatedWith(ArchbaseResource.class).stream()
+                .filter(tipo -> tipo != declarante && declarante.isAssignableFrom(tipo))
+                .map(tipo -> tipo.getAnnotation(ArchbaseResource.class).value())
+                .filter(StringUtils::isNotEmpty)
+                .collect(java.util.stream.Collectors.toSet());
+
+        if (candidatos.size() == 1) {
+            return candidatos.iterator().next();
+        }
+        if (candidatos.size() > 1) {
+            log.error("@HasPermission em {}#{} é herdado por {} subclasses com @ArchbaseResource "
+                            + "distintos ({}). Não há como saber qual capacidade catalogar — declare "
+                            + "resource na própria anotação.",
+                    declarante.getName(), method.getName(), candidatos.size(), candidatos);
+        }
+        return null;
     }
 
     /** {@code NONE} na anotação é ausência de piso, e vira {@code null} na coluna. */

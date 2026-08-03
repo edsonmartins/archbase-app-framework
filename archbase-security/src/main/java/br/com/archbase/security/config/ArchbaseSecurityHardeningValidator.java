@@ -18,6 +18,7 @@ import org.springframework.context.ApplicationContext;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.OptionalLong;
 import java.util.Map;
 
 /**
@@ -327,11 +328,24 @@ public class ArchbaseSecurityHardeningValidator {
      * por uma indisponibilidade.
      */
     private void validarAcoesDuplicadas(List<String> avisos) {
-        long duplicadas = contar(
+        // Consulta com resposta EXPLÍCITA para "não deu para checar". As demais checagens deste
+        // validador rodam só quando uma flag foi ligada — nessas, o zero de uma consulta que
+        // falhou é inofensivo, porque quem ligou a flag sabe o que preparou. Esta roda sempre, e
+        // um zero silencioso viraria "não há duplicatas" numa aplicação onde a consulta nem
+        // chegou a executar.
+        OptionalLong duplicadas = contarOuVazio(
                 "SELECT COUNT(*) FROM (SELECT id_recurso, nome FROM seguranca_acao "
                         + "GROUP BY id_recurso, nome HAVING COUNT(*) > 1) d");
-        if (duplicadas > 0) {
-            avisos.add(duplicadas + " par(es) recurso/ação duplicado(s) em SEGURANCA_ACAO. "
+
+        if (duplicadas.isEmpty()) {
+            avisos.add("Não foi possível verificar ações duplicadas em SEGURANCA_ACAO — a consulta "
+                    + "não pôde ser executada. Se a aplicação usa os beans do archbase-security sem "
+                    + "o schema dele, isto é esperado; caso contrário, investigue o schema.");
+            return;
+        }
+
+        if (duplicadas.getAsLong() > 0) {
+            avisos.add(duplicadas.getAsLong() + " par(es) recurso/ação duplicado(s) em SEGURANCA_ACAO. "
                     + "A decisão adota o maior nível mínimo entre eles, mas a consulta por nome de "
                     + "ação espera uma linha só e falha com duplicata. Remova as sobras e mantenha "
                     + "as permissões apontando para a linha que sobrar.");
@@ -386,6 +400,22 @@ public class ArchbaseSecurityHardeningValidator {
             log.debug("Não foi possível inspecionar os mapeamentos MVC: {}", e.getMessage());
         }
         return false;
+    }
+
+    /**
+     * Igual a {@link #contar(String)}, mas distingue <b>zero</b> de <b>não deu para contar</b>.
+     *
+     * <p>Necessário onde a ausência de resposta não pode ser lida como "está tudo bem".
+     */
+    private OptionalLong contarOuVazio(String sql) {
+        try {
+            Object resultado = entityManager.createNativeQuery(sql).getSingleResult();
+            return resultado == null ? OptionalLong.empty()
+                    : OptionalLong.of(Long.parseLong(resultado.toString()));
+        } catch (Exception e) {
+            log.debug("Checagem não pôde ser executada: {}", e.getMessage());
+            return OptionalLong.empty();
+        }
     }
 
     private long contar(String sql) {

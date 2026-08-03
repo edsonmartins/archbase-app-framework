@@ -74,6 +74,7 @@ public class PermissionDto  {
 
 
         return PermissionDto.builder()
+                .effect(permission.getEffect())
                 .id(permission.getId().toString())
                 .code(permission.getCode())
                 .version(permission.getVersion())

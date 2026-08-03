@@ -70,6 +70,22 @@ class VarreduraDeCapacidadesTest {
         }
     }
 
+    /** Declara a capacidade, sem saber a que recurso pertence — quem sabe é a subclasse. */
+    abstract static class ControllerAbstrato {
+
+        @HasPermission(action = "aprovar", description = "Aprovar")
+        public void aprovar() {
+        }
+    }
+
+    @ArchbaseResource("tms.abastecimento")
+    static class ControllerConcreto extends ControllerAbstrato {
+    }
+
+    @ArchbaseResource("tms.pneu")
+    static class OutroControllerConcreto extends ControllerAbstrato {
+    }
+
     @BeforeEach
     void setUp() {
         actionRepository = mock(ActionJpaRepository.class);
@@ -104,6 +120,34 @@ class VarreduraDeCapacidadesTest {
             // Gravar uma linha de catálogo com nome vazio produziria uma capacidade que ninguém
             // consegue conceder depois. Melhor não registrar e avisar apontando o método.
             assertThat(recursoResolvido(ControllerSemRecurso.class, "semRecurso")).isNull();
+        }
+
+        @Test
+        @DisplayName("o recurso vem da subclasse concreta quando o método é herdado")
+        void herdaDaSubclasseConcreta() throws Exception {
+            // Fecha a assimetria com o interceptador, que parte da classe ALVO do proxy — a
+            // concreta — e enxerga o @ArchbaseParticularResource posto ali. A varredura partia da
+            // classe que DECLARA o método e não enxergava nada: a capacidade era exigida em runtime
+            // e nunca catalogada, então ninguém conseguia concedê-la.
+            org.reflections.Reflections reflections = mock(org.reflections.Reflections.class);
+            when(reflections.getTypesAnnotatedWith(ArchbaseResource.class))
+                    .thenReturn(java.util.Set.of(ControllerConcreto.class));
+            ReflectionTestUtils.setField(service, "reflections", reflections);
+
+            assertThat(recursoResolvido(ControllerAbstrato.class, "aprovar"))
+                    .isEqualTo("tms.abastecimento");
+        }
+
+        @Test
+        @DisplayName("duas subclasses com recursos diferentes é ambiguidade — não resolve")
+        void subclassesAmbiguasNaoResolvem() throws Exception {
+            // Catalogar uma das duas seria registrar a capacidade errada em silêncio.
+            org.reflections.Reflections reflections = mock(org.reflections.Reflections.class);
+            when(reflections.getTypesAnnotatedWith(ArchbaseResource.class))
+                    .thenReturn(java.util.Set.of(ControllerConcreto.class, OutroControllerConcreto.class));
+            ReflectionTestUtils.setField(service, "reflections", reflections);
+
+            assertThat(recursoResolvido(ControllerAbstrato.class, "aprovar")).isNull();
         }
 
         private String recursoResolvido(Class<?> tipo, String metodo) throws Exception {
