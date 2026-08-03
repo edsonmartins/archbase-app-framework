@@ -37,10 +37,19 @@ public interface PermissionJpaRepository extends ArchbaseCommonJpaRepository<Per
      * @param resourceName Nome do recurso
      * @return Lista de permissões correspondentes
      */
+    /**
+     * <b>JOIN FETCH, e não JOIN.</b> A decisão de acesso lê o nome de quem concedeu
+     * ({@code p.security}) e o nível mínimo da capacidade ({@code p.action}), e as duas associações
+     * são {@code LAZY}. Sem o fetch, essas leituras acontecem sobre entidades já desanexadas —
+     * o interceptador não abre transação — e viram {@code LazyInitializationException}, que o
+     * {@code CustomAuthorizationManager} converte em negação. O sintoma seria o pior possível:
+     * <b>403 para quem tem a permissão</b>, funcionando só para administradores, e apenas em
+     * aplicações com {@code spring.jpa.open-in-view=false}.
+     */
     @Query("SELECT DISTINCT p FROM PermissionEntity p " +
-            "JOIN p.security u " +
-            "JOIN p.action a " +
-            "JOIN a.resource r " +
+            "JOIN FETCH p.security u " +
+            "JOIN FETCH p.action a " +
+            "JOIN FETCH a.resource r " +
             "WHERE u.id IN :securityIds " +
             "AND a.name = :actionName " +
             "AND r.name = :resourceName")
@@ -57,10 +66,27 @@ public interface PermissionJpaRepository extends ArchbaseCommonJpaRepository<Per
      * @return Lista de permissões com action e resource carregados
      */
     @Query("SELECT DISTINCT p FROM PermissionEntity p " +
+            "JOIN FETCH p.security s " +
             "JOIN FETCH p.action a " +
             "JOIN FETCH a.resource r " +
-            "WHERE p.security.id IN :securityIds")
+            "WHERE s.id IN :securityIds")
     List<PermissionEntity> findAllBySecurityIds(@Param("securityIds") Set<String> securityIds);
+
+    /**
+     * Igual à anterior, restrita a um recurso.
+     *
+     * <p>Existe para a tela: ela pergunta "o que posso neste recurso", e carregar todas as
+     * permissões do usuário para filtrar em memória seria trocar uma consulta filtrada por uma
+     * varredura — num tenant com milhares de concessões, a cada renderização.
+     */
+    @Query("SELECT DISTINCT p FROM PermissionEntity p " +
+            "JOIN FETCH p.security s " +
+            "JOIN FETCH p.action a " +
+            "JOIN FETCH a.resource r " +
+            "WHERE s.id IN :securityIds AND r.name = :resourceName")
+    List<PermissionEntity> findAllBySecurityIdsAndResourceName(
+            @Param("securityIds") Set<String> securityIds,
+            @Param("resourceName") String resourceName);
 
     /**
      * Quantas concessões apontam para ação ou recurso inativo.

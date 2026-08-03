@@ -37,11 +37,26 @@ public class ArchbaseCapabilityReader {
     /** Tudo que foi concedido ao sujeito, por qualquer das suas origens. */
     @Transactional(readOnly = true)
     public List<EffectiveCapability> grantedTo(AccessSubject subject) {
+        return grantedTo(subject, null);
+    }
+
+    /**
+     * O que foi concedido ao sujeito, opcionalmente restrito a um recurso.
+     *
+     * <p>O filtro por recurso vai para a <b>consulta</b>, não para memória: a tela pergunta isto a
+     * cada renderização, e carregar todas as concessões do usuário para descartar quase todas seria
+     * trocar uma consulta filtrada por uma varredura.
+     */
+    @Transactional(readOnly = true)
+    public List<EffectiveCapability> grantedTo(AccessSubject subject, String resourceName) {
         if (subject == null || subject.securityIds().isEmpty()) {
             return List.of();
         }
 
-        List<PermissionEntity> permissoes = permissionRepository.findAllBySecurityIds(subject.securityIds());
+        List<PermissionEntity> permissoes = resourceName == null
+                ? permissionRepository.findAllBySecurityIds(subject.securityIds())
+                : permissionRepository.findAllBySecurityIdsAndResourceName(
+                        subject.securityIds(), resourceName);
         List<EffectiveCapability> capacidades = new ArrayList<>(permissoes.size());
 
         for (PermissionEntity permissao : permissoes) {

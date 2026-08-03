@@ -108,7 +108,8 @@ public class ArchbaseAccessDiagnosticsService {
         int inertes = (int) capacidades.stream()
                 .filter(c -> c.situation() == EffectiveCapability.Situation.INERT).count();
 
-        List<String> grupos = subject.groupIds().stream().sorted().toList();
+        // Nomes, não identificadores: este relatório existe para dispensar a ida ao admin.
+        List<String> grupos = subject.groupNames().stream().sorted().toList();
 
         return new EffectiveAccessReport(
                 subject.userId(),
@@ -139,9 +140,7 @@ public class ArchbaseAccessDiagnosticsService {
         }
 
         long usuarios = userRepository.count();
-        long administradores = userRepository.findAll().stream()
-                .filter(u -> Boolean.TRUE.equals(u.getIsAdministrator()))
-                .count();
+        long administradores = userRepository.countAdministrators();
 
         return new AccessOverview(
                 usuarios,

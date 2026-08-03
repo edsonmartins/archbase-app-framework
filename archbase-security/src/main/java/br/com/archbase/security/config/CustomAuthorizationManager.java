@@ -48,10 +48,23 @@ public class CustomAuthorizationManager implements AuthorizationManager<MethodIn
                 ArchbaseTenantContext.getCompanyId() : hasPermission.companyId();
 
             String origem = AuthorizationAdapters.origin(methodInvocation);
+
+            // O recurso pode vir de @ArchbaseResource na classe. Resolver aqui, e pela MESMA
+            // função que a varredura usa, é o que garante que a capacidade seja consultada com o
+            // nome com que foi catalogada.
+            String resource = AuthorizationAnnotationUtils.resolveResourceName(
+                    methodInvocation, hasPermission.resource());
+
+            if (resource == null) {
+                log.error("@HasPermission em {} não declara resource, e a classe não tem "
+                                + "@ArchbaseResource — acesso negado. Declare um dos dois.", origem);
+                return new AuthorizationDecision(false);
+            }
+
             AccessDecision decisao = securityService.decide(
                     authentication.get(),
                     AccessRequirement.of(
-                            hasPermission.resource(),
+                            resource,
                             hasPermission.action(),
                             tenantId,
                             companyId,

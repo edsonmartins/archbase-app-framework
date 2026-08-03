@@ -66,18 +66,41 @@ class DefaultArchbaseAccessEvaluatorTest {
         }
 
         @Test
-        @DisplayName("isAdministrator nulo nega com PRINCIPAL_INCOMPLETE e diz o que preencher")
-        void administradorNulo() {
+        @DisplayName("isAdministrator nulo não interrompe a decisão — segue para o catálogo")
+        void administradorNuloSegueParaOCatalogo() {
+            // BO_ADMINISTRADOR é nulável, então o caso acontece em dados reais. Nulo é tratado como
+            // "não é administrador" — nunca como administrador, então não há como ganhar privilégio
+            // por um campo em branco.
+            //
+            // Uma versão anterior deste core NEGAVA aqui, para reproduzir a NullPointerException do
+            // código antigo. Era errado: o @RequireRole antigo usava Boolean.TRUE.equals e nunca
+            // falhava, então negar tirava acesso de quem funcionava — e a negação reproduzia um
+            // acidente, não uma decisão.
             UserEntity user = usuario("user-1", null);
+            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString()))
+                    .thenReturn(List.of(permissao(grupo("TIME-SAC"), null, null, null)));
+
+            AccessDecision decisao = evaluator.decide(AccessSubject.of(user), AccessRequirement.of(RECURSO, ACAO));
+
+            assertThat(decisao.allowed())
+                    .as("tem a permissão concedida; a flag em branco não é motivo para negar")
+                    .isTrue();
+            assertThat(decisao.reasonCode()).isEqualTo(AccessReasonCodes.GRANTED);
+        }
+
+        @Test
+        @DisplayName("isAdministrator nulo não concede o atalho de administrador")
+        void administradorNuloNaoTemAtalho() {
+            UserEntity user = usuario("user-1", null);
+            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString()))
+                    .thenReturn(List.of());
 
             AccessDecision decisao = evaluator.decide(AccessSubject.of(user), AccessRequirement.of(RECURSO, ACAO));
 
             assertThat(decisao.allowed()).isFalse();
-            assertThat(decisao.deniedAt()).isEqualTo(Gate.IDENTITY);
-            assertThat(decisao.reasonCode()).isEqualTo(AccessReasonCodes.PRINCIPAL_INCOMPLETE);
-            assertThat(decisao.message()).contains("isAdministrator");
-            verify(permissionRepository, never())
-                    .findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString());
+            assertThat(decisao.reasonCode())
+                    .as("caiu no catálogo como qualquer não-administrador")
+                    .isEqualTo(AccessReasonCodes.NO_GRANT);
         }
     }
 

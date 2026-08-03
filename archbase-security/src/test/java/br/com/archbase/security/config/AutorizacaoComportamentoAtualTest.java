@@ -230,15 +230,38 @@ class AutorizacaoComportamentoAtualTest {
         }
 
         @Test
-        @DisplayName("isAdministrator nulo nega")
-        void administradorNuloNega() throws Exception {
-            // A coluna aceita nulo. Antes: NullPointerException engolida. Agora:
-            // PRINCIPAL_INCOMPLETE dizendo o que preencher. Mesma decisão.
+        @DisplayName("isAdministrator nulo é tratado como não-administrador, e o perfil decide")
+        void administradorNuloNaoEAdministrador() throws Exception {
+            // MUDANÇA DELIBERADA DE COMPORTAMENTO, e a única do core.
+            //
+            // Antes, `allowSystemAdmin() && user.getIsAdministrator()` desempacotava nulo e
+            // lançava NullPointerException, capturada e convertida em negação. Este teste afirmava
+            // essa negação.
+            //
+            // Mas a negação reproduzia um ACIDENTE, não uma decisão — e não era sequer uniforme:
+            // o @RequireRole antigo usava Boolean.TRUE.equals e nunca falhava, então o mesmo
+            // usuário passava lá e era barrado aqui. Quem tem o perfil exigido e a flag em branco
+            // deve passar; nulo nunca significa "é administrador", então nenhum privilégio é
+            // ganho.
             UserEntity user = usuario("user-1", false);
             user.setIsAdministrator(null);
             user.setProfile(perfil("ADMIN"));
 
-            assertThat(permitido(manager(), user, Alvo.class, "exigeAdmin")).isFalse();
+            assertThat(permitido(manager(), user, Alvo.class, "exigeAdmin"))
+                    .as("tem o perfil ADMIN exigido")
+                    .isTrue();
+        }
+
+        @Test
+        @DisplayName("isAdministrator nulo não isenta ninguém de tranca alguma")
+        void administradorNuloNaoIsenta() throws Exception {
+            UserEntity user = usuario("user-1", false);
+            user.setIsAdministrator(null);
+            user.setProfile(perfil("OPERADOR"));
+
+            assertThat(permitido(manager(), user, Alvo.class, "exigeAdmin"))
+                    .as("nulo não vira isenção de administrador")
+                    .isFalse();
         }
     }
 
@@ -407,6 +430,29 @@ class AutorizacaoComportamentoAtualTest {
     @Nested
     @DisplayName("CustomAuthorizationManager")
     class Capacidade {
+
+        @br.com.archbase.security.annotation.ArchbaseResource("PRODUTO")
+        static class AlvoComRecursoNaClasse {
+
+            @HasPermission(action = "VIEW", description = "Ver produto")
+            public void verProduto() {
+            }
+        }
+
+        @Test
+        @DisplayName("o recurso declarado na classe vale na hora de decidir, não só ao catalogar")
+        void recursoDaClasseValeNaDecisao() throws Exception {
+            // O padrão recomendado na documentação: @ArchbaseResource na classe, @HasPermission
+            // sem resource no método. Se a herança só acontecer na varredura, a capacidade é
+            // catalogada e aparece no admin — e mesmo assim nega todo não-administrador, porque o
+            // requisito chega sem recurso e não há o que consultar.
+            catalogoResponde(permissao(grupo("TIME-SAC"), "PRODUTO", "VIEW", null));
+
+            assertThat(permitido(manager(), usuario("user-1", false), AlvoComRecursoNaClasse.class, "verProduto"))
+                    .isTrue();
+            verify(permissionRepository)
+                    .findBySecurityIdsAndActionNameAndResourceName(anySet(), eq("VIEW"), eq("PRODUTO"));
+        }
 
         static class Alvo {
             @HasPermission(action = "VIEW", resource = "PRODUTO", description = "Ver produto")

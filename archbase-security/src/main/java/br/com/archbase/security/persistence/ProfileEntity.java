@@ -95,6 +95,7 @@ public class ProfileEntity extends SecurityEntity {
                 .lastModifiedByUser(this.getLastModifiedByUser())
                 .name(this.getName())
                 .description(this.getDescription())
+                .accessLevel(this.getAccessLevel())
                 .build();
     }
 }

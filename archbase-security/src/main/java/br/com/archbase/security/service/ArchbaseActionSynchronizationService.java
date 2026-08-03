@@ -9,6 +9,7 @@ import br.com.archbase.security.persistence.QResourceEntity;
 import br.com.archbase.security.persistence.ResourceEntity;
 import br.com.archbase.security.repository.ActionJpaRepository;
 import br.com.archbase.security.repository.ResourceJpaRepository;
+import br.com.archbase.security.util.AuthorizationAnnotationUtils;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -114,9 +115,21 @@ public class ArchbaseActionSynchronizationService {
             }
 
             ResourceEntity resource = ensureResourceExists(resourceName, method);
+
             if (resource == null) {
+                // Em modo relatório o recurso ainda não existe e nada foi gravado — mas a ação
+                // precisa aparecer no inventário mesmo assim. Sem isto, o relatório lista "criaria
+                // o recurso X" e nenhuma das ações que viriam com ele, que é justamente a lista que
+                // se quer ver antes de rodar em produção.
+                if (somenteRelatorio()) {
+                    AccessLevel minimo = minimumLevelOf(permission);
+                    log.warn("[report] criaria a ação '{}:{}'{} (no recurso que também seria criado)",
+                            resourceName, actionName,
+                            minimo == null ? "" : " com nível mínimo " + minimo);
+                }
                 continue;
             }
+
             synchronizeAction(actionName, description, resource, minimumLevelOf(permission));
         }
         disableUnusedActionsAndResources();
@@ -129,11 +142,9 @@ public class ArchbaseActionSynchronizationService {
      * exigir a mesma capacidade de um {@code GET}, o que leria como proteção e seria grosseria.
      */
     private String resolveResourceName(Method method, HasPermission permission) {
-        if (StringUtils.isNotEmpty(permission.resource())) {
-            return permission.resource();
-        }
-        ArchbaseResource daClasse = method.getDeclaringClass().getAnnotation(ArchbaseResource.class);
-        return daClasse == null ? null : daClasse.value();
+        // Mesma função do interceptador que decide. Duas implementações da mesma resolução já
+        // produziram o defeito de catalogar com um nome e consultar com outro.
+        return AuthorizationAnnotationUtils.resolveResourceName(method, permission.resource());
     }
 
     /** {@code NONE} na anotação é ausência de piso, e vira {@code null} na coluna. */

@@ -30,6 +30,16 @@ public interface UserJpaRepository extends ArchbaseCommonJpaRepository<UserEntit
             + "WHERE u.id = :id")
     Optional<UserEntity> findByIdWithGroupsAndProfile(@Param("id") String id);
 
+    /**
+     * Quantos administradores existem no tenant.
+     *
+     * <p>Consulta de contagem, e não {@code findAll().stream().filter().count()}: o painel de
+     * diagnóstico serve justamente a sistemas já com problema, e materializar a tabela inteira de
+     * usuários para contar quatro linhas é o tipo de coisa que derruba o diagnóstico junto.
+     */
+    @Query("SELECT COUNT(u) FROM UserEntity u WHERE u.isAdministrator = true")
+    long countAdministrators();
+
     /** Idem, por e-mail — o identificador que quem opera o admin tem em mãos. */
     @Query("SELECT DISTINCT u FROM UserEntity u "
             + "LEFT JOIN FETCH u.groups ug "

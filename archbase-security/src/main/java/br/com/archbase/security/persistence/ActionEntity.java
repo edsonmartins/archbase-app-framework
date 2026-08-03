@@ -129,6 +129,7 @@ public class ActionEntity extends TenantPersistenceEntityBase {
                 .category(this.getCategory())
                 .active(this.getActive())
                 .actionVersion(this.getActionVersion())
+                .minimumLevel(this.getMinimumLevel())
                 .build();
     }
 }

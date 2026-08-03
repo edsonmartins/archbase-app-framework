@@ -1,5 +1,7 @@
 package br.com.archbase.security.domain.dto;
 
+import br.com.archbase.security.access.AccessLevel;
+
 import br.com.archbase.security.domain.entity.Profile;
 import com.fasterxml.jackson.annotation.JsonIdentityInfo;
 import com.fasterxml.jackson.annotation.ObjectIdGenerators;
@@ -16,12 +18,18 @@ import java.util.stream.Collectors;
 @JsonIdentityInfo(generator = ObjectIdGenerators.UUIDGenerator.class, property = "@id")
 public class ProfileDto extends SecurityDto {
 
+	/**
+	 * Nível que este perfil confere. Editável aqui — é a fonte padrão do portão LEVEL.
+	 */
+	protected AccessLevel accessLevel;
+
     public ProfileDto() {
     }
 
     @Builder
-    public ProfileDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Set<ActionDto> actions) {
+    public ProfileDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Set<ActionDto> actions, AccessLevel accessLevel) {
         super(id, code, version, createEntityDate, updateEntityDate, createdByUser, lastModifiedByUser, name, description, actions);
+        this.accessLevel = accessLevel;
     }
 
 

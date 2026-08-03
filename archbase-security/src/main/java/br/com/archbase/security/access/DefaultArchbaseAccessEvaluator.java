@@ -94,13 +94,19 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
         }
 
         if (subject.administrator() == null) {
-            // Antes: NullPointerException ao desempacotar getIsAdministrator(), capturada e
-            // transformada em negação. A coluna aceita nulo, então o caso é alcançável.
-            chain.add(GateOutcome.denied(Gate.IDENTITY, AccessReasonCodes.PRINCIPAL_INCOMPLETE,
-                    "isAdministrator está nulo para " + subject.label()));
-            return AccessDecision.denied(Gate.IDENTITY, AccessReasonCodes.PRINCIPAL_INCOMPLETE,
-                    "O usuário " + subject.label() + " está sem a flag isAdministrator. "
-                            + "Preencha-a com true ou false — nulo não é decidível.", chain);
+            // BO_ADMINISTRADOR é nulável, então o caso acontece em dados reais.
+            //
+            // Nulo é tratado como "não é administrador" — nunca como administrador, então não há
+            // como ganhar privilégio por um campo em branco. Uma versão anterior deste core NEGAVA
+            // aqui, para reproduzir a NullPointerException que o código antigo lançava; era errado
+            // por dois motivos. Primeiro, o antigo @RequireRole já usava Boolean.TRUE.equals e
+            // NUNCA falhava, então negar aqui tirava acesso de quem funcionava. Segundo, a negação
+            // reproduzia um ACIDENTE, não uma decisão: quem tem a permissão concedida e a flag em
+            // branco recebia 403 sem motivo defensável.
+            //
+            // O que resta é o registro do defeito de dado, para que ele seja corrigido.
+            log.warn("Usuário {} está com isAdministrator nulo em BO_ADMINISTRADOR. Tratado como "
+                    + "não-administrador. Preencha a coluna para eliminar a ambiguidade.", subject.label());
         }
 
         chain.add(GateOutcome.passed(Gate.IDENTITY, "Usuário " + subject.label() + " resolvido"));

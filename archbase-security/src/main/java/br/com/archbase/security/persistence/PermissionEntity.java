@@ -148,6 +148,7 @@ public class PermissionEntity extends TenantPersistenceEntityBase {
                 .lastModifiedByUser(this.getLastModifiedByUser())
                 .security(security)
                 .action(this.action.toDto())
+                .effect(this.effectOrGrant())
                 .build();
     }
 
