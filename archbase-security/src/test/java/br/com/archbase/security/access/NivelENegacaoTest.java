@@ -338,22 +338,22 @@ class NivelENegacaoTest {
         }
 
         @Test
-        @DisplayName("DENY de outro tenant não afeta o tenant pedido")
+        @DisplayName("DENY de outra empresa não afeta a empresa pedida")
         void denyForaDeEscopoNaoAfeta() {
             // A negação vale dentro do escopo em que foi declarada — mesma semântica da concessão.
             catalogoResponde(
                     permissao(grupo("GESTORES-FROTA"), null, null),
-                    negacao(usuario("user-1"), "tenant-b"));
+                    negacao(usuario("user-1"), "empresa-b"));
 
             AccessDecision decisao = avaliador(false, "READER")
                     .decide(AccessSubject.of(usuario("user-1")),
-                            AccessRequirement.of(RECURSO, ACAO, "tenant-a", null, null));
+                            AccessRequirement.of(RECURSO, ACAO, null, "empresa-a", null));
 
             assertThat(decisao.allowed()).isTrue();
         }
 
         @Test
-        @DisplayName("DENY sem escopo vence em qualquer tenant")
+        @DisplayName("DENY sem escopo vence em qualquer empresa")
         void denySemEscopoVenceEmTodos() {
             catalogoResponde(
                     permissao(grupo("GESTORES-FROTA"), null, null),
@@ -361,7 +361,7 @@ class NivelENegacaoTest {
 
             assertThat(avaliador(false, "READER")
                     .decide(AccessSubject.of(usuario("user-1")),
-                            AccessRequirement.of(RECURSO, ACAO, "tenant-a", null, null))
+                            AccessRequirement.of(RECURSO, ACAO, null, "empresa-a", null))
                     .allowed()).isFalse();
         }
 
@@ -405,18 +405,18 @@ class NivelENegacaoTest {
         }
 
         @Test
-        @DisplayName("negação de outro tenant não alcança o administrador")
+        @DisplayName("negação de outra empresa não alcança o administrador")
         void denyForaDeEscopoNaoAlcancaAdministrador() {
             UserEntity admin = usuario("admin-1");
             admin.setIsAdministrator(true);
 
             when(permissionRepository.findDenialsBySecurityIdsAndActionNameAndResourceName(
                     anySet(), anyString(), anyString()))
-                    .thenReturn(List.of(negacao(usuario("admin-1"), "tenant-b")));
+                    .thenReturn(List.of(negacao(usuario("admin-1"), "empresa-b")));
 
             AccessDecision decisao = avaliador(false, "READER")
                     .decide(AccessSubject.of(admin),
-                            AccessRequirement.of(RECURSO, ACAO, "tenant-a", null, null));
+                            AccessRequirement.of(RECURSO, ACAO, null, "empresa-a", null));
 
             assertThat(decisao.allowed()).isTrue();
         }
@@ -496,7 +496,7 @@ class NivelENegacaoTest {
                 .id("permission-" + destinatario.getId() + "-" + efeito)
                 .security(destinatario)
                 .action(acao)
-                .tenantId1(tenantId)
+                .companyId(tenantId)
                 .effect(efeito)
                 .build();
     }

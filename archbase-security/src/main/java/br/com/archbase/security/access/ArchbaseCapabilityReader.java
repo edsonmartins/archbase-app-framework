@@ -72,7 +72,7 @@ public class ArchbaseCapabilityReader {
         Set<String> negadas = new HashSet<>();
         for (PermissionEntity permissao : permissoes) {
             if (permissao.isDeny()
-                    && semEstreitamento(permissao)
+                    && permissao.semEstreitamentoDeEscopo()
                     && permissao.getAction() != null
                     && permissao.getAction().getResource() != null) {
                 negadas.add(chave(permissao));
@@ -113,24 +113,6 @@ public class ArchbaseCapabilityReader {
 
         capacidades.sort(Comparator.comparing(EffectiveCapability::capability));
         return capacidades;
-    }
-
-    /**
-     * {@code true} quando a linha vale para todo o tenant, sem estreitamento.
-     *
-     * <p><b>Não usa {@code allowAllTenantsAndCompaniesAndProjects()}</b>, e a razão é uma
-     * armadilha de modelagem: {@code PermissionEntity} declara um campo {@code tenantId} de
-     * <i>escopo</i> com o mesmo nome do discriminador de tenant que herda de
-     * {@code TenantPersistenceEntityBase}. O campo da subclasse sombreia o do pai, e quem o
-     * preenche acaba sendo o discriminador — de modo que {@code tenantId} praticamente nunca é
-     * nulo, e aquele método praticamente nunca devolve {@code true}.
-     *
-     * <p>Aqui isso não faz falta: a consulta já traz apenas as permissões do tenant corrente, pelo
-     * filtro do Hibernate. O que resta perguntar é se a linha estreita para uma <b>empresa</b> ou
-     * um <b>projeto</b> — e é isso que se verifica.
-     */
-    private boolean semEstreitamento(PermissionEntity permissao) {
-        return permissao.getCompanyId() == null && permissao.getProjectId() == null;
     }
 
     /** A capacidade que a linha aponta, para casar concessão com negação. */

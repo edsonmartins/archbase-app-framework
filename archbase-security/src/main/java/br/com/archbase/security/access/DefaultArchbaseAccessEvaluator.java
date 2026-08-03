@@ -218,7 +218,10 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
 
         List<PermissionEntity> noEscopo = new ArrayList<>();
         for (PermissionEntity permissao : permissoes) {
-            if (permissao.allowAllTenantsAndCompaniesAndProjects() || alcancaEscopo(permissao, requirement)) {
+            // Sem atalho de "não estreita": alcancaEscopo já trata cada campo nulo como "não
+            // restringe". O atalho que existia aqui consultava um predicado que ignora o tenant —
+            // e passava por cima da comparação de tenant, aceitando uma permissão restrita a outro.
+            if (alcancaEscopo(permissao, requirement)) {
                 noEscopo.add(permissao);
             }
         }
@@ -320,7 +323,7 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
             return null;
         }
         return negacoes.stream()
-                .filter(p -> p.allowAllTenantsAndCompaniesAndProjects() || alcancaEscopo(p, requirement))
+                .filter(p -> alcancaEscopo(p, requirement))
                 .findFirst()
                 .orElse(null);
     }

@@ -190,16 +190,16 @@ class DefaultArchbaseAccessEvaluatorTest {
     class Escopo {
 
         @Test
-        @DisplayName("permissão de outro tenant nega com OUT_OF_SCOPE, distinguindo de NO_GRANT")
-        void tenantDiferenteNega() {
+        @DisplayName("permissão de outro escopo nega com OUT_OF_SCOPE, distinguindo de NO_GRANT")
+        void escopoDiferenteNega() {
             // A distinção importa no diagnóstico: "não te concederam" e "concederam, mas para outro
-            // tenant" levam a correções completamente diferentes.
+            // escopo" levam a correções completamente diferentes.
             when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString()))
-                    .thenReturn(List.of(permissao(grupo("TIME-SAC"), "tenant-a", null, null)));
+                    .thenReturn(List.of(permissao(grupo("TIME-SAC"), null, "empresa-a", null)));
 
             AccessDecision decisao = evaluator.decide(
                     AccessSubject.of(usuario("user-1", false)),
-                    AccessRequirement.of(RECURSO, ACAO, "tenant-b", null, null));
+                    AccessRequirement.of(RECURSO, ACAO, null, "empresa-b", null));
 
             assertThat(decisao.allowed()).isFalse();
             assertThat(decisao.deniedAt()).isEqualTo(Gate.SCOPE);
@@ -207,7 +207,7 @@ class DefaultArchbaseAccessEvaluatorTest {
         }
 
         @Test
-        @DisplayName("permissão sem escopo alcança qualquer tenant")
+        @DisplayName("permissão sem escopo alcança qualquer escopo pedido")
         void permissaoSemEscopoAlcancaTudo() {
             when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString()))
                     .thenReturn(List.of(permissao(grupo("TIME-SAC"), null, null, null)));
@@ -226,12 +226,12 @@ class DefaultArchbaseAccessEvaluatorTest {
             GroupEntity noEscopo = grupo("GESTORES-FROTA");
             when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString()))
                     .thenReturn(List.of(
-                            permissao(foraDeEscopo, "tenant-a", null, null),
-                            permissao(noEscopo, "tenant-b", null, null)));
+                            permissao(foraDeEscopo, null, "empresa-a", null),
+                            permissao(noEscopo, null, "empresa-b", null)));
 
             AccessDecision decisao = evaluator.decide(
                     AccessSubject.of(usuario("user-1", false)),
-                    AccessRequirement.of(RECURSO, ACAO, "tenant-b", null, null));
+                    AccessRequirement.of(RECURSO, ACAO, null, "empresa-b", null));
 
             assertThat(decisao.allowed()).isTrue();
             assertThat(decisao.grantedByName()).isEqualTo("GESTORES-FROTA");
@@ -346,7 +346,7 @@ class DefaultArchbaseAccessEvaluatorTest {
                 .id("permission-" + destinatario.getId())
                 .security(destinatario)
                 .action(acao)
-                .tenantId1(tenantId)
+                .tenantId(tenantId)
                 .companyId(companyId)
                 .projectId(projectId)
                 .build();

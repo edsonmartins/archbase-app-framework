@@ -182,7 +182,7 @@ class ArchbaseSecurityServiceTest {
                 .id("permission-1")
                 .security(security)
                 .action(actionEntity)
-                .tenantId1(tenantId)
+                .tenantId(tenantId)
                 .companyId(companyId)
                 .projectId(projectId)
                 .build();

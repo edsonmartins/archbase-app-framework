@@ -491,14 +491,17 @@ class AutorizacaoComportamentoAtualTest {
         }
 
         @Test
-        @DisplayName("o tenant declarado na anotação vence o contexto")
+        @DisplayName("o tenant declarado na anotação restringe a capacidade àquele tenant")
         void tenantDaAnotacaoVence() throws Exception {
-            // A permissão vale só em tenant-fixo, que é o que a anotação declara: passa.
+            // @HasPermission(tenantId=...) é comparado com o TENANT DA LINHA de permissão — o
+            // discriminador. Na prática significa "esta capacidade só vale no tenant X".
+            //
+            // A permissão é do tenant-fixo, que é o que a anotação declara: passa.
             catalogoResponde(permissao(grupo("TIME-SAC"), "PRODUTO", "EDIT", "tenant-fixo"));
             assertThat(permitido(manager(), usuario("user-1", false), Alvo.class, "editarProdutoDeTenantFixo"))
                     .isTrue();
 
-            // A mesma permissão em outro tenant: não alcança.
+            // A mesma capacidade concedida numa linha de outro tenant: não alcança.
             catalogoResponde(permissao(grupo("TIME-SAC"), "PRODUTO", "EDIT", "outro-tenant"));
             assertThat(permitido(manager(), usuario("user-2", false), Alvo.class, "editarProdutoDeTenantFixo"))
                     .isFalse();
@@ -563,7 +566,7 @@ class AutorizacaoComportamentoAtualTest {
                 .id("permission-1")
                 .security(destinatario)
                 .action(actionEntity)
-                .tenantId1(tenantId)
+                .tenantId(tenantId)
                 .build();
     }
 

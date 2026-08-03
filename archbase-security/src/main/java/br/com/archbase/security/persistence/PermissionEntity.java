@@ -30,8 +30,15 @@ public class PermissionEntity extends TenantPersistenceEntityBase {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ID_ACAO", nullable = false)
     private ActionEntity action;
-    @Column(name="TENTANT_ID", nullable = true)
-    private String tenantId;
+    // NÃO existe aqui um campo `tenantId` de escopo. Existiu, declarado com
+    // @Column(name = "TENTANT_ID") — e nunca funcionou: o nome colidia com o discriminador de
+    // tenant herdado de TenantPersistenceEntityBase, o Hibernate resolvia a ambiguidade em favor
+    // do discriminador, e a coluna TENTANT_ID sequer chegava a ser criada. O getter devolvia o
+    // tenant da linha, não um estreitamento — e allowAllTenantsAndCompaniesAndProjects(),
+    // consultando-o, praticamente nunca devolvia true.
+    //
+    // O tenant continua disponível pelo pai, como discriminador. O estreitamento de uma permissão
+    // é por EMPRESA e PROJETO; o isolamento entre tenants é do Hibernate, e não deste campo.
     @Column(name="COMPANY_ID", nullable = true)
     private String companyId;
     @Column(name="PROJECT_ID", nullable = true)
@@ -63,11 +70,10 @@ public class PermissionEntity extends TenantPersistenceEntityBase {
     }
 
     @Builder
-    public PermissionEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, SecurityEntity security, ActionEntity action, String tenantId1, String companyId, String projectId, PermissionEffect effect) {
+    public PermissionEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, SecurityEntity security, ActionEntity action, String companyId, String projectId, PermissionEffect effect) {
         super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId);
         this.security = security;
         this.action = action;
-        this.tenantId = tenantId1;
         this.companyId = companyId;
         this.projectId = projectId;
         this.effect = effect;
@@ -99,11 +105,10 @@ public class PermissionEntity extends TenantPersistenceEntityBase {
                 .security(securityEntity)
                 .action(ActionEntity.fromDomain(permission.getAction()))
                 .effect(permission.getEffect())
-                // O escopo era perdido aqui: as três colunas chegavam nulas, e
-                // allowAllTenantsAndCompaniesAndProjects() passava a devolver true. Para uma
-                // concessão isso já alargava o alcance em silêncio; para uma NEGAÇÃO, transforma
-                // "bloquear no tenant A" em "bloquear em todos".
-                .tenantId1(permission.getTenantId())
+                // O estreitamento era perdido aqui: as colunas chegavam nulas, e a permissão
+                // passava a valer sem restrição. Para uma concessão isso já alargava o alcance em
+                // silêncio; para uma NEGAÇÃO, transforma "bloquear na empresa A" em "bloquear em
+                // todas".
                 .companyId(permission.getCompanyId())
                 .projectId(permission.getProjectId())
                 .build();
@@ -132,7 +137,7 @@ public class PermissionEntity extends TenantPersistenceEntityBase {
                 .security(security)
                 .action(this.action.toDomain())
                 .effect(this.effectOrGrant())
-                .tenantId(this.tenantId)
+                .tenantId(this.getTenantId())
                 .companyId(this.companyId)
                 .projectId(this.projectId)
                 .build();
@@ -161,15 +166,35 @@ public class PermissionEntity extends TenantPersistenceEntityBase {
                 .security(security)
                 .action(this.action.toDto())
                 .effect(this.effectOrGrant())
-                .tenantId(this.tenantId)
+                .tenantId(this.getTenantId())
                 .companyId(this.companyId)
                 .projectId(this.projectId)
                 .build();
     }
 
+    /**
+     * {@code true} quando a permissão não estreita para empresa nem projeto.
+     *
+     * <p>Não consulta o tenant: ele é o <b>discriminador da linha</b>, preenchido em toda
+     * permissão de uma aplicação multi-tenant. Incluí-lo aqui — como este método fazia enquanto
+     * havia um campo {@code tenantId} sombreando o do pai — tornava o resultado praticamente
+     * sempre {@code false}, ao contrário do que o nome prometia. O isolamento entre tenants é do
+     * Hibernate; o que uma permissão estreita é empresa e projeto.
+     */
+    @JsonIgnore
+    @Transient
+    public boolean semEstreitamentoDeEscopo() {
+        return companyId == null && projectId == null;
+    }
+
+    /**
+     * @deprecated nome enganoso: nunca disse respeito a "todos os tenants", e consultava um campo
+     *             que não era estreitamento. Use {@link #semEstreitamentoDeEscopo()}.
+     */
+    @Deprecated(forRemoval = true)
     @JsonIgnore
     @Transient
     public boolean allowAllTenantsAndCompaniesAndProjects() {
-        return tenantId==null && companyId == null && projectId==null;
+        return semEstreitamentoDeEscopo();
     }
 }
