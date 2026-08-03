@@ -275,6 +275,46 @@ class DiagnosticoDeAcessoIntegrationTest {
     }
 
     @Test
+    @DisplayName("negação COM ESCOPO não anula a concessão na listagem")
+    void negacaoComEscopoNaoAnulaNaListagem() {
+        // A listagem é cega a escopo — sempre foi, inclusive para concessões: ela responde "o que
+        // posso neste recurso", sem tenant, empresa ou projeto na pergunta. Deixar uma negação
+        // RESTRITA suprimir a linha faria a tela esconder um botão que o avaliador liberaria fora
+        // daquele escopo. Seria trocar "mostra o que o backend recusa" por "esconde o que o backend
+        // permite" — divergência na direção oposta, e igualmente errada.
+        UserEntity user = usuario("user-1", false);
+        GroupEntity grupo = grupo("GESTORES-FROTA");
+        configurar(user, grupo, null);
+
+        ActionEntity acao = actionRepository.save(ActionEntity.builder()
+                .id("act-escopo").name("exportar").description("Exportar")
+                .resource(recurso).active(true)
+                .createEntityDate(LocalDateTime.now()).createdByUser("teste").build());
+
+        permissionRepository.save(PermissionEntity.builder()
+                .id("perm-grant-global").security(grupo).action(acao)
+                .createEntityDate(LocalDateTime.now()).createdByUser("teste").build());
+        permissionRepository.save(PermissionEntity.builder()
+                .id("perm-deny-escopo").security(user).action(acao)
+                .effect(br.com.archbase.security.access.PermissionEffect.DENY)
+                // Escopo por empresa, e não por tenant: em PermissionEntity o campo tenantId de
+                // ESCOPO tem o mesmo nome do discriminador de tenant herdado, e atribuir um valor
+                // divergente ali é recusado pelo Hibernate. Modelagem confusa e pré-existente.
+                .companyId("outra-empresa")
+                .createEntityDate(LocalDateTime.now()).createdByUser("teste").build());
+
+        EffectiveAccessReport relatorio = diagnostics.effective("user-1", null).orElseThrow();
+
+        assertThat(relatorio.capabilities())
+                .filteredOn(c -> "exportar".equals(c.action())
+                        && "GESTORES-FROTA".equals(c.grantedByName()))
+                .singleElement()
+                .satisfies(c -> assertThat(c.situation())
+                        .as("a concessão global do grupo permanece efetiva")
+                        .isEqualTo(EffectiveCapability.Situation.EFFECTIVE));
+    }
+
+    @Test
     @DisplayName("as chaves de permissionsBySecurityType são estáveis")
     void chavesDoAgrupamentoPorTipoSaoEstaveis() {
         // A consulta usa TYPE(p.security), e o que o Hibernate devolve ali — a classe da entidade

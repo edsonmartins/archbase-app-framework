@@ -59,13 +59,21 @@ public class ArchbaseCapabilityReader {
                 ? permissionRepository.findAllBySecurityIds(subject.securityIds())
                 : permissionRepository.findAllBySecurityIdsAndResourceName(
                         subject.securityIds(), resourceName);
-        // As capacidades negadas em QUALQUER origem. A negação vence a concessão, então uma
+        // As capacidades negadas SEM RESTRIÇÃO DE ESCOPO. A negação vence a concessão, então uma
         // linha concedida por um grupo e negada no usuário não pode ser listada como efetiva —
         // seria a tela mostrando um botão que o backend recusa, e o diagnóstico contradizendo a
         // decisão que ele existe para explicar.
+        //
+        // Só as sem escopo, porém. Esta listagem é cega a tenant, empresa e projeto — sempre foi,
+        // inclusive para concessões: ela responde "o que posso neste recurso", e a pergunta não
+        // carrega escopo. Deixar uma negação RESTRITA suprimir a linha esconderia um botão que o
+        // avaliador liberaria fora daquele escopo: divergência na direção oposta, e igualmente
+        // errada. Quem precisa da resposta com escopo usa a simulação, que recebe os três campos.
         Set<String> negadas = new HashSet<>();
         for (PermissionEntity permissao : permissoes) {
-            if (permissao.isDeny() && permissao.getAction() != null
+            if (permissao.isDeny()
+                    && semEstreitamento(permissao)
+                    && permissao.getAction() != null
                     && permissao.getAction().getResource() != null) {
                 negadas.add(chave(permissao));
             }
@@ -105,6 +113,24 @@ public class ArchbaseCapabilityReader {
 
         capacidades.sort(Comparator.comparing(EffectiveCapability::capability));
         return capacidades;
+    }
+
+    /**
+     * {@code true} quando a linha vale para todo o tenant, sem estreitamento.
+     *
+     * <p><b>Não usa {@code allowAllTenantsAndCompaniesAndProjects()}</b>, e a razão é uma
+     * armadilha de modelagem: {@code PermissionEntity} declara um campo {@code tenantId} de
+     * <i>escopo</i> com o mesmo nome do discriminador de tenant que herda de
+     * {@code TenantPersistenceEntityBase}. O campo da subclasse sombreia o do pai, e quem o
+     * preenche acaba sendo o discriminador — de modo que {@code tenantId} praticamente nunca é
+     * nulo, e aquele método praticamente nunca devolve {@code true}.
+     *
+     * <p>Aqui isso não faz falta: a consulta já traz apenas as permissões do tenant corrente, pelo
+     * filtro do Hibernate. O que resta perguntar é se a linha estreita para uma <b>empresa</b> ou
+     * um <b>projeto</b> — e é isso que se verifica.
+     */
+    private boolean semEstreitamento(PermissionEntity permissao) {
+        return permissao.getCompanyId() == null && permissao.getProjectId() == null;
     }
 
     /** A capacidade que a linha aponta, para casar concessão com negação. */
