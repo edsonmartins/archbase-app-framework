@@ -3,6 +3,7 @@ package br.com.archbase.security.repository;
 
 import br.com.archbase.ddd.infraestructure.persistence.jpa.repository.ArchbaseCommonJpaRepository;
 import br.com.archbase.security.persistence.UserEntity;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -20,14 +21,11 @@ public interface UserJpaRepository extends ArchbaseCommonJpaRepository<UserEntit
      * Carrega o usuário com grupos e perfil já materializados.
      *
      * <p>Existe para o diagnóstico e a simulação, que montam um {@code AccessSubject} fora do
-     * escopo transacional de uma requisição autenticada. Sem o fetch join, tocar
+     * escopo transacional de uma requisição autenticada. Sem o grafo, tocar
      * {@code getGroups()} ali é {@code LazyInitializationException}.
      */
-    @Query("SELECT DISTINCT u FROM UserEntity u "
-            + "LEFT JOIN FETCH u.groups ug "
-            + "LEFT JOIN FETCH ug.group "
-            + "LEFT JOIN FETCH u.profile "
-            + "WHERE u.id = :id")
+    @EntityGraph(attributePaths = {"groups", "groups.group", "profile"})
+    @Query("SELECT u FROM UserEntity u WHERE u.id = :id")
     Optional<UserEntity> findByIdWithGroupsAndProfile(@Param("id") String id);
 
     /**
@@ -41,11 +39,8 @@ public interface UserJpaRepository extends ArchbaseCommonJpaRepository<UserEntit
     long countAdministrators();
 
     /** Idem, por e-mail — o identificador que quem opera o admin tem em mãos. */
-    @Query("SELECT DISTINCT u FROM UserEntity u "
-            + "LEFT JOIN FETCH u.groups ug "
-            + "LEFT JOIN FETCH ug.group "
-            + "LEFT JOIN FETCH u.profile "
-            + "WHERE u.email = :email")
+    @EntityGraph(attributePaths = {"groups", "groups.group", "profile"})
+    @Query("SELECT u FROM UserEntity u WHERE u.email = :email")
     Optional<UserEntity> findByEmailWithGroupsAndProfile(@Param("email") String email);
 
     boolean existsByEmail(String email);

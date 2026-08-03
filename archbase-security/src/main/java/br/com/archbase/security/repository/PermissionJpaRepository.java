@@ -4,6 +4,7 @@ package br.com.archbase.security.repository;
 import br.com.archbase.ddd.infraestructure.persistence.jpa.repository.ArchbaseCommonJpaRepository;
 import br.com.archbase.security.persistence.PermissionEntity;
 import br.com.archbase.security.persistence.ProfileEntity;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -38,21 +39,24 @@ public interface PermissionJpaRepository extends ArchbaseCommonJpaRepository<Per
      * @return Lista de permissões correspondentes
      */
     /**
-     * <b>JOIN FETCH, e não JOIN.</b> A decisão de acesso lê o nome de quem concedeu
+     * <b>O grafo não é decoração.</b> A decisão de acesso lê o nome de quem concedeu
      * ({@code p.security}) e o nível mínimo da capacidade ({@code p.action}), e as duas associações
-     * são {@code LAZY}. Sem o fetch, essas leituras acontecem sobre entidades já desanexadas —
-     * o interceptador não abre transação — e viram {@code LazyInitializationException}, que o
-     * {@code CustomAuthorizationManager} converte em negação. O sintoma seria o pior possível:
-     * <b>403 para quem tem a permissão</b>, funcionando só para administradores, e apenas em
-     * aplicações com {@code spring.jpa.open-in-view=false}.
+     * são {@code LAZY}. Sem carregá-las junto, essas leituras acontecem sobre entidades já
+     * desanexadas — o interceptador não abre transação — e viram
+     * {@code LazyInitializationException}, que o {@code CustomAuthorizationManager} converte em
+     * negação. O sintoma seria o pior possível: <b>403 para quem tem a permissão</b>, funcionando
+     * só para administradores, e apenas em aplicações com {@code spring.jpa.open-in-view=false}.
+     *
+     * <p>{@code @EntityGraph} em vez de {@code JOIN FETCH} no JPQL: o efeito é o mesmo e a
+     * condição de filtro fica separada da decisão de carregamento — usar um alias de
+     * {@code JOIN FETCH} no {@code WHERE} funciona no Hibernate, mas está fora do que a
+     * especificação garante.
      */
-    @Query("SELECT DISTINCT p FROM PermissionEntity p " +
-            "JOIN FETCH p.security u " +
-            "JOIN FETCH p.action a " +
-            "JOIN FETCH a.resource r " +
-            "WHERE u.id IN :securityIds " +
-            "AND a.name = :actionName " +
-            "AND r.name = :resourceName")
+    @EntityGraph(attributePaths = {"security", "action", "action.resource"})
+    @Query("SELECT p FROM PermissionEntity p "
+            + "WHERE p.security.id IN :securityIds "
+            + "AND p.action.name = :actionName "
+            + "AND p.action.resource.name = :resourceName")
     List<PermissionEntity> findBySecurityIdsAndActionNameAndResourceName(
             @Param("securityIds") Set<String> securityIds,
             @Param("actionName") String actionName,
@@ -65,11 +69,8 @@ public interface PermissionJpaRepository extends ArchbaseCommonJpaRepository<Per
      * @param securityIds Conjunto de IDs de segurança (usuário, grupos e perfil)
      * @return Lista de permissões com action e resource carregados
      */
-    @Query("SELECT DISTINCT p FROM PermissionEntity p " +
-            "JOIN FETCH p.security s " +
-            "JOIN FETCH p.action a " +
-            "JOIN FETCH a.resource r " +
-            "WHERE s.id IN :securityIds")
+    @EntityGraph(attributePaths = {"security", "action", "action.resource"})
+    @Query("SELECT p FROM PermissionEntity p WHERE p.security.id IN :securityIds")
     List<PermissionEntity> findAllBySecurityIds(@Param("securityIds") Set<String> securityIds);
 
     /**
@@ -79,11 +80,10 @@ public interface PermissionJpaRepository extends ArchbaseCommonJpaRepository<Per
      * permissões do usuário para filtrar em memória seria trocar uma consulta filtrada por uma
      * varredura — num tenant com milhares de concessões, a cada renderização.
      */
-    @Query("SELECT DISTINCT p FROM PermissionEntity p " +
-            "JOIN FETCH p.security s " +
-            "JOIN FETCH p.action a " +
-            "JOIN FETCH a.resource r " +
-            "WHERE s.id IN :securityIds AND r.name = :resourceName")
+    @EntityGraph(attributePaths = {"security", "action", "action.resource"})
+    @Query("SELECT p FROM PermissionEntity p "
+            + "WHERE p.security.id IN :securityIds "
+            + "AND p.action.resource.name = :resourceName")
     List<PermissionEntity> findAllBySecurityIdsAndResourceName(
             @Param("securityIds") Set<String> securityIds,
             @Param("resourceName") String resourceName);
@@ -98,13 +98,11 @@ public interface PermissionJpaRepository extends ArchbaseCommonJpaRepository<Per
      * <p>Consultar só as negações mantém o atalho barato: na esmagadora maioria das decisões esta
      * consulta devolve lista vazia, em vez de carregar todas as concessões do sujeito.
      */
-    @Query("SELECT DISTINCT p FROM PermissionEntity p "
-            + "JOIN FETCH p.security u "
-            + "JOIN FETCH p.action a "
-            + "JOIN FETCH a.resource r "
-            + "WHERE u.id IN :securityIds "
-            + "AND a.name = :actionName "
-            + "AND r.name = :resourceName "
+    @EntityGraph(attributePaths = {"security", "action", "action.resource"})
+    @Query("SELECT p FROM PermissionEntity p "
+            + "WHERE p.security.id IN :securityIds "
+            + "AND p.action.name = :actionName "
+            + "AND p.action.resource.name = :resourceName "
             + "AND p.effect = br.com.archbase.security.access.PermissionEffect.DENY")
     List<PermissionEntity> findDenialsBySecurityIdsAndActionNameAndResourceName(
             @Param("securityIds") Set<String> securityIds,
