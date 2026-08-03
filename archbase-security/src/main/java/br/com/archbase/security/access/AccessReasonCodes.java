@@ -78,6 +78,15 @@ public final class AccessReasonCodes {
     /** Uma permissão com {@code effect = DENY} alcançou o escopo pedido. */
     public static final String EXPLICIT_DENY = "EXPLICIT_DENY";
 
+    /**
+     * A tranca foi declarada, mas o avaliador correspondente não está no contexto.
+     *
+     * <p>É falha de <b>configuração da aplicação</b>, não de permissão — tipicamente os beans de
+     * {@code br.com.archbase.security} não foram varridos. Tem código próprio justamente para não
+     * ser confundido com falta de permissão por quem investiga.
+     */
+    public static final String RESTRICTION_EVALUATOR_MISSING = "RESTRICTION_EVALUATOR_MISSING";
+
     /** Há permissão, mas nenhuma cujo escopo alcance o tenant, a empresa ou o projeto pedidos. */
     public static final String OUT_OF_SCOPE = "OUT_OF_SCOPE";
 

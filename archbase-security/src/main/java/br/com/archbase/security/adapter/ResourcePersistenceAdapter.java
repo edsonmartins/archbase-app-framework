@@ -297,14 +297,12 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
 
     @Override
     public PermissionDto grantPermission(PermissionDto permissionDto) {
-        PermissionEntity entity = PermissionEntity.fromDomain(permissionDto.toDomain());
-
-        // O efeito não passa pelo objeto de domínio, que não o conhece. Definido aqui, sobre a
-        // entidade, é o que permite gravar uma NEGAÇÃO pelo mesmo endpoint que concede — sem ele,
-        // DENY só existiria por SQL direto.
-        entity.setEffect(permissionDto.getEffect());
-
-        return permissionRepository.save(entity).toDto();
+        // O efeito atravessa DTO → domínio → entidade como todos os demais campos. Uma versão
+        // anterior o atribuía direto na entidade, depois do fromDomain: funcionava, e deixava um
+        // campo fora do caminho que todos os outros percorrem — o tipo de exceção que o próximo a
+        // mexer aqui não tem como adivinhar.
+        return permissionRepository.save(
+                PermissionEntity.fromDomain(permissionDto.toDomain())).toDto();
     }
 
     @Override

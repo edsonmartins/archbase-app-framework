@@ -156,17 +156,23 @@ class ConsultaDeAutorizacaoComportamentoAtualTest {
         GroupEntity grupo = grupoSalvo("GESTORES-FROTA");
         ResourceEntity recurso = recursoSalvo(true);
 
+        // UMA ação, três permissões. É o modelo real: a capacidade existe uma vez no catálogo e é
+        // concedida a vários destinatários. A versão anterior deste teste criava uma ação por
+        // destinatário, todas com o mesmo nome sob o mesmo recurso — dado impossível, que só não
+        // falhava porque não havia restrição de unicidade.
+        ActionEntity acao = acaoSalva(recurso, true);
+
         UserEntity porPerfil = usuarioSalvo("user-perfil");
         porPerfil.setProfile(perfil);
         userRepository.save(porPerfil);
-        concessao(perfil, recurso, true);
+        concessaoDe(acao, perfil);
 
         UserEntity porGrupo = usuarioSalvo("user-grupo");
         vincular(porGrupo, grupo);
-        concessao(grupo, recurso, true);
+        concessaoDe(acao, grupo);
 
         UserEntity direto = usuarioSalvo("user-direto");
-        concessao(direto, recurso, true);
+        concessaoDe(acao, direto);
 
         assertThat(securityService.hasPermission(autenticacao(porPerfil), ACAO, RECURSO, null, null, null)).isTrue();
         assertThat(securityService.hasPermission(autenticacao(porGrupo), ACAO, RECURSO, null, null, null)).isTrue();
@@ -208,8 +214,16 @@ class ConsultaDeAutorizacaoComportamentoAtualTest {
     }
 
     private void concessao(SecurityEntity destinatario, ResourceEntity recurso, boolean acaoAtiva) {
-        ActionEntity acao = actionRepository.save(ActionEntity.builder()
-                .id("action-" + destinatario.getId())
+        concessaoDe(acaoSalva(recurso, acaoAtiva), destinatario);
+    }
+
+    /**
+     * A ação, criada uma vez por recurso. {@code (TENANT_ID, ID_RECURSO, NOME)} é único: duas ações
+     * de mesmo nome sob o mesmo recurso tornariam a decisão ambígua.
+     */
+    private ActionEntity acaoSalva(ResourceEntity recurso, boolean acaoAtiva) {
+        return actionRepository.save(ActionEntity.builder()
+                .id("action-" + recurso.getId())
                 .name(ACAO)
                 .description("Aprovar custo")
                 .resource(recurso)
@@ -217,7 +231,9 @@ class ConsultaDeAutorizacaoComportamentoAtualTest {
                 .createEntityDate(LocalDateTime.now())
                 .createdByUser("teste")
                 .build());
+    }
 
+    private void concessaoDe(ActionEntity acao, SecurityEntity destinatario) {
         permissionRepository.save(PermissionEntity.builder()
                 .id("permission-" + destinatario.getId())
                 .security(destinatario)

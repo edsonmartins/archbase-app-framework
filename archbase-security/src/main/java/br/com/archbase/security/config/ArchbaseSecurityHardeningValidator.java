@@ -119,6 +119,7 @@ public class ArchbaseSecurityHardeningValidator {
         validarConflitoDeRotaDoLogout(bloqueios);
         validarNivelDeAcesso(bloqueios, avisos);
         validarDiagnostico(avisos);
+        validarAcoesDuplicadas(avisos);
         coletarProtecoesInertes(avisos);
 
         avisos.forEach(aviso -> log.warn("[segurança] {}", aviso));
@@ -311,6 +312,30 @@ public class ArchbaseSecurityHardeningValidator {
         avisos.add("archbase.security.diagnostics.enabled=true: /api/v1/security/diagnostics/* está "
                 + "publicado. Os endpoints exigem isAdministrator, mas revelam a estrutura de acesso "
                 + "do tenant — mantenha ligado apenas enquanto durar a investigação.");
+    }
+
+    /**
+     * Ações duplicadas sob o mesmo recurso.
+     *
+     * <p>Duas ações de mesmo nome no mesmo recurso tornam a decisão ambígua: as duas casam a
+     * consulta de autorização, e se os pisos divergirem, qual vale passaria a depender da ordem que
+     * o banco devolvesse. O avaliador já resolve isso adotando o piso mais alto — um catálogo
+     * inconsistente não pode afrouxar a exigência —, mas a duplicata continua sendo defeito de
+     * dado, e quebra {@code findByActionNameAndResourceName}, que espera no máximo uma linha.
+     *
+     * <p>Aviso, e não bloqueio: recusar a subida de quem já tem o problema trocaria uma ambiguidade
+     * por uma indisponibilidade.
+     */
+    private void validarAcoesDuplicadas(List<String> avisos) {
+        long duplicadas = contar(
+                "SELECT COUNT(*) FROM (SELECT id_recurso, nome FROM seguranca_acao "
+                        + "GROUP BY id_recurso, nome HAVING COUNT(*) > 1) d");
+        if (duplicadas > 0) {
+            avisos.add(duplicadas + " par(es) recurso/ação duplicado(s) em SEGURANCA_ACAO. "
+                    + "A decisão adota o maior nível mínimo entre eles, mas a consulta por nome de "
+                    + "ação espera uma linha só e falha com duplicata. Remova as sobras e mantenha "
+                    + "as permissões apontando para a linha que sobrar.");
+        }
     }
 
     private void coletarProtecoesInertes(List<String> avisos) {

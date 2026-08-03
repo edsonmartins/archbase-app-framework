@@ -103,6 +103,7 @@ public class PermissionDto  {
 
 
         return Permission.builder()
+                .effect(this.effect)
                 .id(this.id)
                 .code(this.code)
                 .version(this.version)

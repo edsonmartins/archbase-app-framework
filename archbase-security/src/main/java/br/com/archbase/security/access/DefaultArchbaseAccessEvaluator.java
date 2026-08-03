@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -117,12 +118,23 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
             RestrictionEvaluator avaliador = restrictionEvaluators.get(restriction.kind());
 
             if (avaliador == null) {
-                // Tranca declarada sem quem a avalie é falha de configuração, não permissão.
-                chain.add(GateOutcome.denied(Gate.RESTRICTION, AccessReasonCodes.EMPTY_REQUIREMENT,
+                // Tranca declarada sem quem a avalie é falha de CONFIGURAÇÃO, não de permissão — e
+                // a mensagem precisa dizer isso. Antes ela falava em "requisito vazio", que manda
+                // quem investiga procurar o defeito na anotação; a causa quase sempre é o contexto
+                // não ter os beans do módulo, tipicamente por usar apenas o archbase-starter-security
+                // em vez do archbase-starter, ou por archbase.web.mvc.enabled=false.
+                log.error("Nenhum RestrictionEvaluator registrado para {}. Os beans de "
+                                + "br.com.archbase.security não estão no contexto: verifique se a "
+                                + "aplicação usa archbase-starter (e não apenas "
+                                + "archbase-starter-security) e se archbase.web.mvc.enabled não está "
+                                + "false. Enquanto isso, TODA anotação de restrição nega.",
+                        restriction.kind());
+                chain.add(GateOutcome.denied(Gate.RESTRICTION, AccessReasonCodes.RESTRICTION_EVALUATOR_MISSING,
                         "Nenhum RestrictionEvaluator registrado para " + restriction.kind()));
-                return AccessDecision.denied(Gate.RESTRICTION, AccessReasonCodes.EMPTY_REQUIREMENT,
-                        "Restrição " + restriction.kind() + " declarada, mas nenhum avaliador "
-                                + "correspondente está registrado.", chain);
+                return AccessDecision.denied(Gate.RESTRICTION, AccessReasonCodes.RESTRICTION_EVALUATOR_MISSING,
+                        "A restrição " + restriction.kind() + " não pôde ser avaliada: o avaliador "
+                                + "correspondente não está registrado no contexto. É configuração da "
+                                + "aplicação, não falta de permissão.", chain);
             }
 
             RestrictionEvaluator.RestrictionResult resultado =
@@ -147,8 +159,23 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
         // administrador que não tem o perfil, e sempre negou. Um atalho no topo transformaria a
         // isenção declarada por anotação em desvio global.
         if (subject.isAdministrator() && subject.enabled()) {
+
+            // A negação explícita alcança o administrador. Antes não alcançava: o atalho encerrava
+            // a decisão sem olhar o catálogo, então o admin aceitava criar um DENY sobre um
+            // administrador, gravava a linha, e ela não fazia efeito nenhum — a mesma promessa
+            // quebrada na interface que o campo `active` já tinha.
+            //
+            // Consulta apenas as negações, e só quando há capacidade a avaliar: na esmagadora
+            // maioria das decisões ela devolve vazio, então o atalho continua barato.
+            if (requirement.hasCapability()) {
+                PermissionEntity negacao = negacaoQueAlcanca(subject, requirement);
+                if (negacao != null) {
+                    return negado(chain, negacao, requirement);
+                }
+            }
+
             chain.add(GateOutcome.passed(Gate.GRANT, AccessReasonCodes.GRANTED_ADMINISTRATOR,
-                    "isAdministrator encerra a decisão sem consultar o catálogo"));
+                    "isAdministrator concede sem consultar concessões"));
             return AccessDecision.granted(AccessReasonCodes.GRANTED_ADMINISTRATOR,
                     "Acesso concedido pela flag de administrador.", null, null, chain);
         }
@@ -216,16 +243,16 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
         // uma pessoa de algo que o time inteiro tem, sem criar um grupo paralelo só para excluí-la.
         for (PermissionEntity permissao : noEscopo) {
             if (permissao.isDeny()) {
-                String quem = nomeDe(permissao);
-                chain.add(GateOutcome.denied(Gate.GRANT, AccessReasonCodes.EXPLICIT_DENY,
-                        "Negação explícita registrada em " + quem));
-                return AccessDecision.denied(Gate.GRANT, AccessReasonCodes.EXPLICIT_DENY,
-                        "Acesso negado explicitamente para " + requirement.capability()
-                                + " em " + quem + ". A negação vence qualquer concessão.", chain);
+                return negado(chain, permissao, requirement);
             }
         }
 
-        PermissionEntity concedente = noEscopo.get(0);
+        // Ordem estável. O catálogo não impede duas ações de mesmo nome sob o mesmo recurso, e sem
+        // critério explícito a permissão escolhida — e portanto o concedente exibido no
+        // diagnóstico — variaria entre execuções idênticas.
+        PermissionEntity concedente = noEscopo.stream()
+                .min(Comparator.comparing(PermissionEntity::getId, Comparator.nullsLast(String::compareTo)))
+                .orElse(noEscopo.get(0));
 
         // ---------------------------------------------------------------- 4. LEVEL
         //
@@ -233,7 +260,7 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
         // que só se conhece depois de consultá-la — e, para quem investiga, "ninguém te concedeu" é
         // resposta mais útil do que "seu nível é baixo" quando as duas coisas são verdade.
         if (levelPolicy != null && levelPolicy.isEnabled()) {
-            AccessLevel minimo = concedente.getAction() == null ? null : concedente.getAction().getMinimumLevel();
+            AccessLevel minimo = maiorMinimoEntre(noEscopo);
             AccessLevel doSujeito = levelPolicy.levelOf(subject);
 
             if (!doSujeito.reaches(minimo)) {
@@ -277,6 +304,58 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
 
     private boolean alcanca(String pedido, String daPermissao) {
         return pedido == null || daPermissao == null || pedido.equals(daPermissao);
+    }
+
+    /**
+     * A negação, entre as que alcançam o escopo pedido — ou {@code null} se não houver.
+     *
+     * <p>Usada no caminho do administrador, onde só as negações são consultadas.
+     */
+    private PermissionEntity negacaoQueAlcanca(AccessSubject subject, AccessRequirement requirement) {
+        List<PermissionEntity> negacoes = permissionRepository
+                .findDenialsBySecurityIdsAndActionNameAndResourceName(
+                        subject.securityIds(), requirement.action(), requirement.resource());
+
+        if (negacoes == null || negacoes.isEmpty()) {
+            return null;
+        }
+        return negacoes.stream()
+                .filter(p -> p.allowAllTenantsAndCompaniesAndProjects() || alcancaEscopo(p, requirement))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private AccessDecision negado(List<GateOutcome> chain, PermissionEntity negacao,
+                                  AccessRequirement requirement) {
+        String quem = nomeDe(negacao);
+        chain.add(GateOutcome.denied(Gate.GRANT, AccessReasonCodes.EXPLICIT_DENY,
+                "Negação explícita registrada em " + quem));
+        return AccessDecision.denied(Gate.GRANT, AccessReasonCodes.EXPLICIT_DENY,
+                "Acesso negado explicitamente para " + requirement.capability()
+                        + " em " + quem + ". A negação vence qualquer concessão.", chain);
+    }
+
+    /**
+     * O <b>maior</b> mínimo entre as permissões que alcançam o escopo.
+     *
+     * <p>Nada no catálogo impede duas ações de mesmo nome sob o mesmo recurso, com pisos
+     * diferentes. Escolher uma delas arbitrariamente tornaria o piso aplicado não-determinístico —
+     * a mesma requisição negaria ou permitiria conforme a ordem que o banco devolvesse. Diante de
+     * pisos em conflito, vale o mais alto: um catálogo inconsistente não pode <i>afrouxar</i> a
+     * exigência.
+     */
+    private AccessLevel maiorMinimoEntre(List<PermissionEntity> permissoes) {
+        AccessLevel maior = null;
+        for (PermissionEntity permissao : permissoes) {
+            AccessLevel doItem = permissao.getAction() == null ? null : permissao.getAction().getMinimumLevel();
+            if (AccessLevel.isUnset(doItem)) {
+                continue;
+            }
+            if (maior == null || doItem.ordinal() > maior.ordinal()) {
+                maior = doItem;
+            }
+        }
+        return maior;
     }
 
     private String nomeDe(PermissionEntity permissao) {

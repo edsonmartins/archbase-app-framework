@@ -89,6 +89,29 @@ public interface PermissionJpaRepository extends ArchbaseCommonJpaRepository<Per
             @Param("resourceName") String resourceName);
 
     /**
+     * Só as <b>negações</b> que alcançam esta capacidade.
+     *
+     * <p>Existe para o administrador. A flag {@code isAdministrator} encerra a decisão sem
+     * consultar o catálogo, e por isso uma negação explícita sobre um administrador não fazia
+     * efeito nenhum — o admin aceitava criá-la, ela ficava gravada, e era silenciosamente ignorada.
+     *
+     * <p>Consultar só as negações mantém o atalho barato: na esmagadora maioria das decisões esta
+     * consulta devolve lista vazia, em vez de carregar todas as concessões do sujeito.
+     */
+    @Query("SELECT DISTINCT p FROM PermissionEntity p "
+            + "JOIN FETCH p.security u "
+            + "JOIN FETCH p.action a "
+            + "JOIN FETCH a.resource r "
+            + "WHERE u.id IN :securityIds "
+            + "AND a.name = :actionName "
+            + "AND r.name = :resourceName "
+            + "AND p.effect = br.com.archbase.security.access.PermissionEffect.DENY")
+    List<PermissionEntity> findDenialsBySecurityIdsAndActionNameAndResourceName(
+            @Param("securityIds") Set<String> securityIds,
+            @Param("actionName") String actionName,
+            @Param("resourceName") String resourceName);
+
+    /**
      * Quantas concessões apontam para ação ou recurso inativo.
      *
      * <p>É o número que importa antes de ligar

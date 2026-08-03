@@ -20,6 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -251,6 +253,42 @@ class NivelENegacaoTest {
         }
 
         @Test
+        @DisplayName("com pisos em conflito, vale o MAIS ALTO")
+        void pisosEmConflitoValeOMaisAlto() {
+            // Nada no catálogo impede duas ações de mesmo nome sob o mesmo recurso. As duas casam a
+            // consulta, e escolher uma arbitrariamente tornaria o piso não-determinístico: a mesma
+            // requisição negaria ou permitiria conforme a ordem que o banco devolvesse. Um catálogo
+            // inconsistente não pode AFROUXAR a exigência.
+            UserEntity user = usuario("user-1");
+            user.setProfile(perfil("OPERACOES", AccessLevel.OPERATOR));
+
+            catalogoResponde(
+                    permissao(grupo("A"), AccessLevel.OPERATOR, null),
+                    permissao(grupo("B"), AccessLevel.SUPERVISOR, null));
+
+            assertThat(avaliador(true, "READER")
+                    .decide(AccessSubject.of(user), AccessRequirement.of(RECURSO, ACAO))
+                    .reasonCode())
+                    .isEqualTo(AccessReasonCodes.LEVEL_TOO_LOW);
+        }
+
+        @Test
+        @DisplayName("o concedente exibido é estável entre execuções idênticas")
+        void concedenteEstavel() {
+            UserEntity user = usuario("user-1");
+            catalogoResponde(
+                    permissao(grupo("ZZZ"), null, null),
+                    permissao(grupo("AAA"), null, null));
+
+            String primeiro = avaliador(false, "READER")
+                    .decide(AccessSubject.of(user), AccessRequirement.of(RECURSO, ACAO)).grantedByName();
+            String segundo = avaliador(false, "READER")
+                    .decide(AccessSubject.of(user), AccessRequirement.of(RECURSO, ACAO)).grantedByName();
+
+            assertThat(primeiro).isNotNull().isEqualTo(segundo);
+        }
+
+        @Test
         @DisplayName("administrador nunca é barrado pelo nível — é o topo da escala")
         void administradorNuncaBarrado() {
             UserEntity admin = usuario("admin-1");
@@ -325,6 +363,62 @@ class NivelENegacaoTest {
                     .decide(AccessSubject.of(usuario("user-1")),
                             AccessRequirement.of(RECURSO, ACAO, "tenant-a", null, null))
                     .allowed()).isFalse();
+        }
+
+        @Test
+        @DisplayName("a negação alcança o ADMINISTRADOR — a flag não a contorna")
+        void denyAlcancaAdministrador() {
+            // Antes, o atalho de administrador encerrava a decisão sem olhar o catálogo: o admin
+            // aceitava criar um DENY sobre um administrador, gravava a linha, e ela não fazia
+            // efeito nenhum. Uma promessa quebrada na interface, igual à do campo `active`.
+            UserEntity admin = usuario("admin-1");
+            admin.setIsAdministrator(true);
+
+            when(permissionRepository.findDenialsBySecurityIdsAndActionNameAndResourceName(
+                    anySet(), anyString(), anyString()))
+                    .thenReturn(List.of(negacao(usuario("admin-1"), null)));
+
+            AccessDecision decisao = avaliador(false, "READER")
+                    .decide(AccessSubject.of(admin), AccessRequirement.of(RECURSO, ACAO));
+
+            assertThat(decisao.allowed()).isFalse();
+            assertThat(decisao.reasonCode()).isEqualTo(AccessReasonCodes.EXPLICIT_DENY);
+        }
+
+        @Test
+        @DisplayName("sem negação, o administrador continua passando sem consultar concessões")
+        void administradorSemNegacaoNaoConsultaConcessoes() {
+            UserEntity admin = usuario("admin-1");
+            admin.setIsAdministrator(true);
+
+            when(permissionRepository.findDenialsBySecurityIdsAndActionNameAndResourceName(
+                    anySet(), anyString(), anyString()))
+                    .thenReturn(List.of());
+
+            AccessDecision decisao = avaliador(false, "READER")
+                    .decide(AccessSubject.of(admin), AccessRequirement.of(RECURSO, ACAO));
+
+            assertThat(decisao.allowed()).isTrue();
+            assertThat(decisao.reasonCode()).isEqualTo(AccessReasonCodes.GRANTED_ADMINISTRATOR);
+            verify(permissionRepository, never())
+                    .findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString());
+        }
+
+        @Test
+        @DisplayName("negação de outro tenant não alcança o administrador")
+        void denyForaDeEscopoNaoAlcancaAdministrador() {
+            UserEntity admin = usuario("admin-1");
+            admin.setIsAdministrator(true);
+
+            when(permissionRepository.findDenialsBySecurityIdsAndActionNameAndResourceName(
+                    anySet(), anyString(), anyString()))
+                    .thenReturn(List.of(negacao(usuario("admin-1"), "tenant-b")));
+
+            AccessDecision decisao = avaliador(false, "READER")
+                    .decide(AccessSubject.of(admin),
+                            AccessRequirement.of(RECURSO, ACAO, "tenant-a", null, null));
+
+            assertThat(decisao.allowed()).isTrue();
         }
 
         @Test

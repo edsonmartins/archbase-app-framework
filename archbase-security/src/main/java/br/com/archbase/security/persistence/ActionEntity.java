@@ -17,7 +17,19 @@ import java.time.LocalDateTime;
 @Entity
 @Getter
 @Setter
-@Table(name="SEGURANCA_ACAO")
+/**
+ * Uma capacidade do catálogo.
+ *
+ * <p>A restrição de unicidade em {@code (TENANT_ID, ID_RECURSO, NOME)} existe porque duas ações de
+ * mesmo nome sob o mesmo recurso tornam a autorização ambígua: as duas casam a consulta de decisão,
+ * e os pisos podem divergir. Vale para schemas gerados a partir das entidades. Em bancos já
+ * existentes ela <b>não</b> é aplicada pela migration — criar o índice sobre dados duplicados
+ * falharia, e derrubar a subida de quem já tem o problema seria trocar uma ambiguidade por uma
+ * indisponibilidade. O validador de subida reporta as duplicatas para que sejam resolvidas antes.
+ */
+@Table(name="SEGURANCA_ACAO", uniqueConstraints =
+        @UniqueConstraint(name = "uk_seguranca_acao_recurso_nome",
+                columnNames = {"TENANT_ID", "ID_RECURSO", "NOME"}))
 @AttributeOverrides({
         @AttributeOverride(name="id",
                 column=@Column(name="ID_ACAO", length = 40)),
