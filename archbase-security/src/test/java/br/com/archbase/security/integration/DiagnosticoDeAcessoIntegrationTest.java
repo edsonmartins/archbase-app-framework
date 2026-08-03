@@ -238,6 +238,30 @@ class DiagnosticoDeAcessoIntegrationTest {
     }
 
     @Test
+    @DisplayName("as chaves de permissionsBySecurityType são estáveis")
+    void chavesDoAgrupamentoPorTipoSaoEstaveis() {
+        // A consulta usa TYPE(p.security), e o que o Hibernate devolve ali — a classe da entidade
+        // ou o valor do discriminador — não é garantido pela especificação. São dois vocabulários
+        // possíveis para a MESMA resposta de API: User/Group/Profile de um lado,
+        // USUARIO/SEGURANCA_GRUPO/SEGURANCA_PERFIL do outro. Sem este teste, uma troca de versão do
+        // Hibernate mudaria o corpo do endpoint sem nada quebrar aqui — e quebraria a tela.
+        UserEntity user = usuario("user-1", false);
+        GroupEntity grupo = grupo("GESTORES-FROTA");
+        ProfileEntity perfil = perfil("SUPERVISOR");
+        configurar(user, grupo, perfil);
+
+        concessao(user, "direta", true);
+        concessao(grupo, "por_grupo", true);
+        concessao(perfil, "por_perfil", true);
+
+        assertThat(diagnostics.overview().permissionsBySecurityType())
+                .containsOnlyKeys("User", "Group", "Profile")
+                .containsEntry("User", 1L)
+                .containsEntry("Group", 1L)
+                .containsEntry("Profile", 1L);
+    }
+
+    @Test
     @DisplayName("o panorama conta recursos sem ação — registro preguiçoso, não defeito")
     void panoramaContaRecursosVazios() {
         resourceRepository.save(ResourceEntity.builder()
