@@ -93,6 +93,7 @@ public class ArchbaseActionSynchronizationService {
 
     protected void synchronizeActionsAndResources() {
         Set<Method> methods = reflections.getMethodsAnnotatedWith(HasPermission.class);
+        boolean houveMetodoSemRecurso = false;
 
         if (somenteRelatorio()) {
             log.warn("archbase.security.sync.mode=report — a sincronização NÃO vai escrever nada. "
@@ -108,9 +109,16 @@ public class ArchbaseActionSynchronizationService {
             if (StringUtils.isEmpty(resourceName)) {
                 // Sem recurso não há capacidade. Avisa apontando o método, em vez de gravar uma
                 // linha de catálogo com nome vazio que ninguém consegue conceder depois.
-                log.error("@HasPermission em {}#{} não declara resource, e a classe não tem "
-                                + "@ArchbaseResource. A capacidade não pôde ser registrada.",
+                // A resolução aqui parte de method.getDeclaringClass(). Com @HasPermission herdado
+                // de um controller abstrato e @ArchbaseResource na subclasse concreta, a varredura
+                // não enxerga o recurso — enquanto o interceptador, que parte da classe alvo do
+                // proxy, enxerga.
+                log.error("@HasPermission em {}#{} não declara resource, e a classe que o DECLARA "
+                                + "não tem @ArchbaseResource. A capacidade não pôde ser registrada. "
+                                + "Se @ArchbaseResource está numa subclasse, mova-a para a classe que "
+                                + "declara o método, ou declare resource na própria anotação.",
                         method.getDeclaringClass().getName(), method.getName());
+                houveMetodoSemRecurso = true;
                 continue;
             }
 
@@ -132,6 +140,18 @@ public class ArchbaseActionSynchronizationService {
 
             synchronizeAction(actionName, description, resource, minimumLevelOf(permission));
         }
+
+        if (houveMetodoSemRecurso) {
+            // Desativar exige a lista COMPLETA do que o código declara. Com pelo menos um método
+            // sem recurso resolvível, essa lista está incompleta — e desativar a partir dela
+            // derrubaria do catálogo capacidades que existem, só não foram reconhecidas. O
+            // resultado seria 403 permanente num endpoint que o admin nem consegue mais conceder.
+            log.error("Desativação de capacidades NÃO executada: há método(s) com @HasPermission "
+                    + "cujo recurso não pôde ser resolvido. Corrija os avisos acima primeiro — "
+                    + "desativar com a lista incompleta removeria capacidades válidas do catálogo.");
+            return;
+        }
+
         disableUnusedActionsAndResources();
     }
 

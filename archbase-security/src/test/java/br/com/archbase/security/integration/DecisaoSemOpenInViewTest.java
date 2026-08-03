@@ -132,6 +132,32 @@ class DecisaoSemOpenInViewTest {
     }
 
     @Test
+    @DisplayName("o principal como o filtro o entrega — relido do repositório, associações lazy")
+    void principalComoOFiltroEntrega() {
+        // ESTE é o caminho de produção, e os outros cenários deste arquivo NÃO o exercitavam: eles
+        // montavam o principal a partir do ArchbaseAccessSubjectLoader, que carrega tudo com
+        // @EntityGraph. O filtro JWT não faz isso — ele lê o usuário pelo repositório, a transação
+        // curta do Spring Data fecha, e o que chega ao interceptador tem `groups` e `profile`
+        // como proxies desanexados.
+        //
+        // Uma revisão apontou que o teste anterior era autoindulgente, e estava certa.
+        UserEntity salvo = usuario("user-1");
+        GroupEntity grupo = grupo("GESTORES-FROTA");
+        vincular(salvo, grupo);
+        concessao(grupo, ACAO, true);
+
+        UserEntity comoOFiltroEntrega = userRepository.findByEmail("user-1@exemplo.test").orElseThrow();
+
+        AccessDecision decisao = securityService.decide(
+                autenticacao(comoOFiltroEntrega), ACAO, RECURSO, null, null, null);
+
+        assertThat(decisao.allowed())
+                .as("o sujeito precisa ser resolvido mesmo com o principal desanexado")
+                .isTrue();
+        assertThat(decisao.grantedByName()).isEqualTo("GESTORES-FROTA");
+    }
+
+    @Test
     @DisplayName("hasPermission continua devolvendo true pela porta pública")
     void hasPermissionPelaPortaPublica() {
         UserEntity user = usuario("user-1");

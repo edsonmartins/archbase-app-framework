@@ -48,6 +48,7 @@ public class ProfileDto extends SecurityDto {
                 .lastModifiedByUser(profile.getLastModifiedByUser())
                 .name(profile.getName())
                 .description(profile.getDescription())
+				.accessLevel(profile.getAccessLevel())
                 .build();
     }
 
@@ -62,6 +63,7 @@ public class ProfileDto extends SecurityDto {
                 .lastModifiedByUser(this.lastModifiedByUser)
                 .name(this.name)
                 .description(this.description)
+				.accessLevel(this.accessLevel)
                 .build();
     }
 }

@@ -55,6 +55,7 @@ public class ActionDto {
 				.category(action.getCategory())
 				.active(action.getActive())
 				.actionVersion(action.getActionVersion())
+				.minimumLevel(action.getMinimumLevel())
 				.build();
 	}
 
@@ -73,6 +74,7 @@ public class ActionDto {
 				.category(this.category)
 				.active(this.active)
 				.actionVersion(this.actionVersion)
+				.minimumLevel(this.minimumLevel)
 				.build();
 	}
 }

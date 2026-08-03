@@ -99,6 +99,13 @@ public class PermissionEntity extends TenantPersistenceEntityBase {
                 .security(securityEntity)
                 .action(ActionEntity.fromDomain(permission.getAction()))
                 .effect(permission.getEffect())
+                // O escopo era perdido aqui: as três colunas chegavam nulas, e
+                // allowAllTenantsAndCompaniesAndProjects() passava a devolver true. Para uma
+                // concessão isso já alargava o alcance em silêncio; para uma NEGAÇÃO, transforma
+                // "bloquear no tenant A" em "bloquear em todos".
+                .tenantId1(permission.getTenantId())
+                .companyId(permission.getCompanyId())
+                .projectId(permission.getProjectId())
                 .build();
     }
 
@@ -125,6 +132,9 @@ public class PermissionEntity extends TenantPersistenceEntityBase {
                 .security(security)
                 .action(this.action.toDomain())
                 .effect(this.effectOrGrant())
+                .tenantId(this.tenantId)
+                .companyId(this.companyId)
+                .projectId(this.projectId)
                 .build();
     }
 
@@ -151,6 +161,9 @@ public class PermissionEntity extends TenantPersistenceEntityBase {
                 .security(security)
                 .action(this.action.toDto())
                 .effect(this.effectOrGrant())
+                .tenantId(this.tenantId)
+                .companyId(this.companyId)
+                .projectId(this.projectId)
                 .build();
     }
 

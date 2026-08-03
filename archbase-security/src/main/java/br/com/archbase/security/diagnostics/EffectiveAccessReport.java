@@ -12,6 +12,9 @@ import java.util.List;
  *                      segurança se aplica a esta conta
  * @param inert         quantas concessões deixariam de valer com
  *                      {@code archbase.security.permission.require-active=true}
+ * @param denied        quantas estão anuladas por uma negação explícita. Aparecem na lista porque
+ *                      foram concedidas em alguma origem — omiti-las esconderia metade da
+ *                      explicação de quem investiga
  */
 public record EffectiveAccessReport(
         String userId,
@@ -23,6 +26,7 @@ public record EffectiveAccessReport(
         int granted,
         int effective,
         int inert,
+        int denied,
         List<EffectiveCapability> capabilities) {
 
     public EffectiveAccessReport {

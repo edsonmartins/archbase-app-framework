@@ -31,6 +31,15 @@ public record EffectiveCapability(
         EFFECTIVE,
 
         /**
+         * Há uma <b>negação explícita</b> alcançando esta capacidade.
+         *
+         * <p>A linha aparece na lista porque foi concedida em alguma origem — e não vale, porque
+         * outra a nega. Omiti-la esconderia metade da explicação de quem investiga; contá-la como
+         * efetiva faria o diagnóstico dizer o oposto da decisão.
+         */
+        DENIED,
+
+        /**
          * A concessão existe, mas aponta para ação ou recurso inativo.
          *
          * <p>Hoje ela <b>conta</b> no caminho do {@code @HasPermission}, que não filtra

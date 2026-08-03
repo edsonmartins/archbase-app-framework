@@ -118,6 +118,8 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                 .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado."));
 
         Set<String> acoes = capabilityReader.grantedTo(subject, resourceName).stream()
+                // Negada não entra: a tela mostraria um botão que o backend recusa.
+                .filter(c -> c.situation() != EffectiveCapability.Situation.DENIED)
                 .filter(EffectiveCapability::actionActive)
                 .map(EffectiveCapability::action)
                 .collect(Collectors.toSet());

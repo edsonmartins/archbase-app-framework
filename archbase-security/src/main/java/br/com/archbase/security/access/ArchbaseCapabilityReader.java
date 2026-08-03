@@ -10,8 +10,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Lista o que foi concedido a um sujeito — <b>com a origem junto</b>.
@@ -57,6 +59,18 @@ public class ArchbaseCapabilityReader {
                 ? permissionRepository.findAllBySecurityIds(subject.securityIds())
                 : permissionRepository.findAllBySecurityIdsAndResourceName(
                         subject.securityIds(), resourceName);
+        // As capacidades negadas em QUALQUER origem. A negação vence a concessão, então uma
+        // linha concedida por um grupo e negada no usuário não pode ser listada como efetiva —
+        // seria a tela mostrando um botão que o backend recusa, e o diagnóstico contradizendo a
+        // decisão que ele existe para explicar.
+        Set<String> negadas = new HashSet<>();
+        for (PermissionEntity permissao : permissoes) {
+            if (permissao.isDeny() && permissao.getAction() != null
+                    && permissao.getAction().getResource() != null) {
+                negadas.add(chave(permissao));
+            }
+        }
+
         List<EffectiveCapability> capacidades = new ArrayList<>(permissoes.size());
 
         for (PermissionEntity permissao : permissoes) {
@@ -69,6 +83,15 @@ public class ArchbaseCapabilityReader {
             boolean recursoAtivo = Boolean.TRUE.equals(recurso.getActive());
             SecurityEntity destinatario = permissao.getSecurity();
 
+            EffectiveCapability.Situation situacao;
+            if (negadas.contains(chave(permissao))) {
+                situacao = EffectiveCapability.Situation.DENIED;
+            } else if (acaoAtiva && recursoAtivo) {
+                situacao = EffectiveCapability.Situation.EFFECTIVE;
+            } else {
+                situacao = EffectiveCapability.Situation.INERT;
+            }
+
             capacidades.add(new EffectiveCapability(
                     recurso.getName(),
                     acao.getName(),
@@ -77,13 +100,16 @@ public class ArchbaseCapabilityReader {
                     tipoDe(destinatario),
                     acaoAtiva,
                     recursoAtivo,
-                    acaoAtiva && recursoAtivo
-                            ? EffectiveCapability.Situation.EFFECTIVE
-                            : EffectiveCapability.Situation.INERT));
+                    situacao));
         }
 
         capacidades.sort(Comparator.comparing(EffectiveCapability::capability));
         return capacidades;
+    }
+
+    /** A capacidade que a linha aponta, para casar concessão com negação. */
+    private String chave(PermissionEntity permissao) {
+        return permissao.getAction().getResource().getName() + ":" + permissao.getAction().getName();
     }
 
     /**

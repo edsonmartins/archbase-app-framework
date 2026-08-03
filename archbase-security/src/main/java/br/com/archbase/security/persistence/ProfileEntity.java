@@ -66,6 +66,7 @@ public class ProfileEntity extends SecurityEntity {
         profileEntity.setLastModifiedByUser(profile.getLastModifiedByUser());
         profileEntity.setName(profile.getName());
         profileEntity.setDescription(profile.getDescription());
+        profileEntity.setAccessLevel(profile.getAccessLevel());
 
         return profileEntity;
     }
@@ -81,6 +82,7 @@ public class ProfileEntity extends SecurityEntity {
                 .lastModifiedByUser(this.getLastModifiedByUser())
                 .name(this.getName())
                 .description(this.getDescription())
+                .accessLevel(this.getAccessLevel())
                 .build();
     }
 

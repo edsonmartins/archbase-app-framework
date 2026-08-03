@@ -238,6 +238,43 @@ class DiagnosticoDeAcessoIntegrationTest {
     }
 
     @Test
+    @DisplayName("capacidade negada não é listada como efetiva — a lista concorda com a decisão")
+    void negadaNaoContaComoEfetiva() {
+        // O defeito que este teste fecha: o avaliador negava corretamente, e tanto a listagem que a
+        // tela consome quanto o relatório de efetivo continuavam reportando a capacidade como
+        // permitida. A tela mostrava o botão, o backend recusava o clique, e o diagnóstico — que
+        // existe justamente para explicar o acesso — dizia o oposto da decisão.
+        UserEntity user = usuario("user-1", false);
+        GroupEntity grupo = grupo("GESTORES-FROTA");
+        configurar(user, grupo, null);
+
+        ActionEntity acao = actionRepository.save(ActionEntity.builder()
+                .id("act-deny").name("excluir").description("Excluir")
+                .resource(recurso).active(true)
+                .createEntityDate(LocalDateTime.now()).createdByUser("teste").build());
+
+        // Concedida ao grupo, negada no usuário.
+        permissionRepository.save(PermissionEntity.builder()
+                .id("perm-grant").security(grupo).action(acao)
+                .createEntityDate(LocalDateTime.now()).createdByUser("teste").build());
+        permissionRepository.save(PermissionEntity.builder()
+                .id("perm-deny").security(user).action(acao)
+                .effect(br.com.archbase.security.access.PermissionEffect.DENY)
+                .createEntityDate(LocalDateTime.now()).createdByUser("teste").build());
+
+        assertThat(diagnostics.simulate("user-1", null, AccessRequirement.of(RECURSO, "excluir")))
+                .get()
+                .satisfies(d -> assertThat(d.allowed()).as("a decisão nega").isFalse());
+
+        EffectiveAccessReport relatorio = diagnostics.effective("user-1", null).orElseThrow();
+        assertThat(relatorio.denied()).isEqualTo(2);
+        assertThat(relatorio.effective()).isZero();
+        assertThat(relatorio.capabilities())
+                .allSatisfy(c -> assertThat(c.situation())
+                        .isEqualTo(EffectiveCapability.Situation.DENIED));
+    }
+
+    @Test
     @DisplayName("as chaves de permissionsBySecurityType são estáveis")
     void chavesDoAgrupamentoPorTipoSaoEstaveis() {
         // A consulta usa TYPE(p.security), e o que o Hibernate devolve ali — a classe da entidade

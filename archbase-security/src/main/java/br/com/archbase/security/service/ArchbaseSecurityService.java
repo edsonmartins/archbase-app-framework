@@ -4,6 +4,7 @@ import br.com.archbase.security.access.AccessDecision;
 import br.com.archbase.security.access.AccessRequirement;
 import br.com.archbase.security.access.AccessSubject;
 import br.com.archbase.security.access.ArchbaseAccessEvaluator;
+import br.com.archbase.security.access.ArchbaseAccessSubjectLoader;
 import br.com.archbase.security.access.DefaultArchbaseAccessEvaluator;
 import br.com.archbase.security.domain.dto.ResourcePermissionsDto;
 import br.com.archbase.security.domain.entity.User;
@@ -14,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
+import org.hibernate.Hibernate;
 import org.springframework.security.core.Authentication;
 
 import java.util.*;
@@ -32,6 +34,13 @@ public class ArchbaseSecurityService {
      */
     @Autowired(required = false)
     private ArchbaseAccessEvaluator accessEvaluator;
+
+    /**
+     * Recarrega o sujeito quando o principal chega com associações desanexadas. Opcional para que
+     * o serviço continue construível fora do contêiner.
+     */
+    @Autowired(required = false)
+    private ArchbaseAccessSubjectLoader subjectLoader;
 
     public boolean hasPermission(Authentication authentication, String action, String resource, String tenantId, String companyId, String projectId) {
         return decide(authentication, action, resource, tenantId, companyId, projectId).allowed();
@@ -67,7 +76,32 @@ public class ArchbaseSecurityService {
         if (authentication == null || !(authentication.getPrincipal() instanceof UserEntity userEntity)) {
             return null;
         }
-        return AccessSubject.of(userEntity);
+
+        // O principal chega do filtro de autenticação, que lê o usuário pelo repositório: a
+        // transação curta fecha e `groups` e `profile` viram proxies DESANEXADOS. Montar o sujeito
+        // a partir deles é LazyInitializationException — que o interceptador converte em negação.
+        // Com open-in-view ligado (o padrão do Spring Boot) a sessão da requisição esconde isso;
+        // com ele desligado, TODO usuário que pertença a um grupo recebe 403.
+        //
+        // Quando as associações já estão utilizáveis, nada é consultado. Quando não estão, o
+        // sujeito é recarregado com grafo — uma consulta, só onde ela é indispensável.
+        if (associacoesUtilizaveis(userEntity)) {
+            return AccessSubject.of(userEntity);
+        }
+
+        if (subjectLoader == null) {
+            // Fora do contêiner (testes unitários), as entidades são objetos comuns e não há
+            // proxy a inicializar.
+            return AccessSubject.of(userEntity);
+        }
+
+        return subjectLoader.byId(userEntity.getId()).orElse(null);
+    }
+
+    /** {@code true} quando grupos e perfil podem ser lidos sem ida ao banco. */
+    private boolean associacoesUtilizaveis(UserEntity user) {
+        return Hibernate.isInitialized(user.getGroups())
+                && Hibernate.isInitialized(user.getProfile());
     }
 
     /**

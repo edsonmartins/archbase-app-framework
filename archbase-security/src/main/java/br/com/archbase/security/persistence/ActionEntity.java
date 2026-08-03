@@ -26,6 +26,13 @@ import java.time.LocalDateTime;
  * existentes ela <b>não</b> é aplicada pela migration — criar o índice sobre dados duplicados
  * falharia, e derrubar a subida de quem já tem o problema seria trocar uma ambiguidade por uma
  * indisponibilidade. O validador de subida reporta as duplicatas para que sejam resolvidas antes.
+ *
+ * <p><b>Alcance real da restrição.</b> {@code TENANT_ID} é nulável, e PostgreSQL trata NULLs como
+ * distintos num índice único: numa instalação sem multi-tenancy, onde toda ação tem
+ * {@code tenant_id IS NULL}, a restrição <b>não impede</b> a duplicata. Fechar isso exige
+ * {@code NULLS NOT DISTINCT} (PostgreSQL 15+) ou um índice parcial, o que sai do que o mapeamento
+ * JPA consegue expressar. Por isso o aviso do validador não é redundante com a constraint: nas
+ * instalações single-tenant ele é a <b>única</b> proteção.
  */
 @Table(name="SEGURANCA_ACAO", uniqueConstraints =
         @UniqueConstraint(name = "uk_seguranca_acao_recurso_nome",
@@ -99,6 +106,7 @@ public class ActionEntity extends TenantPersistenceEntityBase {
         actionEntity.setDescription(action.getDescription());
         actionEntity.setResource(ResourceEntity.fromDomain(action.getResource()));
         actionEntity.setCategory(action.getCategory());
+        actionEntity.setMinimumLevel(action.getMinimumLevel());
         actionEntity.setActive(action.getActive());
         actionEntity.setActionVersion(action.getActionVersion());
         return actionEntity;
@@ -121,6 +129,7 @@ public class ActionEntity extends TenantPersistenceEntityBase {
                 .category(this.getCategory())
                 .active(this.getActive())
                 .actionVersion(this.getActionVersion())
+                .minimumLevel(this.getMinimumLevel())
                 .build();
     }
 

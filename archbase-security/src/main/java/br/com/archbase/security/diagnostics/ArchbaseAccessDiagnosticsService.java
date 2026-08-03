@@ -107,6 +107,8 @@ public class ArchbaseAccessDiagnosticsService {
         List<EffectiveCapability> capacidades = capabilityReader.grantedTo(subject);
         int inertes = (int) capacidades.stream()
                 .filter(c -> c.situation() == EffectiveCapability.Situation.INERT).count();
+        int negadas = (int) capacidades.stream()
+                .filter(c -> c.situation() == EffectiveCapability.Situation.DENIED).count();
 
         // Nomes, não identificadores: este relatório existe para dispensar a ida ao admin.
         List<String> grupos = subject.groupNames().stream().sorted().toList();
@@ -119,8 +121,9 @@ public class ArchbaseAccessDiagnosticsService {
                 subject.isAdministrator(),
                 subject.enabled(),
                 capacidades.size(),
-                capacidades.size() - inertes,
+                capacidades.size() - inertes - negadas,
                 inertes,
+                negadas,
                 capacidades);
     }
 

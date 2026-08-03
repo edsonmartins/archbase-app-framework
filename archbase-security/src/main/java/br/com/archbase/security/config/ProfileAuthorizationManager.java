@@ -48,30 +48,39 @@ public class ProfileAuthorizationManager implements AuthorizationManager<MethodI
             return new AuthorizationDecision(false);
         }
 
-        Authentication auth = authentication.get();
-        if (auth == null || !auth.isAuthenticated()) {
-            log.debug("Usuário não autenticado - acesso negado");
+        // Falha ao AVALIAR não é o mesmo que "não tem permissão", mas negar é a opção
+        // segura. O que não pode é escapar: sem este catch, um ArchbaseRoleResolver da
+        // aplicação que lance, ou uma associação lazy tocada fora de sessão, viram HTTP 500
+        // em vez de 403 — e o 500 vaza stack trace onde deveria haver uma negação limpa.
+        try {
+            Authentication auth = authentication.get();
+            if (auth == null || !auth.isAuthenticated()) {
+                log.debug("Usuário não autenticado - acesso negado");
+                return new AuthorizationDecision(false);
+            }
+
+            Restriction restricao = Restriction.profile(
+                    Arrays.asList(requireProfile.value()),
+                    requireProfile.requireAll(),
+                    requireProfile.allowSystemAdmin(),
+                    requireProfile.requireActiveUser(),
+                    requireProfile.message());
+
+            String origem = AuthorizationAdapters.origin(methodInvocation);
+
+            AccessRequirement requisito = requireProfile.resource().isEmpty()
+                    ? AccessRequirement.ofRestrictions(origem, restricao)
+                    : AccessRequirement.ofRestrictionsAndCapability(origem,
+                            requireProfile.resource(),
+                            requireProfile.action().isEmpty() ? "READ" : requireProfile.action(),
+                            restricao);
+
+            AccessDecision decisao = securityService.decide(auth, requisito);
+            AuthorizationAdapters.log(log, decisao, origem);
+            return new AuthorizationDecision(decisao.allowed());
+        } catch (Exception e) {
+            log.error("Erro ao avaliar @RequireProfile em {}", AuthorizationAdapters.origin(methodInvocation), e);
             return new AuthorizationDecision(false);
         }
-
-        Restriction restricao = Restriction.profile(
-                Arrays.asList(requireProfile.value()),
-                requireProfile.requireAll(),
-                requireProfile.allowSystemAdmin(),
-                requireProfile.requireActiveUser(),
-                requireProfile.message());
-
-        String origem = AuthorizationAdapters.origin(methodInvocation);
-
-        AccessRequirement requisito = requireProfile.resource().isEmpty()
-                ? AccessRequirement.ofRestrictions(origem, restricao)
-                : AccessRequirement.ofRestrictionsAndCapability(origem,
-                        requireProfile.resource(),
-                        requireProfile.action().isEmpty() ? "READ" : requireProfile.action(),
-                        restricao);
-
-        AccessDecision decisao = securityService.decide(auth, requisito);
-        AuthorizationAdapters.log(log, decisao, origem);
-        return new AuthorizationDecision(decisao.allowed());
     }
 }
