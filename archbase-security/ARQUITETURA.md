@@ -1,53 +1,142 @@
 # Arquitetura do archbase-security
 
-Referência de como o módulo funciona e como aplicá-lo. Escrito a partir do código, não da
-documentação anterior — onde os dois divergem, este documento aponta a divergência
-explicitamente na seção [Documentação × código](#documentação--código).
+Referência de como o módulo decide quem pode o quê — e de como aplicá-lo sem tentativa e erro.
+Escrito a partir do código.
+
+> **Se você tem cinco minutos**, leia [O modelo em uma imagem](#o-modelo-em-uma-imagem) e
+> [Qual anotação usar](#qual-anotação-usar). O resto é referência.
 
 ---
 
-## Por que gera confusão
+## Comece por aqui
 
-O módulo tem **quatro sistemas de autorização independentes** que coexistem, e nada no código
-diz qual usar quando. Uma requisição pode ser barrada em dois lugares diferentes, por motivos
-diferentes, com respostas diferentes:
+| Você quer… | Use | Seção |
+|---|---|---|
+| Proteger um endpoint por uma capacidade de negócio | `@HasPermission` | [As anotações](#as-anotações-o-que-cada-uma-declara) |
+| Impedir que uma capacidade sensível valha para quem não deveria | `minimumLevel` + nível no perfil | [Nível de acesso](#nível-de-acesso) |
+| Tirar uma pessoa de algo que o time inteiro tem | `effect = DENY` na permissão | [Negação explícita](#negação-explícita) |
+| Restringir por perfil, papel ou persona | `@RequireProfile` / `@RequireRole` / `@RequirePersona` | [As anotações](#as-anotações-o-que-cada-uma-declara) |
+| Entender por que fulano recebeu 403 | Endpoints de diagnóstico | [Diagnóstico](#diagnóstico-por-que-esta-pessoa-não-passou) |
+| Ligar uma proteção sem quebrar produção | Flags + validador de subida | [Configuração](#configuração) |
 
-| Camada | Onde decide | Granularidade | Configurada por |
-|---|---|---|---|
-| **1. Cadeia HTTP** | `SecurityFilterChain` | Caminho de URL | `archbase.security.whitelist` + `configureAuthorizationRules` |
-| **2. Anotações de método** | 5 `AuthorizationManager` | Método Java | `@HasPermission`, `@RequireProfile`, `@RequireRole`, `@RequirePersona` |
-| **3. Bypass de administrador** | `ArchbaseSecurityService` | Global | Campo `isAdministrator` do usuário |
-| **4. Isolamento de tenant** | Filtro JWT + `@TenantId` | Linha do banco | Claim do token vs. header |
+---
 
-Some disso três fontes concretas de erro, todas verificadas no código:
+## O modelo em uma imagem
 
-1. **`hasRole()` e `hasAuthority()` do Spring nunca funcionam.** `UserEntity.getAuthorities()`
-   devolve lista vazia. Um `@PreAuthorize("hasRole('ADMIN')")` **nega sempre**, silenciosamente.
-   Autorização aqui é só pelas anotações do Archbase.
-2. **`@HasPermission` exige `description`**, que não tem valor padrão. Todo exemplo da
-   documentação antiga omite — e **não compila**.
-3. **Oito propriedades são obrigatórias** e sem elas a aplicação não sobe, com erro de
-   placeholder que não indica segurança. Ver [Configuração mínima](#configuração-mínima).
+Toda decisão de acesso passa por **cinco portões, na mesma ordem, sempre**. E há uma regra que
+organiza tudo:
+
+> **Os portões 1 a 4 só sabem NEGAR. Só o portão 5 CONCEDE.**
+
+```mermaid
+flowchart TD
+    S([Sujeito<br/>usuário · grupos · perfil · nível]) --> G1
+    R([Requisito<br/>capacidade · escopo · trancas]) --> G1
+
+    G1{"1 · IDENTITY<br/>principal resolvível?"}
+    G1 -->|não| D1([NEGA<br/>PRINCIPAL_NOT_SUPPORTED])
+    G1 -->|sim| G2
+
+    G2{"2 · SCOPE<br/>tenant · company · project"}
+    G2 -->|não alcança| D2([NEGA<br/>OUT_OF_SCOPE])
+    G2 -->|alcança| G3
+
+    G3{"3 · RESTRICTION<br/>@RequireRole @RequireProfile @RequirePersona"}
+    G3 -->|não satisfaz| D3([NEGA<br/>PROFILE_NOT_MATCHED…])
+    G3 -->|satisfaz ou<br/>não há tranca| G4
+
+    G4{"4 · LEVEL<br/>nível ≥ mínimo da capacidade"}
+    G4 -->|não alcança| D4([NEGA<br/>LEVEL_TOO_LOW])
+    G4 -->|alcança| G5
+
+    G5{"5 · GRANT<br/>catálogo: perfil ∪ grupos ∪ direto"}
+    G5 -->|nenhuma concessão| D5([NEGA<br/>NO_GRANT])
+    G5 -->|negação explícita| D6([NEGA<br/>EXPLICIT_DENY])
+    G5 -->|concessão válida| OK([PERMITE<br/>com a origem registrada])
+
+    style D1 fill:#a8261c,color:#fff
+    style D2 fill:#a8261c,color:#fff
+    style D3 fill:#a8261c,color:#fff
+    style D4 fill:#a8261c,color:#fff
+    style D5 fill:#a8261c,color:#fff
+    style D6 fill:#a8261c,color:#fff
+    style OK fill:#1b6b47,color:#fff
+```
+
+### Por que essa regra resolve a confusão
+
+Restrição e catálogo **nunca competem**, porque fazem coisas de natureza diferente: uma tranca, a
+outra abre.
+
+- Uma tranca fechada **não é contornável** por concessão nenhuma. Ter a capacidade atribuída no
+  admin não basta se o perfil errado bateu no portão 3, ou se o nível não alcança no portão 4.
+- Passar por todas as trancas **não abre nada sozinho**. Sem concessão no catálogo, o acesso é
+  negado no portão 5.
+
+Não há "qual caminho seguir": os dois são usados, cada um no seu papel.
+
+### Quem decide
+
+Um objeto só: `ArchbaseAccessEvaluator`.
+
+```java
+public interface ArchbaseAccessEvaluator {
+    AccessDecision decide(AccessSubject subject, AccessRequirement requirement);
+}
+```
+
+**As anotações não decidem — elas declaram.** Cada uma monta um `AccessRequirement` e delega.
+`ArchbaseSecurityService.hasPermission()` continua existindo e devolvendo `boolean`, mas por baixo
+é o mesmo avaliador.
+
+E a decisão carrega o **motivo**:
+
+```java
+public record AccessDecision(
+    boolean allowed,
+    Gate deniedAt,            // em qual portão parou
+    String reasonCode,        // LEVEL_TOO_LOW, EXPLICIT_DENY, NO_GRANT, OUT_OF_SCOPE…
+    String message,           // legível, para o log e para o 403
+    String grantedBy,         // id do perfil/grupo/usuário que concedeu
+    String grantedByName,
+    List<GateOutcome> chain   // a cadeia inteira
+) {}
+```
+
+É isso que permite responder *"por que essa pessoa não passou?"* sem abrir grupo por grupo no admin.
+
+### O administrador
+
+`isAdministrator` **não é um desvio no topo**. São duas propriedades do sujeito:
+
+- nível `TENANT_ADMIN`, o topo da escala — nunca barrado pelo portão 4;
+- concessão universal no portão 5 — não consulta o catálogo.
+
+Consequência: um administrador continua sujeito a **escopo** (portão 2) e a **restrição explícita**
+(portão 3). Um `@RequireProfile(allowSystemAdmin = false)` nega o administrador que não tem o
+perfil — e sempre negou.
 
 ---
 
 ## Caminho de uma requisição
+
+Antes de chegar aos portões, a requisição atravessa a cadeia HTTP.
 
 ```mermaid
 flowchart TD
     REQ([Requisição HTTP]) --> F1[ArchbaseJwtAuthenticationFilter]
 
     F1 --> CRED{Que credencial<br/>foi apresentada?}
-    CRED -->|Bearer JWT| JWT[Valida assinatura<br/>+ linha viva em<br/>SEGURANCA_TOKEN_ACESSO<br/>+ token_use = access]
-    CRED -->|UUID<br/>Bearer ou cru| API[Valida em<br/>SEGURANCA_TOKEN_API<br/>hash, ativo, não expirado]
-    CRED -->|?token= na URL| QP[Mesma validação<br/>desligável por<br/>accept-token-query-param]
+    CRED -->|Bearer JWT| JWT["Valida assinatura<br/>+ linha viva em SEGURANCA_TOKEN_ACESSO<br/>+ token_use = access"]
+    CRED -->|UUID| API["Valida em SEGURANCA_TOKEN_API<br/>hash, ativo, não expirado"]
+    CRED -->|"?token= na URL"| QP["Mesma validação<br/>desligável por accept-token-query-param"]
     CRED -->|nenhuma| ANON[Segue anônimo]
 
-    JWT --> AUTH[SecurityContext preenchido<br/>principal = UserEntity]
+    JWT --> AUTH["SecurityContext preenchido<br/>principal = UserEntity"]
     API --> AUTH
     QP --> AUTH
 
-    AUTH --> TEN{Tenant do token<br/>= X-TENANT-ID?}
+    AUTH --> TEN{"Tenant do token<br/>= X-TENANT-ID?"}
     ANON --> TEN
     TEN -->|diverge| F403([403])
     TEN -->|confere ou ausente| CHAIN[Regras da cadeia HTTP]
@@ -60,50 +149,395 @@ flowchart TD
 
     MVC --> ANOT{Método tem<br/>anotação Archbase?}
     ANOT -->|não| EXEC([Executa])
-    ANOT -->|sim| MGR[AuthorizationManager<br/>correspondente]
-    MGR -->|nega| F403B([403])
-    MGR -->|permite| EXEC
+    ANOT -->|sim| CORE["ArchbaseAccessEvaluator<br/>os cinco portões"]
+    CORE -->|nega| F403B([403 com motivo])
+    CORE -->|permite| EXEC
 
-    style F403 fill:#c62828,color:#fff
-    style F403B fill:#c62828,color:#fff
-    style F401 fill:#ef6c00,color:#fff
-    style EXEC fill:#2e7d32,color:#fff
+    style F403 fill:#a8261c,color:#fff
+    style F403B fill:#a8261c,color:#fff
+    style F401 fill:#8a5a08,color:#fff
+    style EXEC fill:#1b6b47,color:#fff
 ```
 
-**O ponto que mais confunde:** a whitelist (camada 1) libera o *caminho*, mas **não desliga** as
-anotações de método (camada 2). Um endpoint na whitelist com `@HasPermission` continua exigindo
-permissão — e como não há usuário autenticado, nega. As duas camadas se somam, nunca se
-substituem.
+**O ponto que mais confunde:** a whitelist libera o *caminho*, mas **não desliga** as anotações de
+método. Um endpoint na whitelist com `@HasPermission` continua exigindo permissão — e, sem usuário
+autenticado, nega. As duas camadas se somam, nunca se substituem.
+
+**Segundo ponto:** `hasRole()` e `hasAuthority()` do Spring **nunca funcionam** aqui.
+`UserEntity.getAuthorities()` devolve lista vazia, então `@PreAuthorize("hasRole('ADMIN')")` **nega
+sempre**, em silêncio. Autorização neste módulo é pelas anotações do Archbase.
 
 ---
 
-## Modelo de permissão
+## As anotações: o que cada uma declara
 
-Usuário, grupo e perfil são **a mesma tabela** (`SEGURANCA`), separados por discriminador. É isso
-que permite conceder permissão a qualquer um dos três de forma uniforme.
+| Anotação | Declara | Pode conceder? | Precisa de |
+|---|---|---|---|
+| `@HasPermission` | uma **capacidade** (recurso + ação) | **sim** — é a única | catálogo alimentado |
+| `@RequireProfile` | tranca por perfil | não, só nega | o usuário ter perfil |
+| `@RequireRole` | tranca por papel do domínio | não, só nega | um `ArchbaseRoleResolver` |
+| `@RequirePersona` | tranca por persona | não, só nega | mapeamento perfil → persona |
+| `@ArchbaseResource` | o recurso da classe | — | vai na **classe** |
+
+### `@HasPermission` — a que concede
+
+```java
+@RestController
+@RequestMapping("/api/v1/ordens-servico")
+@ArchbaseResource(value = "tms.ordemservico", description = "Ordem de serviço")
+public class OrdemServicoController {
+
+    @GetMapping
+    @HasPermission(action = "view", description = "Listar ordens de serviço")
+    public ResponseEntity<Page<OrdemServicoDto>> listar(...) { ... }
+
+    @PostMapping("/{id}/iniciar")
+    @HasPermission(action = "iniciar_execucao", description = "Iniciar a execução da OS",
+                   minimumLevel = AccessLevel.OPERATOR)
+    public ResponseEntity<Void> iniciar(@PathVariable String id) { ... }
+
+    @PostMapping("/{id}/aprovar-custo")
+    @HasPermission(action = "aprovar_custo", description = "Aprovar o custo da OS",
+                   minimumLevel = AccessLevel.SUPERVISOR)
+    public ResponseEntity<Void> aprovarCusto(@PathVariable String id) { ... }
+}
+```
+
+Três coisas importantes nesse bloco:
+
+1. **`description` é obrigatória.** Não é burocracia: o texto vira a descrição da Action no
+   catálogo, e é o que quem administra lê na hora de conceder. Sem valor padrão — por isso todo
+   exemplo antigo que omite o campo **não compila**.
+2. **`@ArchbaseResource` na classe** evita repetir o recurso. Só o recurso é herdado, nunca a ação —
+   herdar a ação faria um `DELETE` exigir a mesma capacidade de um `GET`.
+3. **`minimumLevel` é semente, não lei.** Gravado no primeiro registro da ação e nunca sobrescrito
+   depois; a partir daí quem manda é o admin. O desenvolvedor declara o piso que conhece, a operação
+   ajusta o que ela conhece melhor — sem deploy.
+
+`@HasPermission` é `@Target(METHOD)`. Na classe, não compila — e é de propósito.
+
+### As três trancas
+
+```java
+// Só quem tem o perfil SUPERVISOR passa. Administrador é isento por padrão.
+@RequireProfile("SUPERVISOR")
+public void fecharCompetencia() { ... }
+
+// Administrador NÃO é isento: a tranca vale para todos.
+@RequireProfile(value = "AUDITORIA", allowSystemAdmin = false)
+public void exportarTrilha() { ... }
+
+// Papel do domínio da aplicação — exige ArchbaseRoleResolver registrado.
+@RequireRole("GESTOR_FROTA")
+public void reatribuirVeiculo() { ... }
+```
+
+Detalhes que mudam o resultado:
+
+- **`allowSystemAdmin` nasce `true`** nas três, e isenta o administrador **daquela tranca
+  específica**. É isenção local, não desvio global.
+- **A ordem de checagem difere entre elas.** `@RequireRole` verifica conta desativada **antes** da
+  isenção de administrador; `@RequireProfile` e `@RequirePersona`, depois. É comportamento
+  histórico, preservado de propósito.
+- **O usuário tem um perfil só.** `requireAll = true` com dois perfis é insatisfazível por
+  construção.
+- **`@RequirePersona` traz uma tabela fixa** de outro domínio embutida no framework
+  (`PLATFORM_ADMIN`, `STORE_ADMIN`, `CUSTOMER`, `DRIVER`); fora dela, compara o nome da persona com
+  o do perfil. `context` e `contextData` **não são lidos**. Evite em código novo.
+
+### Uma tranca sozinha concede
+
+Este é o ponto que mais gera engano:
+
+```java
+@RequireProfile("SUPERVISOR")   // sem @HasPermission
+public void fecharCompetencia() { ... }
+```
+
+Sem capacidade declarada, **não há catálogo a consultar** — então passar na tranca é a decisão
+inteira. Qualquer pessoa com o perfil `SUPERVISOR` executa, sem que ninguém tenha concedido nada.
+
+Isso é legítimo quando a regra é mesmo "só o perfil X". Mas **não é** um substituto de
+`@HasPermission`: não aparece no catálogo, não pode ser concedido ou revogado pelo admin, e não
+muda sem deploy.
+
+### Combinando
+
+Anotações somam — todas precisam permitir. Não existe OR entre elas.
+
+```java
+@PostMapping("/{id}/cancelar")
+@RequireProfile(value = "SUPERVISOR", allowSystemAdmin = false)
+@HasPermission(action = "cancelar", description = "Cancelar a OS",
+               minimumLevel = AccessLevel.SUPERVISOR)
+public ResponseEntity<Void> cancelar(@PathVariable String id) { ... }
+```
+
+Lê-se: *precisa ser SUPERVISOR (mesmo sendo admin), precisa ter a capacidade concedida, e precisa
+alcançar o nível.*
+
+### Qual usar
+
+```mermaid
+flowchart TD
+    Q0{A regra muda sem deploy,<br/>por cliente ou por pessoa?}
+    Q0 -->|sim| HP["@HasPermission<br/>é a resposta padrão"]
+    Q0 -->|não, é estrutural| Q1{Depende de quê?}
+
+    Q1 -->|perfil do usuário| RP["@RequireProfile"]
+    Q1 -->|papel do domínio<br/>da aplicação| RR["@RequireRole<br/>+ ArchbaseRoleResolver"]
+    Q1 -->|persona de negócio| RPE["@RequirePersona<br/>evite em código novo"]
+
+    HP --> COMB["Some uma tranca quando<br/>a capacidade for sensível<br/>e não puder depender só<br/>de quem a atribuiu"]
+
+    style HP fill:#0b6c74,color:#fff
+    style RPE fill:#8a5a08,color:#fff
+```
+
+**Regra de bolso:** comece sempre por `@HasPermission`. Acrescente uma tranca quando a resposta a
+*"e se alguém atribuir isso para quem não devia?"* for inaceitável.
+
+---
+
+## O catálogo: Resource e Action
+
+`@HasPermission` não é só uma checagem: é uma **declaração**. A anotação alimenta um catálogo no
+banco, e é desse catálogo que as permissões são concedidas.
+
+Existem **dois catálogos**, separados pelo campo `TIPO` do recurso, com ciclos de vida opostos:
+
+```mermaid
+flowchart TD
+    subgraph API["TIPO = API — alimentado pelo código"]
+        A1["@HasPermission<br/>action · description · minimumLevel"] --> A2[ArchbaseActionSynchronizationService]
+        A2 -->|"@PostConstruct, na subida"| A3{scan-packages<br/>configurado?}
+        A3 -->|não| A4([Nada acontece.<br/>Só um WARN no log])
+        A3 -->|sim| A5[Varre os pacotes]
+        A5 --> A6[Cria Resource e Action<br/>que faltam]
+        A5 --> A7[DESATIVA Action e Resource<br/>sem anotação correspondente]
+    end
+
+    subgraph VIEW["TIPO = VIEW — alimentado pela tela"]
+        V1["registerAction no @archbase/security<br/>→ POST /api/v1/resource/register"] --> V2[Cria Resource + Actions]
+        V2 --> V3([Menu, aba, coluna, botão —<br/>registro na 1ª renderização])
+    end
+
+    A6 --> CAT[(Catálogo)]
+    A7 --> CAT
+    V2 --> CAT
+    CAT --> G["POST /api/v1/resource/permissions<br/>concede Action a User, Group ou Profile"]
+    G --> CHK[Portão 5 · GRANT]
+
+    style A4 fill:#a8261c,color:#fff
+    style A7 fill:#8a5a08,color:#fff
+```
+
+**Os dois planos são simétricos e propositais.** `registerAction()` no frontend é o irmão de
+`@HasPermission` no backend; nos dois a descrição é obrigatória, pela mesma razão. Tratar uma
+affordance de tela — menu, aba, coluna, botão — como ação é o desenho pretendido, e é o que dá
+controle fino sem código.
+
+### A armadilha que já causou incidente
+
+`disableUnusedActionsAndResources` desativa toda entrada de tipo `API` sem anotação correspondente.
+Numa aplicação que **ainda não anotou nada**, ela não encontra capacidade alguma e desativa o
+catálogo API inteiro.
+
+Isso aconteceu: no gestor-rq, 8 recursos criados por seed foram desativados por `archbase` em
+31/07/2026, sem que ninguém tivesse pedido.
+
+**Antes de ligar o primeiro `@HasPermission` num sistema existente:**
+
+```properties
+archbase.security.sync.mode=report
+```
+
+Nesse modo a varredura **não escreve nada** — apenas registra em log o que faria, incluindo a lista
+nominal do que desativaria. Leia, confirme, e só então volte para `apply`.
+
+### As outras armadilhas
+
+**1. Sem `archbase.security.scan-packages`, nada é sincronizado.** Padrão vazio; quando vazia, um
+`WARN` e retorna. O sintoma é desconcertante: métodos anotados, catálogo vazio, e `@HasPermission`
+**negando todo mundo** — porque sem Action não existe permissão que possa apontar para ela.
+
+```properties
+archbase.security.scan-packages=com.suaempresa.seuapp
+```
+
+**2. A varredura roda só no tenant padrão.** `Resource` e `Action` são `@TenantId`, e o
+`@PostConstruct` acontece fora de requisição — o resolvedor cai em `archbase.app.tenant.default.id`.
+Numa aplicação multi-tenant, os demais tenants ficam **sem catálogo API**. Popule por migration ou
+por `/resource/register` nesse cenário. *(Limitação conhecida — ver [Em aberto](#em-aberto).)*
+
+**3. `active` não corta acesso — por padrão.** A consulta de autorização casa por nome de ação e
+recurso, sem filtrar `active`. Uma Action desativada **continua concedendo** no caminho do
+`@HasPermission`.
+
+E há uma assimetria que surpreende: a listagem que o **frontend** consome sempre filtrou
+`action.active`. Ou seja, uma concessão sobre ação inativa é **invisível na tela** e **honrada pelo
+backend**. No gestor-rq isso alcança 1.279 de 2.229 concessões — 57%.
+
+Para alinhar os dois lados:
+
+```properties
+archbase.security.permission.require-active=true
+```
+
+**Ligar isso tira acesso.** Rode o relatório de efetivo antes — ver [Diagnóstico](#diagnóstico-por-que-esta-pessoa-não-passou).
+
+**4. Renomear a anotação deixa a permissão órfã.** Trocar `action = "view"` por `action = "listar"`
+cria uma Action nova, sem nenhuma permissão concedida — o método passa a negar todo mundo. Renomear
+é, na prática, revogar.
+
+**5. O espaço de nomes é único entre os dois catálogos.** `ensureResourceExists` busca só pelo nome,
+sem filtrar tipo. Trate nomes de recurso como únicos, independentemente de `VIEW` ou `API`.
+
+### Concessão
+
+Conceder é sempre pelo **id da Action**, nunca pelo nome:
+
+```
+GET  /api/v1/resource/permissions                     lista o catálogo com os ids
+POST /api/v1/resource/permissions                     { actionId, securityId, type }
+                                                      type = USER | GROUP | PROFILE
+DELETE /api/v1/resource/permissions/{id}              revoga
+GET  /api/v1/resource/permissions/{resourceName}      o que o usuário logado pode aqui
+```
+
+Como `User`, `Group` e `Profile` são a mesma tabela, `securityId` aceita qualquer um dos três — é o
+campo `type` que diz onde procurar.
+
+---
+
+## Nível de acesso
+
+O portão 4 responde a uma pergunta que o catálogo sozinho não responde: *e se alguém atribuir uma
+capacidade sensível a quem não deveria tê-la?*
+
+```java
+public enum AccessLevel { NONE, READER, OPERATOR, SUPERVISOR, TENANT_ADMIN }
+```
+
+> **Piso, não substituto.** Alcançar o nível **não concede nada**. O acesso continua dependendo de
+> permissão no catálogo. O nível apenas **impede** que uma concessão indevida valha.
+
+### De onde sai o nível de uma pessoa
+
+```mermaid
+flowchart TD
+    Q1{isAdministrator?} -->|sim| A([TENANT_ADMIN<br/>topo da escala])
+    Q1 -->|não| Q2{Há ArchbaseAccessLevelResolver<br/>registrado que responda?}
+    Q2 -->|sim| B([o que ele devolver])
+    Q2 -->|não ou devolve null| Q3{O perfil tem<br/>ACCESS_LEVEL?}
+    Q3 -->|sim| C([o nível do perfil])
+    Q3 -->|não| D(["archbase.security.access-level.default<br/>padrão: READER"])
+
+    style A fill:#0b6c74,color:#fff
+```
+
+**Por que o perfil, e não o grupo:** o nível é ordinal e precisa de valor único. O usuário tem **um**
+perfil; grupos, vários — e escolher entre o maior e o menor seria arbitrário nos dois sentidos.
+
+Quem modela senioridade fora do perfil registra um resolver:
+
+```java
+@Component
+public class NivelPorCargo implements ArchbaseAccessLevelResolver {
+
+    @Override
+    public AccessLevel resolveLevel(AccessSubject subject) {
+        // null significa "não sei" — a resolução volta ao perfil
+        return cargoRepository.findByUserId(subject.userId())
+                .map(this::traduzir)
+                .orElse(null);
+    }
+}
+```
+
+### A escala é curta de propósito
+
+Quatro degraus. Vontade de ter oito é sinal de estar tentando expressar no nível o que pertence à
+capacidade: `tms.ordemservico:aprovar_custo` já se distingue de `:iniciar_execucao` sem precisar de
+degrau próprio.
+
+Os **rótulos** exibidos são do cliente; a **ordem** é do framework. É o que permite que cada cliente
+use seu vocabulário sem que o core precise conhecê-lo.
+
+### Ligar com segurança
+
+```properties
+archbase.security.access-level.enabled=true
+archbase.security.access-level.default=READER
+```
+
+**A armadilha:** num sistema onde todo perfil tem `ACCESS_LEVEL` nulo, ligar isso joga todo mundo no
+padrão — e qualquer capacidade com mínimo acima disso passa a **negar em massa no primeiro deploy**,
+sem ninguém ter mexido em permissão.
+
+O validador de subida avisa: conta os perfis sem nível, diz quantos são, e aponta o endpoint de
+efetivo para ver quem perde o quê.
+
+---
+
+## Negação explícita
+
+Até aqui o modelo só sabia somar — perfil ∪ grupos ∪ direto, união pura. Excluir uma pessoa de algo
+que o time inteiro tem exigia criar um grupo paralelo só para ela.
+
+| | como funciona |
+|---|---|
+| Conceder | perfil, grupo ou usuário |
+| Combinar | união (OR) |
+| Negar | `SEGURANCA_PERMISSAO.EFFECT = 'DENY'` |
+| Desempate | **DENY vence, em qualquer nível** |
+
+Uma frase, explicável para analista de negócio sem diagrama:
+
+> O perfil libera para o time inteiro, e a negação no usuário tira daquela pessoa.
+
+**Escopo:** a negação vale **dentro do escopo em que foi declarada**. `DENY` com `tenantId = A` não
+afeta o tenant B; sem escopo, vence em todos. Mesma semântica que a concessão sempre teve.
+
+`EFFECT` nulo é `GRANT` — é o que toda concessão existente significa.
+
+---
+
+## Modelo de dados
+
+Usuário, grupo e perfil são **a mesma tabela**, separados por discriminador. É isso que permite
+conceder a qualquer um dos três de forma uniforme.
 
 ```mermaid
 erDiagram
     SEGURANCA {
         string ID_SEGURANCA PK
         string TP_SEGURANCA "USUARIO | SEGURANCA_GRUPO | SEGURANCA_PERFIL"
+        string NOME
+        string ACCESS_LEVEL "nível — só em linhas de perfil"
         string TENANT_ID
     }
     SEGURANCA_PERMISSAO {
         string ID_SEGURANCA FK "quem recebe"
         string ID_ACAO FK "o que pode"
+        string EFFECT "GRANT (padrão) | DENY"
         string tenantId "escopo opcional"
         string companyId "escopo opcional"
         string projectId "escopo opcional"
     }
     SEGURANCA_ACAO {
         string ID_ACAO PK
-        string NOME "CREATE, READ, MANAGE..."
+        string NOME "view, aprovar_custo…"
+        string DESCRICAO "o que o admin lê"
+        string BO_ATIVA
+        string MINIMUM_LEVEL "piso da capacidade"
         string ID_RECURSO FK
     }
     SEGURANCA_RECURSO {
         string ID_RECURSO PK
-        string NOME "USER, PRODUCT..."
+        string NOME "tms.ordemservico…"
+        string TIPO_RECURSO "API | VIEW"
+        string BO_ATIVO
     }
     SEGURANCA_GRUPO_USUARIO {
         string ID_USUARIO FK
@@ -117,157 +551,179 @@ erDiagram
     SEGURANCA ||--o| SEGURANCA : "usuário → perfil"
 ```
 
-Ao avaliar `@HasPermission`, o framework monta o conjunto de identidades do usuário —
-**id do próprio usuário + ids dos seus grupos + id do seu perfil** — e procura uma permissão
-para qualquer uma delas. Herança é por união, não por hierarquia.
+As três colunas do core — `ACCESS_LEVEL`, `MINIMUM_LEVEL`, `EFFECT` — entram **nulas** pela migration
+repetível do próprio framework
+(`src/main/resources/db/migration/archbase/R__archbase_security_schema.sql`). Nenhum backfill, nenhum
+`not null`. Um sistema existente sobe idêntico.
 
-Duas regras que surpreendem:
+> ⚠ O arquivo de migration é **específico de PostgreSQL** (`add column if not exists`,
+> `comment on column`). Em MySQL e Oracle o Flyway falha e a aplicação não sobe. Limitação
+> pré-existente ao core.
 
-- **Administrador ignora tudo.** `isAdministrator = true` faz `hasPermission` devolver `true`
-  sem consultar o banco. Não existe recurso que um administrador não alcance.
-- **Escopo nulo é curinga.** Permissão com `tenantId` nulo vale para qualquer tenant; o mesmo
-  para company e project. O isolamento real entre tenants vem do `@TenantId` do Hibernate, não
-  desses campos — eles são estreitamento *dentro* do tenant.
+**Escopo nulo é curinga.** Permissão com `tenantId` nulo vale para qualquer tenant. O isolamento real
+entre tenants vem do `@TenantId` do Hibernate, não desses campos — eles são estreitamento *dentro*
+do tenant.
 
 ---
 
-## O catálogo: Resource e Action
+## Diagnóstico: por que esta pessoa não passou?
 
-Esta é a parte mais granular do módulo — e a que mais confunde, porque **`@HasPermission` não é
-só uma checagem: é também uma declaração**. A anotação alimenta um catálogo no banco, e é desse
-catálogo que as permissões são concedidas.
-
-Existem **dois catálogos**, separados pelo campo `TIPO` do recurso, com ciclos de vida opostos:
-
-```mermaid
-flowchart TD
-    subgraph API["Recursos TIPO = API — automático"]
-        A1["@HasPermission<br/>resource, action, description"] --> A2[ArchbaseActionSynchronizationService]
-        A2 -->|"@PostConstruct, na subida"| A3{scan-packages<br/>configurado?}
-        A3 -->|não| A4([Nada acontece.<br/>Só um WARN no log])
-        A3 -->|sim| A5[Varre os pacotes com Reflections]
-        A5 --> A6[Cria Resource e Action<br/>que não existem]
-        A5 --> A7[DESATIVA Action e Resource<br/>sem anotação correspondente]
-    end
-
-    subgraph VIEW["Recursos TIPO = VIEW — manual"]
-        V1[POST /api/v1/resource/register] --> V2[Cria Resource + Actions<br/>do corpo da requisição]
-        V2 --> V3([Para permissões de tela,<br/>botão, menu — não de endpoint])
-    end
-
-    A6 --> CAT[(Catálogo)]
-    A7 --> CAT
-    V2 --> CAT
-    CAT --> G["POST /api/v1/resource/permissions<br/>concede Action a User, Group ou Profile"]
-    G --> CHK[Avaliação de @HasPermission]
-
-    style A4 fill:#c62828,color:#fff
-    style A7 fill:#ef6c00,color:#fff
-```
-
-### Por que `description` é obrigatório
-
-Não é burocracia: o texto vira a **descrição da Action** no catálogo, exibida na tela de
-concessão de permissões. Como a Action é criada a partir da anotação, o framework exige a
-descrição no momento em que ela é declarada. Por isso não tem valor padrão — e por isso todo
-exemplo da documentação antiga, que omite o campo, não compila.
-
-### As cinco armadilhas
-
-**1. Sem `archbase.security.scan-packages`, nada é sincronizado.** A propriedade tem padrão
-vazio; quando vazia, o serviço registra um `WARN` e retorna. O sintoma é desconcertante: os
-métodos estão anotados, o catálogo está vazio, e `@HasPermission` **nega todo mundo** — porque
-sem Action não existe permissão que possa apontar para ela.
+Três endpoints, todos alimentados pelo **mesmo avaliador que decide em produção**. Não há motor
+paralelo — um diagnóstico que diverge da realidade é pior do que nenhum.
 
 ```properties
-archbase.security.scan-packages=com.suaempresa.seuapp
+archbase.security.diagnostics.enabled=true
 ```
 
-**2. A sincronização roda apenas no tenant padrão.** `Resource` e `Action` são entidades
-`@TenantId`, e o `@PostConstruct` acontece fora de qualquer requisição — o resolvedor de tenant
-cai no `archbase.app.tenant.default.id`. Numa aplicação multi-tenant, os demais tenants ficam
-**sem catálogo API**, e `@HasPermission` nega para todos eles. Nesse cenário, popule o catálogo
-por tenant (migration ou chamada a `/resource/register`) em vez de contar com a varredura.
+**Desligados por padrão**, e mesmo ligados **exigem `isAdministrator`** — verificado no próprio
+controlador, sem depender de `admin-endpoints.policy`. Revelam a estrutura de acesso do tenant:
+mantenha ligado só enquanto durar a investigação.
 
-**3. Desativar no admin não tira o acesso.** A consulta que decide a autorização casa
-**apenas por nome de ação e nome de recurso**:
+### Simulação — "esta pessoa conseguiria fazer isto?"
 
-```sql
-WHERE u.id IN :securityIds AND a.name = :actionName AND r.name = :resourceName
+```http
+POST /api/v1/security/diagnostics/simulate
+{ "email": "fulano@empresa.com", "resource": "tms.ordemservico", "action": "aprovar_custo" }
 ```
 
-Não há filtro por `active` nem por `type`. Ou seja: uma Action marcada como inativa — pela
-sincronização ou pelo admin — **continua concedendo acesso**. O campo `active` serve à
-apresentação no admin, não à decisão. Quem desativar um recurso esperando cortar o acesso não
-vai cortar.
-
-**4. Renomear a anotação deixa a permissão órfã.** Trocar `action = "CREATE"` por
-`action = "CRIAR"` cria uma Action nova, **sem nenhuma permissão concedida** — o método passa a
-negar todo mundo. A Action antiga é desativada, mas suas permissões continuam no banco e, pelo
-item anterior, continuariam valendo se algum método voltasse a usar aquele nome. Renomear
-`resource` ou `action` é, na prática, revogar o acesso ao método e deixar lixo para trás.
-
-**5. Nome colide entre os dois catálogos.** `ensureResourceExists` busca o recurso **só pelo
-nome**, sem filtrar tipo: um recurso `VIEW` inativo criado pelo admin com o mesmo nome de um
-usado em `@HasPermission` é reativado e convertido para `API`. E como a consulta de autorização
-também ignora o tipo, uma permissão concedida sobre um recurso `VIEW` satisfaz um
-`@HasPermission` de endpoint com o mesmo par de nomes. **Trate o espaço de nomes de recursos
-como único**, independentemente do tipo.
-
-### Concessão
-
-Conceder é sempre pelo **id da Action**, nunca pelo nome:
-
-```
-GET  /api/v1/resource/permissions                     lista o catálogo com os ids
-POST /api/v1/resource/permissions                     { actionId, securityId, type }
-                                                      type = USER | GROUP | PROFILE
-GET  /api/v1/resource/permissions/{resourceName}      o que o usuário logado pode neste recurso
+```json
+{
+  "allowed": false,
+  "deniedAt": "LEVEL",
+  "reasonCode": "LEVEL_TOO_LOW",
+  "message": "A permissão está concedida, mas tms.ordemservico:aprovar_custo exige nível SUPERVISOR e o usuário alcança OPERATOR. Ter a capacidade atribuída não basta.",
+  "chain": [
+    { "gate": "IDENTITY", "passed": true,  "detail": "Usuário fulano@empresa.com resolvido" },
+    { "gate": "SCOPE",    "passed": true,  "detail": "Escopo compatível" },
+    { "gate": "LEVEL",    "passed": false, "reasonCode": "LEVEL_TOO_LOW",
+      "detail": "Nível OPERATOR; tms.ordemservico:aprovar_custo exige SUPERVISOR" }
+  ]
+}
 ```
 
-Como `User`, `Group` e `Profile` são a mesma tabela, `securityId` aceita qualquer um dos três — é
-o campo `type` que diz ao serviço onde procurar o id.
+Avalia **sem executar nada**. A resposta diz em que portão parou e por quê.
+
+### Efetivo — "o que esta pessoa pode?"
+
+```http
+GET /api/v1/security/diagnostics/users/{id}/effective
+GET /api/v1/security/diagnostics/effective?email=fulano@empresa.com
+```
+
+```json
+{
+  "userLabel": "fulano@empresa.com",
+  "profileName": "SUPERVISOR",
+  "groupNames": ["GESTORES-FROTA", "TIME-TRANSPORTE"],
+  "administrator": false,
+  "granted": 20, "effective": 13, "inert": 7,
+  "capabilities": [
+    { "resource": "tms.ordemservico", "action": "aprovar_custo",
+      "grantedByName": "GESTORES-FROTA", "grantedByType": "Group",
+      "actionActive": true, "situation": "EFFECTIVE" },
+    { "resource": "tms.pneu", "action": "instalar",
+      "grantedByName": "TIME-TRANSPORTE", "grantedByType": "Group",
+      "actionActive": false, "situation": "INERT" }
+  ]
+}
+```
+
+A coluna **origem** é o que não existia em lugar nenhum antes do core. `INERT` marca exatamente as
+concessões que deixariam de valer com `require-active=true` — **é o relatório que se lê antes de
+ligar a flag**.
+
+### Panorama — "como está o conjunto?"
+
+```http
+GET /api/v1/security/diagnostics/overview
+```
+
+Devolve os contadores do tenant **junto do estado das proteções** — de propósito. Uma concessão
+inerte é inofensiva enquanto nada consulta o catálogo, e vira acesso indevido no dia em que algo
+consultar. Número sem esse contexto não é interpretável.
 
 ---
 
-## Qual anotação usar
+## Códigos de motivo
 
-```mermaid
-flowchart TD
-    Q0{O acesso depende de quê?} 
-    Q0 -->|Recurso + ação<br/>cadastrados no banco| HP["@HasPermission<br/>resource + action + description"]
-    Q0 -->|Perfil do usuário<br/>no Archbase| RP["@RequireProfile"]
-    Q0 -->|Papel do domínio<br/>da aplicação| RR["@RequireRole"]
-    Q0 -->|Persona de negócio| RPE["@RequirePersona"]
+Quando um 403 aparece, o `reasonCode` diz onde olhar.
 
-    HP --> HPN["Catálogo alimentado na subida<br/>da API (precisa de scan-packages)<br/>ou pelo admin. Sem catálogo,<br/>ninguém passa"]
-    RP --> RPN[Usa apenas o perfil ÚNICO<br/>do usuário. Sem perfil, nega]
-    RR --> RRN[Exige um bean<br/>ArchbaseRoleResolver.<br/>Sem ele, não valida nada]
-    RPE --> RPEN[Mapeia perfil → persona<br/>por nome. context e<br/>contextData são IGNORADOS]
+| Código | Portão | O que aconteceu | Onde corrigir |
+|---|---|---|---|
+| `PRINCIPAL_NOT_SUPPORTED` | IDENTITY | O principal não é `UserEntity` — geralmente `UserDetailsService` próprio | Faça o seu `UserDetailsService` devolver `UserEntity` |
+| `PRINCIPAL_INCOMPLETE` | IDENTITY | `isAdministrator` nulo no banco | Preencha a coluna com `true` ou `false` |
+| `OUT_OF_SCOPE` | SCOPE | A permissão existe, mas para outro tenant/empresa/projeto | Revise o escopo da concessão |
+| `PROFILE_NOT_MATCHED` | RESTRICTION | Perfil diferente do exigido | Perfil do usuário, ou a anotação |
+| `PERSONA_NOT_MATCHED` | RESTRICTION | Persona não corresponde ao perfil | Ver a tabela fixa de personas |
+| `ROLE_NOT_MATCHED` | RESTRICTION | O resolver não devolveu o papel exigido | Seu `ArchbaseRoleResolver` |
+| `ROLE_RESOLVER_MISSING` | RESTRICTION | `no-resolver-policy=deny` sem resolver registrado | Registre o resolver, ou volte para `permit` |
+| `PLATFORM_ADMIN_REQUIRED` | RESTRICTION | `requirePlatformAdmin` exigido de não-administrador | — |
+| `NOT_OWNER` | RESTRICTION | `ownerOnly` não confirmado pelo SPI | Com >1 resolver, `isOwner` não tem resposta |
+| `ACCOUNT_NOT_ACTIVE` | RESTRICTION | Conta desativada ou bloqueada | — |
+| `LEVEL_TOO_LOW` | LEVEL | Concessão existe, nível não alcança | Nível do perfil, ou `MINIMUM_LEVEL` da ação |
+| `NO_GRANT` | GRANT | Ninguém concedeu — nem direto, nem grupo, nem perfil | Conceda no admin |
+| `EXPLICIT_DENY` | GRANT | Há uma permissão `DENY` alcançando o escopo | Remova a negação |
+| `EMPTY_REQUIREMENT` | — | Requisito sem capacidade e sem tranca | Erro de programação do adaptador |
 
-    style RRN fill:#ef6c00,color:#fff
-    style RPEN fill:#ef6c00,color:#fff
+**Um caso que engana:** `NO_GRANT` num sistema recém-anotado quase sempre significa **catálogo
+vazio**, não permissão faltando. Confira `archbase.security.scan-packages`.
+
+---
+
+## Receitas
+
+### Proteger um CRUD inteiro
+
+```java
+@RestController
+@RequestMapping("/api/v1/veiculos")
+@ArchbaseResource(value = "tms.veiculo", description = "Veículo")
+public class VeiculoController {
+
+    @GetMapping
+    @HasPermission(action = "view", description = "Listar veículos")
+    public ... listar() { ... }
+
+    @PostMapping
+    @HasPermission(action = "create", description = "Cadastrar veículo",
+                   minimumLevel = AccessLevel.OPERATOR)
+    public ... criar(...) { ... }
+
+    @PutMapping("/{id}")
+    @HasPermission(action = "edit", description = "Editar veículo",
+                   minimumLevel = AccessLevel.OPERATOR)
+    public ... editar(...) { ... }
+
+    @DeleteMapping("/{id}")
+    @HasPermission(action = "delete", description = "Excluir veículo",
+                   minimumLevel = AccessLevel.SUPERVISOR)
+    public ... excluir(...) { ... }
+}
 ```
 
-Recomendação prática, em ordem de preferência:
+### Excluir uma pessoa de algo que o grupo tem
 
-1. **`@HasPermission`** — é a única com modelo de dados completo por trás e escopo multi-tenant.
-   Use como padrão. Antes, garanta que o catálogo está sendo alimentado — ver
-   [O catálogo: Resource e Action](#o-catálogo-resource-e-action).
-2. **`@RequireProfile`** — atalho útil quando a regra é mesmo "só o perfil X". Lembre que o
-   usuário tem **um** perfil, não vários: `requireAll = true` com dois perfis nunca passa.
-3. **`@RequireRole`** — só faz sentido se a aplicação registrar `ArchbaseRoleResolver`. Sem isso
-   o comportamento é decidido por `archbase.security.require-role.no-resolver-policy`.
-4. **`@RequirePersona`** — o mapeamento embutido é um `switch` sobre nomes de perfil
-   (`PLATFORM_ADMIN`, `STORE_ADMIN`, `CUSTOMER`, `DRIVER`); fora desses, compara o nome da
-   persona com o nome do perfil. Os parâmetros `context` e `contextData` **não são lidos**.
+Sem criar grupo paralelo: conceda ao grupo e crie uma permissão `DENY` no usuário, sobre a mesma
+Action. A negação vence.
 
-**Anotações combinadas somam (AND).** Cada anotação tem seu próprio interceptador; todos precisam
-permitir. Não existe OR entre elas.
+### Piloto num sistema que nunca usou `@HasPermission`
 
-**Nível de classe funciona** em `@RequireProfile`, `@RequireRole` e `@RequirePersona` — a
-anotação no método vence a da classe. **`@HasPermission` é `@Target(METHOD)`**: na classe, não
-compila.
+```
+1. archbase.security.sync.mode=report        sobe, lê o log, confere o que seria desativado
+2. archbase.security.scan-packages=…          garante que a varredura enxerga seus pacotes
+3. anota UM domínio                           o mais bem modelado, com verbos de negócio reais
+4. volta para sync.mode=apply                 o catálogo é criado
+5. concede no admin                           antes que alguém precise
+6. diagnostics.enabled=true                   valida com simulate antes de liberar
+```
+
+### Descobrir quem perde acesso ao ligar `require-active`
+
+```http
+GET /api/v1/security/diagnostics/users/{id}/effective
+```
+
+O campo `inert` de cada usuário é exatamente quantas capacidades ele perderia.
 
 ---
 
@@ -301,9 +757,9 @@ sequenceDiagram
     A-->>C: 200
 ```
 
-O access token é **stateful**: a assinatura sozinha não basta, a linha precisa existir e estar
-viva. É isso que torna logout e revogação efetivos — e é por isso que apagar a tabela desloga
-todo mundo.
+O access token é **stateful**: a assinatura sozinha não basta, a linha precisa existir e estar viva.
+É isso que torna logout e revogação efetivos — e é uma leitura por requisição, o que vale saber ao
+dimensionar.
 
 ---
 
@@ -317,36 +773,36 @@ flowchart LR
     ST --> STM[archbase-starter-multitenancy]
 
     STC --> MVC["ArchbaseServerMvcConfiguration"]
-    MVC -->|"@ConditionalOnProperty<br/>archbase.web.mvc.enabled"| SCAN["ArchbaseComponentScanConfiguration<br/>ComponentScan de br.com.archbase.security<br/>+ EntityScan + JpaRepositories"]
+    MVC -->|"@ConditionalOnProperty<br/>archbase.web.mvc.enabled"| SCAN["ArchbaseComponentScanConfiguration<br/>ComponentScan de br.com.archbase.security"]
     STS --> CFG["ArchbaseSecurityApplicationConfig<br/>DefaultArchbaseSecurityConfiguration<br/>MethodSecurityConfig"]
     STM --> TEN["Interceptor de tenant<br/>+ TaskDecorator"]
 
-    SCAN --> BEANS[Serviços, controllers,<br/>filtro JWT, managers]
+    SCAN --> BEANS[Serviços, controllers,<br/>filtro JWT, avaliador, portões]
     CFG --> BEANS
 
-    style SCAN fill:#ef6c00,color:#fff
+    style SCAN fill:#8a5a08,color:#fff
 ```
 
-Dois detalhes que enganam, e ambos produzem o mesmo sintoma — a aplicação sobe, mas metade da
-segurança não existe:
+Dois detalhes que enganam, ambos com o mesmo sintoma — a aplicação sobe, metade da segurança não
+existe:
 
 - **Quem varre os componentes é o `starter-core`, não o `starter-security`.** Usar só o
   `archbase-starter-security` registra as configurações e nenhum serviço. Na prática, use
   `archbase-starter`.
-- **`archbase.web.mvc.enabled=false` desliga o scan inteiro.** A propriedade parece ser sobre
-  MVC, mas a cadeia é
+- **`archbase.web.mvc.enabled=false` desliga o scan inteiro.** A propriedade parece ser sobre MVC,
+  mas a cadeia é
   `ArchbaseCoreAutoConfiguration → ArchbaseServerMvcConfiguration → ArchbaseComponentScanConfiguration`,
-  e é essa última que registra os serviços de segurança, as entidades e os repositórios.
+  e é essa última que registra serviços, entidades e repositórios de segurança.
 
-Para substituir a configuração de segurança, implemente `CustomSecurityConfiguration` e estenda
+Para substituir a configuração, implemente `CustomSecurityConfiguration` e estenda
 `BaseArchbaseSecurityConfiguration`. A `DefaultArchbaseSecurityConfiguration` é
-`@ConditionalOnMissingBean(CustomSecurityConfiguration.class)` e sai de cena sozinha.
+`@ConditionalOnMissingBean` e sai de cena sozinha.
 
 ---
 
-## Configuração mínima
+## Configuração
 
-Estas oito **não têm valor padrão**. Faltando qualquer uma, a aplicação não sobe:
+### Obrigatórias — sem elas a aplicação não sobe
 
 ```properties
 archbase.security.jwt.secret-key=<Base64 de 32 bytes>
@@ -359,70 +815,72 @@ archbase.security.cors.allowed-headers=*
 archbase.security.cors.allow-credentials=false
 ```
 
-Além dessas, uma que **não impede a subida mas desliga silenciosamente** todo o catálogo de
-permissões de endpoint — se você usa `@HasPermission`, ela é obrigatória na prática:
+`whitelist` pode ficar vazia, mas **precisa estar declarada**.
+
+### Obrigatória na prática se você usa `@HasPermission`
 
 ```properties
 archbase.security.scan-packages=com.suaempresa.seuapp
 ```
 
-`whitelist` pode ficar vazia, mas **precisa estar declarada**. As demais propriedades do módulo
-têm padrão e estão listadas no `CLAUDE.md`; as de endurecimento de segurança, em
-[deployment/security-hardening.md](../deployment/security-hardening.md).
+Não impede a subida — desliga silenciosamente todo o catálogo de endpoint.
+
+### Do core de autorização
+
+```properties
+archbase.security.access-level.enabled=false     # liga o portão LEVEL
+archbase.security.access-level.default=READER    # nível de quem não tem perfil
+archbase.security.permission.require-active=false # alinha o backend ao frontend
+archbase.security.sync.mode=apply                # apply | report
+archbase.security.diagnostics.enabled=false      # expõe /security/diagnostics/*
+```
+
+**Todos os padrões reproduzem o comportamento anterior ao core.** Ligar qualquer um é decisão
+explícita, e o validador de subida checa os pré-requisitos:
+
+```properties
+archbase.security.hardening.validation=fail      # fail | warn | off
+```
+
+Com `fail`, uma proteção habilitada sem pré-requisito **impede a subida** com a instrução do que
+fazer — em vez de produzir comportamento errado mais tarde, no meio de uma requisição.
+
+As demais propriedades estão em [deployment/security-hardening.md](../deployment/security-hardening.md).
 
 ---
 
-## Documentação × código
+## Em aberto
 
-Divergências verificadas linha a linha. Todos os exemplos abaixo estão em documentos que os
-desenvolvedores usam hoje.
+Limitações conhecidas, registradas para não serem redescobertas.
 
-| Divergência | Onde | Realidade no código |
-|---|---|---|
-| `@HasPermission(resource=, action=)` sem `description` | `readme-security.md`, `README.md` | `description()` é obrigatório — **o exemplo não compila** |
-| `archbase.security.jwt.secret` e `.expiration` | `CLAUDE.md` | Os nomes corretos são `secret-key` e `token-expiration` |
-| `refresh-expiration` não aparece em nenhum doc | todos | É **obrigatória** |
-| `whitelist` e as quatro de CORS não documentadas | todos | São **obrigatórias** |
-| "`@RequireRole` e `@RequirePersona` são extensíveis via enrichers" | `readme-security.md` | Não há ligação entre enrichers e os managers. `@RequireRole` usa `ArchbaseRoleResolver` |
-| `@RequirePersona(context=, contextData=)` | `readme-security.md` | Nenhum dos dois é lido na decisão |
-| `@RequireRole(requirePlatformAdmin=true)` descrito como "admin E role" | `readme-security.md` | `allowSystemAdmin` (padrão `true`) libera o admin **antes** dessa checagem |
-| Login social listado como funcionalidade | `readme-security.md` | Sem um `ArchbaseSocialTokenValidator`, responde 501 |
-| `groupId com.archbase`, versão `1.0.0` | `archbase-starter-security/readme.md` | É `br.com.archbase`, versão 3.0.x |
+**A varredura não é multi-tenant.** Roda em `@PostConstruct`, uma vez, no tenant padrão. Corrigir
+exige saber de onde sai a lista de tenants, e o framework não tem esse registro.
+
+**A interceptação ainda não é única.** A *regra* foi unificada no avaliador; a *interceptação*
+continua com um interceptador por anotação, para não mudar ordem de execução nem semântica de falha
+de aplicações em produção. Um método com `@HasPermission` e `@RequireProfile` produz duas cadeias de
+motivo, e não uma. Unificar é passo próprio, atrás de flag.
+
+**`@RequirePersona` carrega vocabulário de outro domínio.** A tabela `PLATFORM_ADMIN` / `STORE_ADMIN`
+/ `CUSTOMER` / `DRIVER` está embutida no framework. Preservada porque removê-la mudaria decisão em
+quem depende dela; substituir por resolução configurável é trabalho pendente.
+
+**`getAuthorities()` vazio desliga o Spring Security padrão.** Qualquer `hasRole`, `hasAuthority` ou
+`@Secured` nega em silêncio.
+
+**A migration é específica de PostgreSQL.** MySQL e Oracle não sobem com o arquivo repetível do
+framework.
+
+**Uma consulta de sujeito por decisão.** O core acrescenta uma leitura onde antes havia uma. Cache
+por requisição resolve, mas não está desenhado.
 
 ---
 
-## Fragilidades arquiteturais
+## Documentos relacionados
 
-Não são bugs — são decisões de desenho que custam caro na manutenção.
-
-**Quatro sistemas de autorização sem critério de uso.** `@RequireProfile`, `@RequireRole` e
-`@RequirePersona` resolvem variações do mesmo problema com semânticas diferentes e graus de
-completude muito diferentes. `@RequirePersona` chega a ter um `switch` com nomes de negócio
-(`STORE_ADMIN`, `DRIVER`) embutido no framework — regra de uma aplicação específica dentro do
-código compartilhado. Consolidar em `@HasPermission` + um SPI para papéis reduziria a superfície
-sem perder capacidade.
-
-**Perfil é um só.** `UserEntity.profile` é `@ManyToOne` — um único perfil por usuário. Toda a API
-de `@RequireProfile` fala em arrays e `requireAll`, sugerindo múltiplos. `requireAll = true` com
-mais de um perfil é uma condição que nunca pode ser satisfeita.
-
-**O bypass de administrador é absoluto e invisível.** Não há como marcar um recurso como
-inalcançável por administrador, nem registro de que o bypass ocorreu.
-
-**`getAuthorities()` vazio desliga o Spring Security padrão.** Qualquer expressão `hasRole`,
-`hasAuthority` ou `@Secured` nega silenciosamente. Falha fechada, mas quem não souber vai perder
-tempo. Vale documentar no lugar mais visível ou popular as authorities a partir do perfil.
-
-**O campo `active` do catálogo não participa da autorização.** Desativar um recurso ou uma ação
-pelo admin não corta acesso nenhum — a consulta casa só por nome. Ou a consulta passa a filtrar
-`active`, ou o campo deveria sumir da tela para não sugerir um efeito que não tem. Hoje ele é uma
-promessa quebrada na interface.
-
-**O catálogo automático não é multi-tenant.** A varredura roda no `@PostConstruct`, fora de
-requisição, e grava só no tenant padrão. Ou a sincronização passa a iterar os tenants conhecidos,
-ou a documentação precisa dizer que aplicações multi-tenant devem popular o catálogo por outro
-caminho. Hoje não diz nem uma coisa nem outra.
-
-**Token de acesso stateful a cada requisição.** Toda chamada autenticada faz uma consulta em
-`SEGURANCA_TOKEN_ACESSO`. É o que dá revogação imediata, mas é uma leitura por requisição — vale
-saber ao dimensionar.
+| Documento | Para quê |
+|---|---|
+| [MODELO_CORE_AUTORIZACAO.md](MODELO_CORE_AUTORIZACAO.md) | O desenho do core, as fases de implementação e a revisão crítica do plano |
+| [PROPOSTA_MODELO_AUTORIZACAO.md](PROPOSTA_MODELO_AUTORIZACAO.md) | Registro do levantamento que originou o core — histórico |
+| [deployment/security-hardening.md](../deployment/security-hardening.md) | Migração de cada flag de endurecimento |
+| [readme-security.md](readme-security.md) | Autenticação, customização da configuração, endpoints |

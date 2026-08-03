@@ -1,5 +1,17 @@
 # Proposta: um único modelo de autorização
 
+> ### ⚠ Documento histórico — superado
+>
+> Este é o **levantamento** que originou o core único de autorização, com as opções que estavam em
+> aberto na época. As decisões foram tomadas e implementadas.
+>
+> - **Como o módulo funciona hoje:** [ARQUITETURA.md](ARQUITETURA.md)
+> - **O desenho do core e as fases de implementação:** [MODELO_CORE_AUTORIZACAO.md](MODELO_CORE_AUTORIZACAO.md)
+>
+> Mantido porque registra o raciocínio — em especial a separação entre *capacidade* (fixa, do
+> código) e *vocabulário* (do cliente), que continua sendo o princípio que sustenta o modelo.
+> Onde este documento diverge dos dois acima, valem os dois acima.
+
 Documento de decisão, escrito a partir da auditoria do framework e do uso real no Gestor-RQ.
 O objetivo é eliminar a tentativa-e-erro: ao terminar a leitura, deve estar claro **onde declarar,
 onde conceder, a quem conceder e como o conflito se resolve**.

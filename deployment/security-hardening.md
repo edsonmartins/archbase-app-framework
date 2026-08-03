@@ -197,6 +197,88 @@ archbase.security.api-token.purge-plaintext=true
 
 ---
 
+## Core único de autorização
+
+Estas chaves chegaram com o core de autorização (`archbase-security/MODELO_CORE_AUTORIZACAO.md`) e
+seguem a mesma disciplina: **todo padrão reproduz o comportamento anterior**, e ligar é decisão
+explícita.
+
+### Antes de anotar o primeiro `@HasPermission`
+
+```properties
+# A varredura APENAS registra em log o que faria, sem escrever nada.
+archbase.security.sync.mode=report
+```
+
+Isto não é zelo excessivo. `disableUnusedActionsAndResources` desativa toda entrada de tipo `API`
+sem anotação correspondente — e numa aplicação que ainda não anotou nada, ela não encontra
+capacidade alguma e **desativa o catálogo API inteiro**. Já aconteceu em produção: 8 recursos
+criados por seed foram desativados sem que ninguém tivesse pedido.
+
+Suba uma vez em `report`, leia a lista nominal no log, confirme, e só então volte para `apply`.
+
+### Ligar o diagnóstico durante a migração
+
+```properties
+archbase.security.diagnostics.enabled=true
+```
+
+Expõe `/api/v1/security/diagnostics/*` — panorama, efetivo de um usuário e **simulação de acesso de
+outra pessoa**, tudo pelo mesmo avaliador que decide em produção.
+
+Exige `isAdministrator` mesmo ligado, verificado no próprio controlador. Ainda assim, revela a
+estrutura de acesso do tenant: **mantenha ligado só enquanto durar a investigação**.
+
+### Alinhar o backend ao que a tela já faz
+
+```properties
+# Passa a filtrar ação e recurso inativos na decisão de autorização.
+archbase.security.permission.require-active=true
+```
+
+Hoje há uma assimetria: a listagem que o **frontend** consome sempre filtrou `action.active`; a
+consulta do `@HasPermission` nunca filtrou. Uma concessão sobre ação inativa é **invisível na tela**
+e **honrada pelo backend**.
+
+**Ligar isto tira acesso.** Antes de virar, rode para cada usuário relevante:
+
+```
+GET /api/v1/security/diagnostics/users/{id}/effective
+```
+
+O campo `inert` de cada resposta é exatamente quantas capacidades aquela pessoa perde.
+
+### Ligar o piso por capacidade
+
+```properties
+archbase.security.access-level.enabled=true
+archbase.security.access-level.default=READER
+```
+
+O portão de nível responde a *"e se alguém atribuir uma capacidade sensível a quem não deveria?"*.
+Alcançar o nível não concede nada — apenas impede que uma concessão indevida valha.
+
+**A armadilha:** num sistema onde todo perfil tem `ACCESS_LEVEL` nulo, ligar isto joga todo mundo no
+padrão. Se houver capacidades com mínimo acima do padrão, elas passam a **negar em massa no primeiro
+deploy**, sem ninguém ter mexido em permissão.
+
+Ordem segura:
+
+1. preencha `ACCESS_LEVEL` nos perfis, no admin;
+2. confira quantos ficaram sem — o validador de subida conta e avisa;
+3. só então ligue a chave.
+
+O validador **bloqueia a subida** se `access-level.default` não for um nível válido: com o portão
+ligado e um valor inválido, não haveria como decidir o nível de quem não tem perfil.
+
+### Negação explícita
+
+Não tem chave. A coluna `SEGURANCA_PERMISSAO.EFFECT` nasce nula, e nulo é `GRANT` — a negação só
+existe onde alguém a declarar, gravando `DENY`. `DENY` vence qualquer concessão dentro do escopo em
+que foi declarado.
+
+---
+
 ## Migração de schema
 
 O arquivo `db/migration/archbase/R__archbase_security_schema.sql` acompanha o framework e é
@@ -221,6 +303,12 @@ Colunas adicionadas nesta versão:
 | `seguranca_token_acesso` | `tp_uso_token` | Separa access de refresh na mesma tabela |
 | `seguranca_token_api` | `token_hash` | SHA-256 do token; passa a ser a chave de busca |
 | `seguranca_token_api` | `token` | Passa a ser nulável |
+| `seguranca_acao` | `minimum_level` | Piso da capacidade. Nula = sem piso |
+| `seguranca` | `access_level` | Nível do perfil. Só tem sentido nas linhas de perfil |
+| `seguranca_permissao` | `effect` | `GRANT` (inclusive quando nula) ou `DENY` |
+
+As três últimas entram **nulas**, sem `not null` e sem backfill. Enquanto ninguém as preencher e
+nenhuma flag for ligada, a decisão de acesso é exatamente a de antes.
 
 Quem **não** usa Flyway precisa garantir que as colunas existam **antes** de subir a versão nova:
 

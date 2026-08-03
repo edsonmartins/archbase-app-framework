@@ -3,6 +3,33 @@
 
 O módulo `archbase-security` fornece funcionalidades robustas de segurança para aplicações Spring Boot, facilitando a implementação de controles de acesso baseados em permissões, autenticação JWT, e segurança de dados. Ele suporta uma configuração de permissões flexível que pode variar conforme o tenant, a empresa e o projeto, permitindo uma adaptação refinada às necessidades de negócios complexos.
 
+---
+
+## Por onde começar
+
+| Se você quer… | Leia |
+|---|---|
+| **Entender como a autorização decide** — os cinco portões, qual anotação usar, por que negou | **[ARQUITETURA.md](ARQUITETURA.md)** ← comece aqui |
+| Autenticação, login social, MFA, customizar a configuração | [readme-security.md](readme-security.md) |
+| Ligar uma proteção sem quebrar produção | [../deployment/security-hardening.md](../deployment/security-hardening.md) |
+| O desenho do core e por que ele é assim | [MODELO_CORE_AUTORIZACAO.md](MODELO_CORE_AUTORIZACAO.md) |
+
+### O modelo em quatro linhas
+
+Toda decisão de acesso passa por cinco portões, na mesma ordem, sempre:
+
+```
+1 IDENTITY   2 SCOPE   3 RESTRICTION   4 LEVEL   5 GRANT
+   nega        nega        nega          nega     CONCEDE
+```
+
+**Os portões 1 a 4 só sabem negar. Só o portão 5 concede.** É por isso que restrição e catálogo
+nunca competem: `@RequireProfile` e companhia trancam, `@HasPermission` abre. Ter a capacidade
+atribuída não basta se uma tranca fechou; e passar por todas as trancas não abre nada sem
+concessão no catálogo.
+
+---
+
 ## Principais Funcionalidades
 
 - **Autenticação JWT**: Implementa autenticação utilizando tokens JWT para garantir a segurança das APIs.

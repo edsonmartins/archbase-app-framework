@@ -559,187 +559,246 @@ Response:
 
 # Anotações de Segurança do Archbase
 
-O Archbase Security oferece um conjunto de anotações para controle de acesso granular em métodos e classes. Estas anotações são processadas através do Spring Security usando `AuthorizationManager` customizados.
+> **Referência completa:** [ARQUITETURA.md](ARQUITETURA.md). Esta seção é o resumo prático.
 
-## Anotações Disponíveis
+As anotações **não decidem** — elas declaram o que o endpoint exige. Quem decide é um avaliador
+único, o `ArchbaseAccessEvaluator`, que roda cinco portões na mesma ordem, sempre:
 
-### 1. @HasPermission (Existente)
-
-Controle baseado no sistema Resource/Action do Archbase:
-
-```java
-@HasPermission(resource = "USER", action = "CREATE")
-public User createUser(UserDto userDto) {
-    // Método protegido por permissão específica
-}
+```
+1 IDENTITY   → 2 SCOPE → 3 RESTRICTION → 4 LEVEL → 5 GRANT
+  nega          nega       nega            nega      CONCEDE
 ```
 
-**Parâmetros:**
-- `resource` - Nome do recurso (ex: "USER", "PRODUCT", "ORDER")
-- `action` - Ação permitida (ex: "CREATE", "READ", "UPDATE", "DELETE")
-- `tenantId`, `companyId`, `projectId` - Contexto multi-tenant
+**A regra que organiza tudo: os portões 1 a 4 só sabem negar. Só o portão 5 concede.**
 
-### 2. @RequireProfile
+| Anotação | Declara | Pode conceder? | Precisa de |
+|---|---|---|---|
+| `@HasPermission` | uma capacidade (recurso + ação) | **sim** — é a única | catálogo alimentado |
+| `@RequireProfile` | tranca por perfil | não, só nega | o usuário ter perfil |
+| `@RequireRole` | tranca por papel do domínio | não, só nega | um `ArchbaseRoleResolver` |
+| `@RequirePersona` | tranca por persona | não, só nega | mapeamento perfil → persona |
+| `@ArchbaseResource` | o recurso da classe | — | vai na **classe** |
 
-Controle baseado em profiles do Archbase:
+---
 
-```java
-@RequireProfile({"ADMIN", "MANAGER"})
-public void adminOnlyMethod() {
-    // Método acessível por usuários com profile ADMIN ou MANAGER
-}
-
-@RequireProfile(value = {"ADMIN", "FINANCE"}, requireAll = true)
-public void restrictedMethod() {
-    // Usuário deve ter AMBOS os profiles: ADMIN E FINANCE
-}
-```
-
-**Parâmetros:**
-- `value` - Array de profiles necessários
-- `requireAll` - Se true, usuário deve ter TODOS os profiles (AND). Se false, apenas UM (OR)
-- `resource`, `action` - Validação adicional de permissão se especificado
-- `allowSystemAdmin` - Permite bypass para administradores (default: true)
-- `requireActiveUser` - Verifica se usuário está ativo (default: true)
-
-### 3. @RequireRole
-
-Controle baseado em roles customizadas (extensível):
-
-```java
-@RequireRole("STORE_MANAGER")
-public void storeManagerMethod() {
-    // Método para gerentes de loja
-}
-
-@RequireRole(value = {"OWNER", "PARTNER"}, requirePlatformAdmin = true)
-public void platformAdminMethod() {
-    // Método que requer ser admin da plataforma E ter role OWNER ou PARTNER
-}
-```
-
-**Parâmetros:**
-- `value` - Array de roles necessárias
-- `requireAll` - Se true, usuário deve ter TODAS as roles (AND)
-- `requirePlatformAdmin` - Requer que seja admin da plataforma
-- `ownerOnly` - Permite acesso apenas para owners (não funcionários)
-- `context` - Contexto específico para validação condicional
-- `allowSystemAdmin` - Permite bypass para administradores
-
-### 4. @RequirePersona (Nova)
-
-Controle baseado em personas de negócio com suporte a contexto:
-
-```java
-@RequirePersona("CUSTOMER")
-public void customerOnlyMethod() {
-    // Método acessível apenas por clientes
-}
-
-@RequirePersona(value = "STORE_ADMIN", context = "STORE_APP")
-public void storeAdminMethod() {
-    // Método para admins de loja no contexto do app da loja
-}
-
-@RequirePersona(
-    value = {"DRIVER", "STORE_ADMIN"}, 
-    context = "DELIVERY_APP",
-    contextData = "{\"region\": \"SP\", \"activeOnly\": true}"
-)
-public void deliveryMethod() {
-    // Método para motoristas ou admins no app de delivery
-    // com dados de contexto específicos
-}
-```
-
-**Parâmetros:**
-- `value` - Array de personas necessárias
-- `requireAll` - Se true, usuário deve ter TODAS as personas
-- `context` - Contexto da aplicação ("STORE_APP", "CUSTOMER_APP", "DRIVER_APP", "WEB_ADMIN")
-- `contextData` - Dados de contexto como JSON para validações específicas
-- `ownerOnly` - Permite acesso apenas para proprietários
-- `resource`, `action` - Validação adicional de permissão
-- `allowSystemAdmin` - Permite bypass para administradores
-
-## Exemplos de Uso em Controllers
+## 1. `@HasPermission` — a que concede
 
 ```java
 @RestController
-@RequestMapping("/api/v1/products")
-public class ProductController {
+@RequestMapping("/api/v1/ordens-servico")
+@ArchbaseResource(value = "tms.ordemservico", description = "Ordem de serviço")
+public class OrdemServicoController {
 
     @GetMapping
-    @RequireProfile("USER") // Qualquer usuário logado
-    public List<Product> listProducts() {
-        return productService.findAll();
-    }
+    @HasPermission(action = "view", description = "Listar ordens de serviço")
+    public ResponseEntity<Page<OrdemServicoDto>> listar() { ... }
 
-    @PostMapping
-    @HasPermission(resource = "PRODUCT", action = "CREATE")
-    public Product createProduct(@RequestBody ProductDto dto) {
-        return productService.create(dto);
-    }
-
-    @PutMapping("/{id}")
-    @RequirePersona(value = "STORE_ADMIN", context = "STORE_APP")
-    public Product updateProduct(@PathVariable String id, @RequestBody ProductDto dto) {
-        return productService.update(id, dto);
-    }
-
-    @DeleteMapping("/{id}")
-    @RequireRole(value = "STORE_OWNER", ownerOnly = true)
-    public void deleteProduct(@PathVariable String id) {
-        productService.delete(id);
-    }
-
-    @GetMapping("/reports")
-    @RequireProfile(value = {"ADMIN", "FINANCE"}, requireAll = true)
-    @HasPermission(resource = "REPORTS", action = "GENERATE")
-    public ProductReport generateReport() {
-        return reportService.generateProductReport();
-    }
+    @PostMapping("/{id}/aprovar-custo")
+    @HasPermission(action = "aprovar_custo", description = "Aprovar o custo da OS",
+                   minimumLevel = AccessLevel.SUPERVISOR)
+    public ResponseEntity<Void> aprovarCusto(@PathVariable String id) { ... }
 }
 ```
 
-## Combinando Anotações
+**Parâmetros**
 
-As anotações podem ser combinadas para validações mais complexas:
+| Parâmetro | Obrigatório | O que faz |
+|---|---|---|
+| `action` | sim | nome da ação no catálogo |
+| `description` | **sim** | vira a descrição da Action; é o que o admin lê ao conceder |
+| `resource` | não | vazio herda de `@ArchbaseResource` na classe |
+| `minimumLevel` | não | piso da capacidade; semeia `MINIMUM_LEVEL` no primeiro registro |
+| `tenantId`, `companyId`, `projectId` | não | estreitamento de escopo |
+
+> ⚠ **`description` não tem valor padrão.** Exemplos que a omitem — inclusive versões antigas desta
+> documentação — **não compilam**.
+
+> ⚠ **`@HasPermission` é `@Target(METHOD)`**, de propósito. Uma capacidade é *recurso + ação*, e a
+> ação é sempre por método; na classe, todo método herdaria a mesma ação e um `DELETE` passaria a
+> exigir apenas `view`. Para não repetir o recurso, use `@ArchbaseResource`.
+
+### `minimumLevel` é semente, não lei
+
+O valor é gravado em `SEGURANCA_ACAO.MINIMUM_LEVEL` no **primeiro registro** da ação e nunca
+sobrescrito depois. A partir daí quem manda é o admin — igual já acontece com a descrição. O
+desenvolvedor declara o piso que conhece; a operação ajusta o que conhece melhor, sem deploy.
+
+A escala tem quatro degraus: `READER < OPERATOR < SUPERVISOR < TENANT_ADMIN`. O portão só é avaliado
+com `archbase.security.access-level.enabled=true`.
+
+**Piso, não substituto:** alcançar o nível não concede nada. O acesso continua dependendo de
+permissão no catálogo; o nível apenas impede que uma concessão indevida valha.
+
+---
+
+## 2. `@RequireProfile`
 
 ```java
-@RequireProfile("MANAGER")
-@HasPermission(resource = "FINANCIAL", action = "READ")
-public FinancialReport getFinancialReport() {
-    // Usuário deve ter profile MANAGER E permissão FINANCIAL:READ
-}
+@RequireProfile("SUPERVISOR")
+public void fecharCompetencia() { ... }
+
+// Administrador NÃO é isento: a tranca vale para todos.
+@RequireProfile(value = "AUDITORIA", allowSystemAdmin = false)
+public void exportarTrilha() { ... }
 ```
 
-## Extensibilidade via Enrichers
+| Parâmetro | Padrão | O que faz |
+|---|---|---|
+| `value` | — | perfis aceitos |
+| `requireAll` | `false` | exige todos em vez de um |
+| `allowSystemAdmin` | `true` | isenta o administrador **desta** tranca |
+| `requireActiveUser` | `true` | exige conta ativa |
+| `resource`, `action` | vazio | soma uma capacidade ao requisito |
+| `message` | — | texto do 403 |
 
-As anotações `@RequireRole` e `@RequirePersona` são extensíveis através do sistema de enrichers do Archbase. Aplicações podem implementar lógica customizada de validação baseada em:
+> ⚠ **O usuário tem um perfil só** (`UserEntity.profile` é `@ManyToOne`). `requireAll = true` com
+> dois perfis é insatisfazível por construção.
 
-- Contexto da aplicação (STORE_APP, CUSTOMER_APP, etc.)
-- Dados específicos do domínio (store, region, etc.)
-- Regras de negócio complexas
+---
 
-## Tratamento de Erros
-
-Quando o acesso é negado, as anotações lançam `AccessDeniedException` com mensagens customizáveis:
+## 3. `@RequireRole`
 
 ```java
-@RequirePersona(value = "STORE_ADMIN", message = "Apenas administradores de loja podem acessar este recurso")
-public void restrictedMethod() {
-    // ...
+@RequireRole("GESTOR_FROTA")
+public void reatribuirVeiculo() { ... }
+```
+
+| Parâmetro | Padrão | O que faz |
+|---|---|---|
+| `value` | — | papéis aceitos |
+| `requireAll` | `false` | exige todos em vez de um |
+| `requirePlatformAdmin` | `false` | exige `isAdministrator` |
+| `ownerOnly` | `false` | exige propriedade, respondida pelo SPI |
+| `allowSystemAdmin` | `true` | isenta o administrador desta tranca |
+
+**As roles são do domínio da aplicação, não do Archbase.** Quem as conhece é o
+`ArchbaseRoleResolver` que o projeto registra:
+
+```java
+@Component
+public class MinhasRoles implements ArchbaseRoleResolver {
+
+    @Override
+    public Set<String> resolveRoles(UserEntity user) {
+        return colaboradorRepository.rolesDe(user.getId());
+    }
+
+    @Override
+    public boolean isOwner(UserEntity user) {
+        return colaboradorRepository.ehProprietario(user.getId());
+    }
 }
 ```
+
+> ⚠ **Sem esse bean, `@RequireRole` não valida nada.** O comportamento é decidido por
+> `archbase.security.require-role.no-resolver-policy`, cujo padrão é `permit` — ou seja, a anotação
+> **libera qualquer usuário ativo, ignorando os próprios valores**. Registre o resolver e mude para
+> `deny`.
+
+> ⚠ `ownerOnly` com **mais de um** resolver registrado sempre nega: `isOwner(user)` não identifica o
+> domínio, então nada liga a propriedade que um resolver afirma à role que outro forneceu.
+> Consolide em um resolver que conheça os dois lados.
+
+> ⚠ `allowSystemAdmin` (padrão `true`) libera o administrador **antes** de `requirePlatformAdmin`.
+> A combinação não significa "admin E role".
+
+---
+
+## 4. `@RequirePersona`
+
+**Evite em código novo.** O mapeamento de perfil para persona é uma tabela fixa embutida no
+framework, com vocabulário de outro domínio:
+
+| Persona | Casa com o perfil |
+|---|---|
+| `PLATFORM_ADMIN` | `ADMIN`, `PLATFORM_ADMIN` |
+| `STORE_ADMIN` | `STORE_MANAGER`, `STORE_ADMIN` |
+| `CUSTOMER` | `CUSTOMER`, `USER` |
+| `DRIVER` | `DRIVER` |
+| qualquer outra | perfil de mesmo nome |
+
+> ⚠ **`context` e `contextData` não são lidos na decisão.** Estão na assinatura, não no
+> comportamento.
+
+> ⚠ **Não há ligação entre enrichers e estas anotações.** Versões anteriores desta documentação
+> afirmavam que `@RequireRole` e `@RequirePersona` eram extensíveis via enrichers — não são. A
+> extensão de `@RequireRole` é o `ArchbaseRoleResolver`.
+
+---
+
+## Combinando anotações
+
+Somam — todas precisam permitir. **Não existe OR entre elas.**
+
+```java
+@PostMapping("/{id}/cancelar")
+@RequireProfile(value = "SUPERVISOR", allowSystemAdmin = false)
+@HasPermission(action = "cancelar", description = "Cancelar a OS",
+               minimumLevel = AccessLevel.SUPERVISOR)
+public ResponseEntity<Void> cancelar(@PathVariable String id) { ... }
+```
+
+Lê-se: *precisa ser SUPERVISOR (mesmo sendo admin), precisa ter a capacidade concedida, e precisa
+alcançar o nível.*
+
+### Uma tranca sozinha concede
+
+```java
+@RequireProfile("SUPERVISOR")   // sem @HasPermission
+public void fecharCompetencia() { ... }
+```
+
+Sem capacidade declarada não há catálogo a consultar, então passar na tranca é a decisão inteira.
+Qualquer pessoa com o perfil executa, sem que ninguém tenha concedido nada.
+
+É legítimo quando a regra é mesmo "só o perfil X" — mas **não substitui** `@HasPermission`: não
+aparece no catálogo, não pode ser concedido nem revogado pelo admin, e não muda sem deploy.
+
+---
+
+## Nível de classe
+
+`@RequireProfile`, `@RequireRole` e `@RequirePersona` aceitam a classe; a anotação no método vence a
+da classe. `@HasPermission` não — use `@ArchbaseResource` para o recurso compartilhado.
+
+---
+
+## Por que negou
+
+A decisão carrega o motivo. Os códigos mais comuns:
+
+| Código | O que significa |
+|---|---|
+| `NO_GRANT` | ninguém concedeu — nem direto, nem grupo, nem perfil |
+| `LEVEL_TOO_LOW` | concessão existe, o nível não alcança |
+| `EXPLICIT_DENY` | há uma permissão `DENY` alcançando o escopo |
+| `OUT_OF_SCOPE` | a permissão existe, mas para outro tenant/empresa/projeto |
+| `PROFILE_NOT_MATCHED` | perfil diferente do exigido |
+| `ROLE_RESOLVER_MISSING` | `no-resolver-policy=deny` sem resolver registrado |
+| `PRINCIPAL_NOT_SUPPORTED` | o principal não é `UserEntity` |
+
+> **`NO_GRANT` num sistema recém-anotado** quase sempre significa **catálogo vazio**, não permissão
+> faltando. Confira `archbase.security.scan-packages`.
+
+A tabela completa e os endpoints de diagnóstico — incluindo **simulação de acesso de outra pessoa** —
+estão em [ARQUITETURA.md](ARQUITETURA.md).
+
+---
 
 ## Configuração
 
-As anotações são automaticamente configuradas através do `MethodSecurityConfig` e processadas pelos respectivos `AuthorizationManager`:
+As anotações são configuradas por `MethodSecurityConfig` e interceptadas por um
+`AuthorizationManager` cada, que monta o requisito e delega ao avaliador:
 
-- `CustomAuthorizationManager` - processa `@HasPermission`
-- `ProfileAuthorizationManager` - processa `@RequireProfile`
-- `RoleAuthorizationManager` - processa `@RequireRole`
-- `PersonaAuthorizationManager` - processa `@RequirePersona`
+| Interceptador | Anotação |
+|---|---|
+| `CustomAuthorizationManager` | `@HasPermission` |
+| `ProfileAuthorizationManager` | `@RequireProfile` |
+| `RoleAuthorizationManager` | `@RequireRole` |
+| `PersonaAuthorizationManager` | `@RequirePersona` |
+
+A regra de cada tranca vive num `RestrictionEvaluator`; a composição e a decisão, no
+`ArchbaseAccessEvaluator`.
 
 ---
 
