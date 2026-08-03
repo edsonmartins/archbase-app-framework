@@ -5,6 +5,7 @@ import br.com.archbase.security.repository.PermissionJpaRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -50,6 +51,17 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
      * avaliação, que é o que se quer nos testes de unidade que não exercitam nível.
      */
     private final ArchbaseAccessLevelPolicy levelPolicy;
+
+    /**
+     * Alinha o backend ao que a tela sempre fez: ignorar concessões sobre ação ou recurso inativo.
+     *
+     * <p>Estava documentada como interruptor operacional — inclusive com a instrução "ligar isto
+     * tira acesso" — e <b>nenhum código a lia para decidir</b>. Quem a ligasse acreditaria ter
+     * apertado o acesso enquanto o backend seguia honrando tudo. Documentar proteção que não existe
+     * é pior do que não tê-la: transfere uma falsa sensação de segurança para quem opera.
+     */
+    @Value("${archbase.security.permission.require-active:false}")
+    private boolean requireActive;
 
     @Autowired
     public DefaultArchbaseAccessEvaluator(PermissionJpaRepository permissionRepository,
@@ -203,7 +215,7 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
 
         List<PermissionEntity> permissoes = permissionRepository
                 .findBySecurityIdsAndActionNameAndResourceName(
-                        subject.securityIds(), requirement.action(), requirement.resource());
+                        subject.securityIds(), requirement.action(), requirement.resource(), requireActive);
 
         if (permissoes == null || permissoes.isEmpty()) {
             chain.add(GateOutcome.denied(Gate.GRANT, AccessReasonCodes.NO_GRANT,
@@ -216,19 +228,45 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
 
         // ---------------------------------------------------------------- 2. SCOPE
 
-        List<PermissionEntity> noEscopo = new ArrayList<>();
+        // ---------------------------------------------------------------- negação explícita
+        //
+        // DENY vence, em qualquer nível — perfil, grupo ou direto — e só dentro do escopo em que
+        // foi declarado. É o que permite tirar uma pessoa de algo que o time inteiro tem, sem criar
+        // um grupo paralelo só para excluí-la.
         for (PermissionEntity permissao : permissoes) {
-            // Sem atalho de "não estreita": alcancaEscopo já trata cada campo nulo como "não
-            // restringe". O atalho que existia aqui consultava um predicado que ignora o tenant —
-            // e passava por cima da comparação de tenant, aceitando uma permissão restrita a outro.
-            if (alcancaEscopo(permissao, requirement)) {
-                noEscopo.add(permissao);
+            if (permissao.isDeny() && negacaoAlcanca(permissao, requirement)) {
+                return negado(chain, permissao, requirement);
             }
         }
 
-        if (noEscopo.isEmpty()) {
+        // SÓ CONCESSÕES daqui para baixo.
+        //
+        // Uma linha de negação jamais pode ser candidata a concedente — e podia: ela entrava em
+        // `noEscopo` junto com as concessões, porque `alcancaEscopo` é a regra permissiva. Uma
+        // negação estreitada que a requisição não confirmasse escapava do laço acima e virava o
+        // "concedente" escolhido logo abaixo. O efeito era o pior possível: um usuário SEM nenhuma
+        // concessão, com uma única negação, passava de NO_GRANT para GRANTED — acrescentar a
+        // negação CONCEDIA o acesso que ela existia para tirar.
+        List<PermissionEntity> concessoes = permissoes.stream()
+                .filter(p -> !p.isDeny())
+                .toList();
+
+        if (concessoes.isEmpty()) {
+            chain.add(GateOutcome.denied(Gate.GRANT, AccessReasonCodes.NO_GRANT,
+                    "Há " + permissoes.size() + " linha(s) para " + requirement.capability()
+                            + ", nenhuma delas é concessão"));
+            return AccessDecision.denied(Gate.GRANT, AccessReasonCodes.NO_GRANT,
+                    "Nenhuma permissão concedida para " + requirement.capability()
+                            + " — as linhas existentes são negações.", chain);
+        }
+
+        List<PermissionEntity> noEscopoConcedido = concessoes.stream()
+                .filter(p -> alcancaEscopo(p, requirement))
+                .toList();
+
+        if (noEscopoConcedido.isEmpty()) {
             chain.add(GateOutcome.denied(Gate.SCOPE, AccessReasonCodes.OUT_OF_SCOPE,
-                    "Há " + permissoes.size() + " permissão(ões) para " + requirement.capability()
+                    "Há " + concessoes.size() + " concessão(ões) para " + requirement.capability()
                             + ", nenhuma alcança tenant=" + requirement.tenantId()
                             + " company=" + requirement.companyId()
                             + " project=" + requirement.projectId()));
@@ -239,23 +277,12 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
 
         chain.add(GateOutcome.passed(Gate.SCOPE, "Escopo compatível"));
 
-        // ---------------------------------------------------------------- negação explícita
-        //
-        // DENY vence, em qualquer nível — perfil, grupo ou direto — e só dentro do escopo em que
-        // foi declarado, que é a mesma semântica que a concessão sempre teve. É o que permite tirar
-        // uma pessoa de algo que o time inteiro tem, sem criar um grupo paralelo só para excluí-la.
-        for (PermissionEntity permissao : permissoes) {
-            if (permissao.isDeny() && negacaoAlcanca(permissao, requirement)) {
-                return negado(chain, permissao, requirement);
-            }
-        }
-
         // Ordem estável. O catálogo não impede duas ações de mesmo nome sob o mesmo recurso, e sem
         // critério explícito a permissão escolhida — e portanto o concedente exibido no
         // diagnóstico — variaria entre execuções idênticas.
-        PermissionEntity concedente = noEscopo.stream()
+        PermissionEntity concedente = noEscopoConcedido.stream()
                 .min(Comparator.comparing(PermissionEntity::getId, Comparator.nullsLast(String::compareTo)))
-                .orElse(noEscopo.get(0));
+                .orElse(noEscopoConcedido.get(0));
 
         // ---------------------------------------------------------------- 4. LEVEL
         //
@@ -263,7 +290,7 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
         // que só se conhece depois de consultá-la — e, para quem investiga, "ninguém te concedeu" é
         // resposta mais útil do que "seu nível é baixo" quando as duas coisas são verdade.
         if (levelPolicy != null && levelPolicy.isEnabled()) {
-            AccessLevel minimo = maiorMinimoEntre(noEscopo);
+            AccessLevel minimo = maiorMinimoEntre(noEscopoConcedido);
             AccessLevel doSujeito = levelPolicy.levelOf(subject);
 
             if (!doSujeito.reaches(minimo)) {
@@ -344,14 +371,21 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
      * <p>Usada no caminho do administrador, onde só as negações são consultadas.
      */
     private PermissionEntity negacaoQueAlcanca(AccessSubject subject, AccessRequirement requirement) {
-        List<PermissionEntity> negacoes = permissionRepository
-                .findDenialsBySecurityIdsAndActionNameAndResourceName(
-                        subject.securityIds(), requirement.action(), requirement.resource());
+        // Mesma consulta do caminho comum, filtrada em Java por isDeny(). Havia aqui uma consulta
+        // só-de-negações com `p.effect = DENY` em SQL — que casa apenas o valor canônico, enquanto
+        // PermissionEffect.parse (usado em todo o resto, e escrito justamente para tolerar SQL
+        // feito à mão) aceita 'deny' e ' Deny '. Uma linha com caixa diferente era honrada como
+        // negação no caminho comum e invisível no atalho do administrador — exatamente o caminho
+        // que a consulta existia para servir.
+        List<PermissionEntity> candidatas = permissionRepository
+                .findBySecurityIdsAndActionNameAndResourceName(
+                        subject.securityIds(), requirement.action(), requirement.resource(), requireActive);
 
-        if (negacoes == null || negacoes.isEmpty()) {
+        if (candidatas == null || candidatas.isEmpty()) {
             return null;
         }
-        return negacoes.stream()
+        return candidatas.stream()
+                .filter(PermissionEntity::isDeny)
                 .filter(p -> negacaoAlcanca(p, requirement))
                 .findFirst()
                 .orElse(null);

@@ -90,6 +90,20 @@ public class ResourceController {
         }
     }
 
+    /**
+     * O escopo a gravar: o pedido quando declarado, o atual quando ausente.
+     *
+     * <p>String vazia limpa. Sem essa distinção, "não declarei escopo" e "quero sem escopo" seriam
+     * a mesma coisa — e o primeiro caso, que é o de todo cliente anterior, alargaria em silêncio
+     * uma permissão que alguém estreitou de propósito.
+     */
+    private String escopoResolvido(String doPedido, String oAtual) {
+        if (doPedido == null) {
+            return oAtual;
+        }
+        return doPedido.isBlank() ? null : doPedido;
+    }
+
     @PostMapping("/permissions")
     public ResponseEntity<?> grantPermission(@RequestBody GrantPermissionDto grantPermission) {
         try {
@@ -123,17 +137,25 @@ public class ResourceController {
                 PermissionEffect efeitoPedido = grantPermission.getEffect() == null
                         ? PermissionEffect.GRANT : grantPermission.getEffect();
 
+                // Escopo AUSENTE preserva o que está gravado; só um valor explícito o substitui, e
+                // string vazia é a forma de limpar. Todo cliente anterior envia apenas
+                // {securityId, actionId, type}: sobrescrever com o nulo que chega alargaria uma
+                // permissão estreitada a uma empresa para TODAS elas, num pedido que o operador
+                // entende como "reconceder o que já estava lá".
+                String empresa = escopoResolvido(grantPermission.getCompanyId(), existingPermission.getCompanyId());
+                String projeto = escopoResolvido(grantPermission.getProjectId(), existingPermission.getProjectId());
+
                 boolean mudou = efeitoPedido != existingPermission.getEffect()
-                        || !java.util.Objects.equals(grantPermission.getCompanyId(), existingPermission.getCompanyId())
-                        || !java.util.Objects.equals(grantPermission.getProjectId(), existingPermission.getProjectId());
+                        || !java.util.Objects.equals(empresa, existingPermission.getCompanyId())
+                        || !java.util.Objects.equals(projeto, existingPermission.getProjectId());
 
                 if (!mudou) {
                     return ResponseEntity.ok(ResouceActionPermissionDto.fromPermissionDto(existingPermission));
                 }
 
                 existingPermission.setEffect(efeitoPedido);
-                existingPermission.setCompanyId(grantPermission.getCompanyId());
-                existingPermission.setProjectId(grantPermission.getProjectId());
+                existingPermission.setCompanyId(empresa);
+                existingPermission.setProjectId(projeto);
                 PermissionDto atualizada = resourceService.grantPermission(existingPermission);
                 return ResponseEntity.ok(ResouceActionPermissionDto.fromPermissionDto(atualizada));
             }

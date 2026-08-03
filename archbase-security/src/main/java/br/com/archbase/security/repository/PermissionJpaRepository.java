@@ -56,11 +56,14 @@ public interface PermissionJpaRepository extends ArchbaseCommonJpaRepository<Per
     @Query("SELECT p FROM PermissionEntity p "
             + "WHERE p.security.id IN :securityIds "
             + "AND p.action.name = :actionName "
-            + "AND p.action.resource.name = :resourceName")
+            + "AND p.action.resource.name = :resourceName "
+            + "AND (:requireActive = false "
+            + "     OR (p.action.active = true AND p.action.resource.active = true))")
     List<PermissionEntity> findBySecurityIdsAndActionNameAndResourceName(
             @Param("securityIds") Set<String> securityIds,
             @Param("actionName") String actionName,
-            @Param("resourceName") String resourceName);
+            @Param("resourceName") String resourceName,
+            @Param("requireActive") boolean requireActive);
 
     /**
      * Busca todas as permissões para um conjunto de IDs de segurança (user, groups, profile).
@@ -86,27 +89,6 @@ public interface PermissionJpaRepository extends ArchbaseCommonJpaRepository<Per
             + "AND p.action.resource.name = :resourceName")
     List<PermissionEntity> findAllBySecurityIdsAndResourceName(
             @Param("securityIds") Set<String> securityIds,
-            @Param("resourceName") String resourceName);
-
-    /**
-     * Só as <b>negações</b> que alcançam esta capacidade.
-     *
-     * <p>Existe para o administrador. A flag {@code isAdministrator} encerra a decisão sem
-     * consultar o catálogo, e por isso uma negação explícita sobre um administrador não fazia
-     * efeito nenhum — o admin aceitava criá-la, ela ficava gravada, e era silenciosamente ignorada.
-     *
-     * <p>Consultar só as negações mantém o atalho barato: na esmagadora maioria das decisões esta
-     * consulta devolve lista vazia, em vez de carregar todas as concessões do sujeito.
-     */
-    @EntityGraph(attributePaths = {"security", "action", "action.resource"})
-    @Query("SELECT p FROM PermissionEntity p "
-            + "WHERE p.security.id IN :securityIds "
-            + "AND p.action.name = :actionName "
-            + "AND p.action.resource.name = :resourceName "
-            + "AND p.effect = br.com.archbase.security.access.PermissionEffect.DENY")
-    List<PermissionEntity> findDenialsBySecurityIdsAndActionNameAndResourceName(
-            @Param("securityIds") Set<String> securityIds,
-            @Param("actionName") String actionName,
             @Param("resourceName") String resourceName);
 
     /**

@@ -290,22 +290,34 @@ public class ArchbaseSecurityHardeningValidator {
             return;
         }
 
-        long perfisSemNivel = contar(
+        // contarOuVazio, e não contar: esta checagem roda quando o portão de nível está LIGADO, e o
+        // cenário mais provável de falha é justamente ligá-lo antes de a migration ter rodado — ou
+        // seja, com as colunas ausentes. Pelo EntityManager, a consulta que falha marca a transação
+        // como rollback-only e derruba a subida. O aviso que deveria orientar viraria um
+        // UnexpectedRollbackException sem relação aparente com nível de acesso.
+        OptionalLong perfisSemNivel = contarOuVazio(
                 "SELECT COUNT(*) FROM seguranca WHERE tp_seguranca = 'SEGURANCA_PERFIL' AND access_level IS NULL");
-        long acoesComMinimo = contar(
+        OptionalLong acoesComMinimo = contarOuVazio(
                 "SELECT COUNT(*) FROM seguranca_acao WHERE minimum_level IS NOT NULL");
 
-        if (acoesComMinimo == 0) {
+        if (perfisSemNivel.isEmpty() || acoesComMinimo.isEmpty()) {
+            avisos.add("archbase.security.access-level.enabled=true, mas não foi possível inspecionar "
+                    + "as colunas de nível. Confirme que R__archbase_security_schema.sql foi aplicado — "
+                    + "sem MINIMUM_LEVEL e ACCESS_LEVEL o portão fica ligado e não barra nada.");
+            return;
+        }
+
+        if (acoesComMinimo.getAsLong() == 0) {
             avisos.add("archbase.security.access-level.enabled=true, mas nenhuma ação tem "
                     + "MINIMUM_LEVEL preenchido: o portão está ligado e não barra nada. "
                     + "Declare minimumLevel em @HasPermission ou preencha o mínimo no admin.");
             return;
         }
 
-        if (perfisSemNivel > 0) {
-            avisos.add(perfisSemNivel + " perfil(is) sem ACCESS_LEVEL, com o portão de nível ligado: "
+        if (perfisSemNivel.getAsLong() > 0) {
+            avisos.add(perfisSemNivel.getAsLong() + " perfil(is) sem ACCESS_LEVEL, com o portão de nível ligado: "
                     + "essas pessoas caem no padrão " + padrao + ", e "
-                    + acoesComMinimo + " ação(ões) têm mínimo declarado. "
+                    + acoesComMinimo.getAsLong() + " ação(ões) têm mínimo declarado. "
                     + "Rode GET /api/v1/security/diagnostics/users/{id}/effective para ver quem perde o quê "
                     + "antes de manter isso em produção.");
         }

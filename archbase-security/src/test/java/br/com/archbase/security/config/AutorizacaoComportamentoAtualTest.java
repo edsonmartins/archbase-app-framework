@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -86,7 +87,7 @@ class AutorizacaoComportamentoAtualTest {
     }
 
     private void catalogoResponde(PermissionEntity... permissoes) {
-        when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString()))
+        when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString(), anyBoolean()))
                 .thenReturn(List.of(permissoes));
     }
 
@@ -183,7 +184,7 @@ class AutorizacaoComportamentoAtualTest {
 
             assertThat(permitido(manager(), user, Alvo.class, "exigeAdminEPermissao")).isFalse();
             verify(permissionRepository)
-                    .findBySecurityIdsAndActionNameAndResourceName(anySet(), eq("VIEW"), eq("PRODUTO"));
+                    .findBySecurityIdsAndActionNameAndResourceName(anySet(), eq("VIEW"), eq("PRODUTO"), anyBoolean());
         }
 
         @Test
@@ -205,7 +206,7 @@ class AutorizacaoComportamentoAtualTest {
 
             assertThat(permitido(manager(), user, Alvo.class, "exigeAdminEPermissao")).isFalse();
             verify(permissionRepository, never())
-                    .findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString());
+                    .findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString(), anyBoolean());
         }
 
         @Test
@@ -451,7 +452,7 @@ class AutorizacaoComportamentoAtualTest {
             assertThat(permitido(manager(), usuario("user-1", false), AlvoComRecursoNaClasse.class, "verProduto"))
                     .isTrue();
             verify(permissionRepository)
-                    .findBySecurityIdsAndActionNameAndResourceName(anySet(), eq("VIEW"), eq("PRODUTO"));
+                    .findBySecurityIdsAndActionNameAndResourceName(anySet(), eq("VIEW"), eq("PRODUTO"), anyBoolean());
         }
 
         static class Alvo {
@@ -479,7 +480,7 @@ class AutorizacaoComportamentoAtualTest {
 
             assertThat(permitido(manager(), usuario("user-1", false), Alvo.class, "verProduto")).isTrue();
             verify(permissionRepository)
-                    .findBySecurityIdsAndActionNameAndResourceName(anySet(), eq("VIEW"), eq("PRODUTO"));
+                    .findBySecurityIdsAndActionNameAndResourceName(anySet(), eq("VIEW"), eq("PRODUTO"), anyBoolean());
         }
 
         @Test
@@ -510,7 +511,7 @@ class AutorizacaoComportamentoAtualTest {
         @Test
         @DisplayName("erro ao avaliar vira negação, não liberação")
         void erroNaAvaliacaoNega() throws Exception {
-            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString()))
+            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString(), anyBoolean()))
                     .thenThrow(new IllegalStateException("falha de consulta"));
 
             assertThat(permitido(manager(), usuario("user-1", false), Alvo.class, "verProduto")).isFalse();

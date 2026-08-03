@@ -17,6 +17,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -374,8 +375,8 @@ class NivelENegacaoTest {
             UserEntity admin = usuario("admin-1");
             admin.setIsAdministrator(true);
 
-            when(permissionRepository.findDenialsBySecurityIdsAndActionNameAndResourceName(
-                    anySet(), anyString(), anyString()))
+            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(
+                    anySet(), anyString(), anyString(), anyBoolean()))
                     .thenReturn(List.of(negacao(usuario("admin-1"), null)));
 
             AccessDecision decisao = avaliador(false, "READER")
@@ -391,8 +392,8 @@ class NivelENegacaoTest {
             UserEntity admin = usuario("admin-1");
             admin.setIsAdministrator(true);
 
-            when(permissionRepository.findDenialsBySecurityIdsAndActionNameAndResourceName(
-                    anySet(), anyString(), anyString()))
+            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(
+                    anySet(), anyString(), anyString(), anyBoolean()))
                     .thenReturn(List.of());
 
             AccessDecision decisao = avaliador(false, "READER")
@@ -400,8 +401,6 @@ class NivelENegacaoTest {
 
             assertThat(decisao.allowed()).isTrue();
             assertThat(decisao.reasonCode()).isEqualTo(AccessReasonCodes.GRANTED_ADMINISTRATOR);
-            verify(permissionRepository, never())
-                    .findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString());
         }
 
         @Test
@@ -410,8 +409,8 @@ class NivelENegacaoTest {
             UserEntity admin = usuario("admin-1");
             admin.setIsAdministrator(true);
 
-            when(permissionRepository.findDenialsBySecurityIdsAndActionNameAndResourceName(
-                    anySet(), anyString(), anyString()))
+            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(
+                    anySet(), anyString(), anyString(), anyBoolean()))
                     .thenReturn(List.of(negacao(usuario("admin-1"), "empresa-b")));
 
             AccessDecision decisao = avaliador(false, "READER")
@@ -458,6 +457,27 @@ class NivelENegacaoTest {
         }
 
         @Test
+        @DisplayName("negação NUNCA vira concedente — nem quando seu escopo não se confirma")
+        void negacaoNaoViraConcedente() {
+            // O pior defeito encontrado em todo este trabalho: acrescentar uma NEGAÇÃO CONCEDIA o
+            // acesso que ela existia para tirar.
+            //
+            // A linha de deny entrava no conjunto "em escopo" pela regra permissiva, escapava do
+            // laço de negação pela regra estrita, e sobrava como única candidata a concedente. Um
+            // usuário SEM nenhuma concessão, com uma única negação estreitada, passava de NO_GRANT
+            // para GRANTED — com a própria negação registrada como quem concedeu.
+            catalogoResponde(negacao(usuario("user-1"), "empresa-a"));
+
+            AccessDecision decisao = avaliador(false, "READER")
+                    .decide(AccessSubject.of(usuario("user-1")), AccessRequirement.of(RECURSO, ACAO));
+
+            assertThat(decisao.allowed()).isFalse();
+            assertThat(decisao.reasonCode())
+                    .as("não há concessão alguma — a única linha é uma negação")
+                    .isEqualTo(AccessReasonCodes.NO_GRANT);
+        }
+
+        @Test
         @DisplayName("a negação é avaliada antes do nível — o motivo mais forte prevalece")
         void negacaoAntesDoNivel() {
             UserEntity user = usuario("user-1");
@@ -487,7 +507,7 @@ class NivelENegacaoTest {
     }
 
     private void catalogoResponde(PermissionEntity... permissoes) {
-        when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString()))
+        when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString(), anyBoolean()))
                 .thenReturn(List.of(permissoes));
     }
 

@@ -56,9 +56,10 @@ import static org.mockito.Mockito.when;
  * <p>Só um teste com banco real prova isso: com repositório mockado, a ausência de filtro na JPQL
  * é invisível.
  *
- * <p>Estes testes descrevem o comportamento <b>atual</b>. Quando
- * {@code archbase.security.permission.require-active} entrar na fase D, o cenário do filtro é
- * reescrito no mesmo commit, deliberadamente.
+ * <p>O padrão continua sendo honrar a concessão inerte — é o comportamento anterior ao core, e
+ * mudá-lo por conta própria tiraria acesso de quem depende dele. Quem quiser alinhar os dois lados
+ * liga {@code archbase.security.permission.require-active=true}, e o cenário final deste arquivo
+ * mostra a diferença.
  */
 @SpringBootTest(classes = ArchbaseSecurityTestApplication.class)
 @TestPropertySource(properties = {
@@ -131,6 +132,29 @@ class ConsultaDeAutorizacaoComportamentoAtualTest {
 
     @Test
     @Transactional
+    @DisplayName("com require-active, a concessão sobre ação inativa deixa de valer")
+    void requireActiveDeixaDeHonrarInerte() {
+        // A flag estava DOCUMENTADA como interruptor operacional — "ligar isto tira acesso" — e
+        // nenhum código a lia para decidir. Quem a ligasse acreditaria ter apertado o acesso
+        // enquanto o backend seguia honrando tudo. Aqui ela é exercitada nos dois estados.
+        UserEntity user = usuarioSalvo("user-1");
+        concessao(user, recursoSalvo(true), false);
+
+        Set<String> origens = Set.of(user.getId());
+
+        assertThat(permissionRepository
+                .findBySecurityIdsAndActionNameAndResourceName(origens, ACAO, RECURSO, false))
+                .as("desligada: a concessão inerte continua sendo devolvida")
+                .hasSize(1);
+
+        assertThat(permissionRepository
+                .findBySecurityIdsAndActionNameAndResourceName(origens, ACAO, RECURSO, true))
+                .as("ligada: some, alinhando o backend ao que a tela sempre fez")
+                .isEmpty();
+    }
+
+    @Test
+    @Transactional
     @DisplayName("a consulta devolve a permissão com o concedente — a origem já está disponível")
     void aOrigemJaVemNaConsulta() {
         // Fundamento da fase A: hasPermission joga fora esta informação com um anyMatch. A tela de
@@ -142,7 +166,7 @@ class ConsultaDeAutorizacaoComportamentoAtualTest {
         concessao(grupo, recursoSalvo(true), true);
 
         List<PermissionEntity> encontradas = permissionRepository
-                .findBySecurityIdsAndActionNameAndResourceName(Set.of(user.getId(), grupo.getId()), ACAO, RECURSO);
+                .findBySecurityIdsAndActionNameAndResourceName(Set.of(user.getId(), grupo.getId()), ACAO, RECURSO, false);
 
         assertThat(encontradas).hasSize(1);
         assertThat(encontradas.get(0).getSecurity().getId()).isEqualTo(grupo.getId());
@@ -194,7 +218,7 @@ class ConsultaDeAutorizacaoComportamentoAtualTest {
         assertThat(securityService.hasPermission(autenticacao(user), ACAO, RECURSO, null, null, null)).isTrue();
 
         List<PermissionEntity> todas = permissionRepository
-                .findBySecurityIdsAndActionNameAndResourceName(Set.of(user.getId(), grupo.getId()), ACAO, RECURSO);
+                .findBySecurityIdsAndActionNameAndResourceName(Set.of(user.getId(), grupo.getId()), ACAO, RECURSO, false);
         assertThat(todas)
                 .as("PermissionEntity não tem como expressar DENY hoje")
                 .allSatisfy(p -> assertThat(p.getSecurity()).isNotNull());

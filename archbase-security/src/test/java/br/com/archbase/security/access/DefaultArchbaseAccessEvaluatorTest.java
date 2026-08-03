@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -62,7 +63,7 @@ class DefaultArchbaseAccessEvaluatorTest {
             assertThat(decisao.reasonCode()).isEqualTo(AccessReasonCodes.PRINCIPAL_NOT_SUPPORTED);
             assertThat(decisao.message()).contains("UserDetailsService");
             verify(permissionRepository, never())
-                    .findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString());
+                    .findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString(), anyBoolean());
         }
 
         @Test
@@ -77,7 +78,7 @@ class DefaultArchbaseAccessEvaluatorTest {
             // falhava, então negar tirava acesso de quem funcionava — e a negação reproduzia um
             // acidente, não uma decisão.
             UserEntity user = usuario("user-1", null);
-            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString()))
+            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString(), anyBoolean()))
                     .thenReturn(List.of(permissao(grupo("TIME-SAC"), null, null, null)));
 
             AccessDecision decisao = evaluator.decide(AccessSubject.of(user), AccessRequirement.of(RECURSO, ACAO));
@@ -92,7 +93,7 @@ class DefaultArchbaseAccessEvaluatorTest {
         @DisplayName("isAdministrator nulo não concede o atalho de administrador")
         void administradorNuloNaoTemAtalho() {
             UserEntity user = usuario("user-1", null);
-            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString()))
+            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString(), anyBoolean()))
                     .thenReturn(List.of());
 
             AccessDecision decisao = evaluator.decide(AccessSubject.of(user), AccessRequirement.of(RECURSO, ACAO));
@@ -109,16 +110,22 @@ class DefaultArchbaseAccessEvaluatorTest {
     class Concessao {
 
         @Test
-        @DisplayName("administrador concede sem consultar o catálogo")
+        @DisplayName("administrador concede sem depender de concessão — mas procura negação")
         void administradorConcede() {
+            // A afirmação original era "concede sem consultar o catálogo", e deixou de valer quando
+            // a negação passou a alcançar o administrador: sem consultar, um DENY sobre ele seria
+            // gravado e silenciosamente ignorado. O que continua verdadeiro é que nenhuma CONCESSÃO
+            // precisa existir — a flag basta.
+            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(
+                    anySet(), anyString(), anyString(), anyBoolean()))
+                    .thenReturn(List.of());
+
             AccessDecision decisao = evaluator.decide(
                     AccessSubject.of(usuario("admin-1", true)), AccessRequirement.of(RECURSO, ACAO));
 
             assertThat(decisao.allowed()).isTrue();
             assertThat(decisao.reasonCode()).isEqualTo(AccessReasonCodes.GRANTED_ADMINISTRATOR);
             assertThat(decisao.grantedBy()).isNull();
-            verify(permissionRepository, never())
-                    .findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString());
         }
 
         @Test
@@ -126,7 +133,7 @@ class DefaultArchbaseAccessEvaluatorTest {
         void administradorDesativadoNaoTemAtalho() {
             UserEntity admin = usuario("admin-1", true);
             admin.setAccountDeactivated(true);
-            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString()))
+            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString(), anyBoolean()))
                     .thenReturn(List.of());
 
             AccessDecision decisao = evaluator.decide(AccessSubject.of(admin), AccessRequirement.of(RECURSO, ACAO));
@@ -144,7 +151,7 @@ class DefaultArchbaseAccessEvaluatorTest {
             // produto, não de refactor — e quebraria quem depende do fluxo atual.
             UserEntity user = usuario("user-1", false);
             user.setAccountDeactivated(true);
-            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString()))
+            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString(), anyBoolean()))
                     .thenReturn(List.of(permissao(grupo("TIME-SAC"), null, null, null)));
 
             AccessDecision decisao = evaluator.decide(AccessSubject.of(user), AccessRequirement.of(RECURSO, ACAO));
@@ -155,7 +162,7 @@ class DefaultArchbaseAccessEvaluatorTest {
         @Test
         @DisplayName("sem permissão nenhuma nega com NO_GRANT")
         void semPermissaoNega() {
-            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString()))
+            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString(), anyBoolean()))
                     .thenReturn(List.of());
 
             AccessDecision decisao = evaluator.decide(
@@ -173,7 +180,7 @@ class DefaultArchbaseAccessEvaluatorTest {
             UserEntity user = usuario("user-1", false);
             vincular(user, grupo);
 
-            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString()))
+            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString(), anyBoolean()))
                     .thenReturn(List.of(permissao(grupo, null, null, null)));
 
             AccessDecision decisao = evaluator.decide(AccessSubject.of(user), AccessRequirement.of(RECURSO, ACAO));
@@ -194,7 +201,7 @@ class DefaultArchbaseAccessEvaluatorTest {
         void escopoDiferenteNega() {
             // A distinção importa no diagnóstico: "não te concederam" e "concederam, mas para outro
             // escopo" levam a correções completamente diferentes.
-            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString()))
+            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString(), anyBoolean()))
                     .thenReturn(List.of(permissao(grupo("TIME-SAC"), null, "empresa-a", null)));
 
             AccessDecision decisao = evaluator.decide(
@@ -209,7 +216,7 @@ class DefaultArchbaseAccessEvaluatorTest {
         @Test
         @DisplayName("permissão sem escopo alcança qualquer escopo pedido")
         void permissaoSemEscopoAlcancaTudo() {
-            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString()))
+            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString(), anyBoolean()))
                     .thenReturn(List.of(permissao(grupo("TIME-SAC"), null, null, null)));
 
             AccessDecision decisao = evaluator.decide(
@@ -224,7 +231,7 @@ class DefaultArchbaseAccessEvaluatorTest {
         void escolheAQueAlcanca() {
             GroupEntity foraDeEscopo = grupo("TIME-SAC");
             GroupEntity noEscopo = grupo("GESTORES-FROTA");
-            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString()))
+            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString(), anyBoolean()))
                     .thenReturn(List.of(
                             permissao(foraDeEscopo, null, "empresa-a", null),
                             permissao(noEscopo, null, "empresa-b", null)));
@@ -245,7 +252,7 @@ class DefaultArchbaseAccessEvaluatorTest {
         @Test
         @DisplayName("uma concessão registra IDENTITY, SCOPE e GRANT, nessa ordem")
         void cadeiaDeUmaConcessao() {
-            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString()))
+            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString(), anyBoolean()))
                     .thenReturn(List.of(permissao(grupo("TIME-SAC"), null, null, null)));
 
             AccessDecision decisao = evaluator.decide(
@@ -259,7 +266,7 @@ class DefaultArchbaseAccessEvaluatorTest {
         @Test
         @DisplayName("a cadeia para no portão que negou")
         void cadeiaParaOndeNegou() {
-            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString()))
+            when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), anyString(), anyString(), anyBoolean()))
                     .thenReturn(List.of());
 
             AccessDecision decisao = evaluator.decide(
