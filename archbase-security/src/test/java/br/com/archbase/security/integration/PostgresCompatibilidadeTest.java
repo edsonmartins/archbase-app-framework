@@ -70,4 +70,79 @@ class PostgresCompatibilidadeTest extends BancoCompatibilidadeBaseTest {
         }
         // Chegar aqui sem exceção é a asserção: todo comando do script foi aceito.
     }
+
+    /**
+     * A migration sozinha produz as colunas que as entidades exigem.
+     *
+     * <p><b>Por que não basta o teste acima.</b> Ali o script roda sobre um schema que o Hibernate
+     * já criou a partir das entidades, então todo {@code add column if not exists} é no-op: o teste
+     * prova que o SQL é <i>válido</i>, não que ele <i>cria</i> alguma coisa. Um erro de digitação
+     * entre o nome na entidade e o nome no script passaria despercebido — e é justamente nos
+     * projetos com {@code ddl-auto=validate} ou {@code none}, onde a migration é a única fonte do
+     * schema, que esse erro impede a aplicação de subir.
+     *
+     * <p>Aqui o script é aplicado a um schema <b>vazio</b>, com as tabelas criadas apenas com a
+     * coluna de chave. O que existir depois veio do script, e de mais nada.
+     */
+    @Test
+    @DisplayName("a migration cria as colunas do core em um schema vazio")
+    void migrationCriaAsColunasDoCore() throws Exception {
+        String script;
+        try (var in = getClass().getResourceAsStream("/db/migration/archbase/R__archbase_security_schema.sql")) {
+            script = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+
+        try (Connection conn = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {
+
+            try (Statement st = conn.createStatement()) {
+                st.execute("drop schema if exists migracao_limpa cascade");
+                st.execute("create schema migracao_limpa");
+                st.execute("set search_path to migracao_limpa");
+                // Só a chave: tudo o mais precisa vir do script.
+                st.execute("create table seguranca (id_seguranca varchar(40) primary key, tp_seguranca varchar(50))");
+                st.execute("create table seguranca_acao (id_acao varchar(40) primary key)");
+                st.execute("create table seguranca_permissao (id_permissao varchar(40) primary key)");
+                st.execute("create table seguranca_token_api (id_token_api varchar(40) primary key, token varchar(255) not null)");
+                st.execute("create table seguranca_token_acesso (id_token_acesso varchar(40) primary key)");
+            }
+
+            for (String comando : script.lines()
+                    .filter(l -> !l.trim().startsWith("--"))
+                    .reduce("", (a, b) -> a + "\n" + b)
+                    .split(";")) {
+                if (comando.isBlank()) {
+                    continue;
+                }
+                try (Statement st = conn.createStatement()) {
+                    st.execute("set search_path to migracao_limpa");
+                    st.execute(comando);
+                }
+            }
+
+            assertThat(colunaExiste(conn, "seguranca_acao", "minimum_level"))
+                    .as("piso da capacidade — ActionEntity.minimumLevel")
+                    .isTrue();
+            assertThat(colunaExiste(conn, "seguranca", "access_level"))
+                    .as("nível do perfil — ProfileEntity.accessLevel")
+                    .isTrue();
+            assertThat(colunaExiste(conn, "seguranca_permissao", "effect"))
+                    .as("GRANT | DENY — PermissionEntity.effect")
+                    .isTrue();
+
+            try (Statement st = conn.createStatement()) {
+                st.execute("drop schema if exists migracao_limpa cascade");
+            }
+        }
+    }
+
+    private boolean colunaExiste(Connection conn, String tabela, String coluna) throws Exception {
+        try (Statement st = conn.createStatement();
+             var rs = st.executeQuery(
+                     "SELECT COUNT(*) FROM information_schema.columns "
+                             + "WHERE table_schema = 'migracao_limpa' "
+                             + "AND table_name = '" + tabela + "' AND column_name = '" + coluna + "'")) {
+            return rs.next() && rs.getInt(1) > 0;
+        }
+    }
 }
