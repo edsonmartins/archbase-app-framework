@@ -763,6 +763,127 @@ dimensionar.
 
 ---
 
+## Tenant no login
+
+### O modelo: um e-mail em N tenants são N usuários
+
+Não existe entidade de vínculo "usuário ↔ tenants", e **não existe tabela de tenant** neste módulo. O
+tenant é uma coluna da própria linha:
+
+```mermaid
+flowchart TB
+    subgraph SEG["SEGURANCA (TP_SEGURANCA = 'USUARIO')"]
+        L1["ana@x.com<br/>TENANT_ID = acme<br/>SENHA = $2a$...A<br/>perfil: SUPERVISOR"]
+        L2["ana@x.com<br/>TENANT_ID = globex<br/>SENHA = $2a$...B<br/>perfil: READER"]
+    end
+    L1 -.->|"mesma pessoa,<br/>credenciais independentes"| L2
+
+    style L1 fill:#1f4e5f,color:#fff
+    style L2 fill:#1f4e5f,color:#fff
+```
+
+Consequência que orienta todo o resto: **não existe "a senha de Ana"** — existe a senha dela *naquele
+tenant*. Os hashes podem divergir, e nada os sincroniza. Perfil, grupos e `BO_ADMINISTRADOR` também
+são por linha.
+
+### O bootstrap era circular
+
+Para logar era preciso mandar `X-TENANT-ID`; mas o tenant só se descobre sabendo quem é a pessoa. As
+aplicações resolviam embutindo o tenant numa variável de build — o que fixa **um tenant por build** —
+ou consultando um endpoint anônimo de descoberta antes do login.
+
+O servidor sempre soube resolver; o que faltava era contar:
+
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant A as /api/v1/auth
+    participant DB as SEGURANCA
+
+    C->>A: POST /authenticate (email, senha)
+    alt pedido traz tenantId (corpo ou header)
+        A->>A: usa o informado — tem precedência
+    else pedido não traz
+        A->>DB: query nativa, ignora o @Filter
+        DB-->>A: tenants daquele e-mail
+        Note over A: 1 → assume<br/>0 → segue sem tenant<br/>vários → recusa (ver "Em aberto")
+    end
+    A->>A: fixa o ArchbaseTenantContext
+    A->>A: authenticationManager.authenticate
+    A-->>C: tokens + user + tenant
+```
+
+O campo `tenant` na resposta é o mesmo valor do claim `tenantId` do JWT — que continua sendo a fonte
+de verdade inforjável. O campo só o torna legível sem decodificar o token. Vale para `/authenticate`,
+`/login`, `/login-flexible`, `/login-social` e `/refresh-token`, porque é preenchido no funil único
+`buildAuthenticationResponse`. **Não** vem no desafio de MFA, onde o login ainda não se completou.
+
+### O rótulo é da aplicação, não do framework
+
+`GET /api/v1/auth/tenants?email=` devolve **apenas o `tenantId`**.
+
+Antes devolvia também `nome` e `descricao` — lidos das colunas `NOME`/`DESCRICAO` da linha de
+`SEGURANCA`. Só que, para `TP_SEGURANCA='USUARIO'`, essas colunas são **o nome e a descrição da
+pessoa**, não da organização: como não há tabela de tenant, não havia nome de empresa ali para dar. O
+endpoint é anônimo, então qualquer um que soubesse um e-mail recebia o nome do titular — e o seletor
+de tenant do cliente acabava exibindo o nome do próprio usuário no lugar da empresa.
+
+Quem tem cadastro de organizações é a aplicação:
+
+```java
+@Bean
+public ArchbaseTenantInfoResolver tenantInfoResolver(OrganizacaoRepository repository) {
+    return tenantId -> repository.findById(tenantId)
+            .map(org -> TenantLoginOption.builder()
+                    .nome(org.getNomeFantasia())
+                    .descricao(org.getRazaoSocial())
+                    .build())
+            .orElse(null);
+}
+```
+
+Com o bean, os rótulos vêm preenchidos **na descoberta e na resposta do login**. Sem ele, o cliente
+recebe o id. O `tenantId` sempre vem do banco, mesmo que o resolver não o preencha. Exceção lançada
+pelo resolver vai para o log e não derruba o login: o id sozinho basta para o cliente funcionar.
+
+### Duas contagens na descoberta, e por que duas
+
+| chave | contém |
+|---|---|
+| **origem (IP)** | **enumeração** — a varredura usa um e-mail diferente a cada palpite; contar só por e-mail daria orçamento novo a cada tentativa e nunca bloquearia |
+| **e-mail** | martelo sobre um alvo específico, vindo de várias origens |
+
+Qualquer uma basta para recusar com `429` + `Retry-After`. O escopo é **separado do `login`**: abusar
+da descoberta não pode trancar o login legítimo de quem tem aquele e-mail — seria negação de serviço
+contra a vítima. Usa as chaves `archbase.security.rate-limit.*` já existentes.
+
+### O 401 uniforme só vale se o relógio também for
+
+E-mail inexistente e senha errada convergem para a mesma `BadCredentialsException` e devolvem o mesmo
+corpo. Isso já era verdade — e era insuficiente, porque o **tempo** contava a diferença.
+
+O `DaoAuthenticationProvider` do Spring se defende disso: quando o usuário não existe, ele confere a
+senha apresentada contra um hash fictício e descarta o resultado, só para gastar o mesmo bcrypt. Mas
+esse ramo vive em `catch (UsernameNotFoundException)`. O bean padrão resolvia o usuário com
+`Optional.get()`, que lança `NoSuchElementException` e cai no `catch (Exception)` seguinte: a
+mitigação existia, estava compilada e **nunca era alcançada**.
+
+```mermaid
+flowchart LR
+    LOAD["loadUserByUsername"] -->|"UsernameNotFoundException"| MIT["mitigateAgainstTimingAttack<br/>bcrypt no hash fictício"]
+    LOAD -->|"NoSuchElementException"| WRAP["catch (Exception)<br/>sem bcrypt — vazava o tempo"]
+    MIT --> R401["401 uniforme<br/>em corpo E em tempo"]
+
+    style MIT fill:#1f5f3a,color:#fff
+    style WRAP fill:#7a1f1f,color:#fff
+```
+
+> **Se a sua aplicação registra o próprio `UserDetailsService`**, o bean do framework
+> (`@ConditionalOnMissingBean`) não entra e a proteção é sua: lance `UsernameNotFoundException` — não
+> `NoSuchElementException`, não `null`, não uma exceção própria.
+
+---
+
 ## Fiação: o que entra com qual dependência
 
 ```mermaid
@@ -873,6 +994,20 @@ framework.
 
 **Uma consulta de sujeito por decisão.** O core acrescenta uma leitura onde antes havia uma. Cache
 por requisição resolve, mas não está desenhado.
+
+**O login recusa e-mail multi-tenant antes de conferir a senha.** Quando o pedido não traz tenant e o
+e-mail existe em mais de um, o login lança sem chegar à autenticação — o que revela pertencimento a
+várias organizações sem senha nenhuma, e ainda por um status diferente do 401 (`/authenticate` deixa
+escapar como 500; `/login-flexible` responde 400). Fechar isso exige conferir a senha contra **cada**
+linha candidata, já que cada uma tem o seu hash: nenhum acerto → 401 uniforme; um acerto → aquele
+tenant; vários → devolver só esses, já autenticado. Muda semântica de autenticação, então é passo
+próprio.
+
+**A descoberta pré-login não pode simplesmente sumir.** Onde cada tenant tem servidor próprio, o
+cliente precisa resolver o tenant antes de saber *para onde* postar o login. Remover o endpoint do
+framework sem substituto empurra o problema para implementações caseiras, sem revisão — foi o que já
+aconteceu fora daqui. O caminho é a resposta do login cobrir o caso de servidor único e a descoberta
+sobreviver endurecida para o resto.
 
 ---
 
