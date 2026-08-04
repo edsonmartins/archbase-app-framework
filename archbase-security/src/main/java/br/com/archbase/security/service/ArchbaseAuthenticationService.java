@@ -81,6 +81,14 @@ public class ArchbaseAuthenticationService {
     private br.com.archbase.security.mfa.MfaService mfaService;
 
     /**
+     * Rótulo de apresentação dos tenants — <b>opcional</b>. Sem bean registrado, o framework devolve
+     * apenas o {@code tenantId}, porque não tem cadastro de organização de onde tirar um nome.
+     * Ver {@link ArchbaseTenantInfoResolver}.
+     */
+    @Autowired(required = false)
+    private ArchbaseTenantInfoResolver tenantInfoResolver;
+
+    /**
      * Faz o pedido de reset responder igual para e-mail cadastrado e não cadastrado.
      *
      * <p>Desligado por padrão porque muda o contrato do endpoint: hoje ele responde 400 com
@@ -458,7 +466,14 @@ public class ArchbaseAuthenticationService {
         }
     }
 
-    // Método auxiliar para construir resposta de autenticação
+    /**
+     * Método auxiliar para construir resposta de autenticação.
+     *
+     * <p>Funil único de todos os retornos de login bem-sucedido — {@code /authenticate},
+     * {@code /login}, {@code /login-flexible}, {@code /login-social} e refresh — por isso o tenant é
+     * preenchido aqui uma vez só. A resposta de desafio MFA é montada à parte e de propósito não
+     * traz tenant: ali o login ainda não se completou.
+     */
     private AuthenticationResponse buildAuthenticationResponse(AccessTokenEntity accessToken, String refreshToken, UserEntity user) {
         return AuthenticationResponse.builder()
                 .id(accessToken.getId())
@@ -467,6 +482,7 @@ public class ArchbaseAuthenticationService {
                 .tokenType(TokenType.BEARER)
                 .refreshToken(refreshToken)
                 .user(user != null ? user.toDomain() : null)
+                .tenant(user != null ? describeTenant(user.getTenantId()) : null)
                 .build();
     }
 
@@ -785,17 +801,47 @@ public class ArchbaseAuthenticationService {
      * Utiliza query nativa que ignora o @Filter de tenant, enxergando todos os tenants.
      * Se o email não possuir usuários, retorna lista vazia.
      *
+     * <p><b>Só o {@code tenantId} sai daqui por conta própria.</b> As colunas {@code NOME} e
+     * {@code DESCRICAO} desta consulta são as da linha de <b>usuário</b> — o nome e a descrição da
+     * pessoa, não da organização. Devolvê-las expunha o nome do titular de qualquer e-mail
+     * conhecido, num endpoint anônimo, e ainda fazia o seletor de tenant exibir o nome do próprio
+     * usuário no lugar da empresa. O rótulo agora vem do {@link ArchbaseTenantInfoResolver}, que a
+     * aplicação registra se tiver cadastro de organizações; sem ele, o cliente recebe o id.
+     *
      * @param email Email a consultar
      * @return Lista de tenants disponíveis para login com esse email
      */
     public List<TenantLoginOption> findTenantsByEmail(String email) {
         return repository.findTenantsByEmailIgnoringTenant(email).stream()
-                .map(opt -> TenantLoginOption.builder()
-                        .tenantId(opt[0] != null ? opt[0].toString() : null)
-                        .nome(opt[1] != null ? opt[1].toString() : null)
-                        .descricao(opt[2] != null ? opt[2].toString() : null)
-                        .build())
+                .map(opt -> opt[0] != null ? opt[0].toString() : null)
+                .filter(Objects::nonNull)
+                .distinct()
+                .map(this::describeTenant)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Monta o descritor de um tenant: o id sempre, o rótulo só quando a aplicação souber informá-lo.
+     *
+     * <p>Falha do resolver não derruba o login nem a listagem — o id sozinho é suficiente para o
+     * cliente funcionar, e um cadastro de organizações indisponível não é motivo para negar acesso.
+     */
+    private TenantLoginOption describeTenant(String tenantId) {
+        if (tenantId == null || tenantId.isBlank()) {
+            return null;
+        }
+        if (tenantInfoResolver != null) {
+            try {
+                TenantLoginOption resolvido = tenantInfoResolver.resolve(tenantId);
+                if (resolvido != null) {
+                    resolvido.setTenantId(tenantId);
+                    return resolvido;
+                }
+            } catch (Exception e) {
+                log.warn("Resolver de tenant falhou para {}; devolvendo apenas o id", tenantId, e);
+            }
+        }
+        return TenantLoginOption.builder().tenantId(tenantId).build();
     }
 
     /**

@@ -1,8 +1,11 @@
 package br.com.archbase.security.integration;
 
 import br.com.archbase.ddd.infraestructure.persistence.jpa.repository.CommonArchbaseJpaRepository;
+import br.com.archbase.security.auth.ArchbaseTenantInfoResolver;
+import br.com.archbase.security.auth.TenantLoginOption;
 import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
 import org.springframework.boot.SpringBootConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.hibernate.autoconfigure.HibernatePropertiesCustomizer;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
@@ -40,6 +43,21 @@ public class ArchbaseSecurityTestApplication {
     @Bean
     public CurrentTenantIdentifierResolver<String> tenantIdentifierResolver() {
         return new TestTenantResolver();
+    }
+
+    /**
+     * Rótulo de tenant como uma aplicação real forneceria — ligado por propriedade porque a maior
+     * parte dos testes precisa justamente do cenário <b>sem</b> resolver, em que o framework devolve
+     * só o id. Um {@code @TestConfiguration} aninhado não serviria: o {@code @ComponentScan} acima
+     * varre as classes de teste e o bean vazaria para o contexto de todos os outros cenários.
+     */
+    @Bean
+    @ConditionalOnProperty(name = "teste.tenant-info-resolver.enabled", havingValue = "true")
+    public ArchbaseTenantInfoResolver tenantInfoResolverDeTeste() {
+        return tenantId -> TenantLoginOption.builder()
+                .nome("Frigocenter")
+                .descricao("Frigocenter Distribuidora Ltda")
+                .build();
     }
 
     static class TestTenantResolver

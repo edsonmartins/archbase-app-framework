@@ -557,6 +557,116 @@ Response:
 
 ---
 
+## Tenant no login
+
+### O cliente não precisa saber o tenant antes de logar
+
+No modelo do Archbase, **um e-mail em N tenants são N linhas de usuário** — cada uma na tabela
+`SEGURANCA` com o seu `TENANT_ID`, o seu perfil, os seus grupos e **a sua própria senha**. Não existe
+entidade de vínculo "usuário ↔ tenants", e não existe tabela de tenant.
+
+Isso criava um bootstrap circular no frontend: para logar era preciso mandar `X-TENANT-ID`, mas o
+tenant só se descobre depois de saber quem é a pessoa. Na prática as aplicações resolviam embutindo o
+tenant numa variável de build (`VITE_TENANT_ID`), o que fixa um tenant por build.
+
+**Agora o servidor informa.** Toda resposta de login bem-sucedido traz o tenant em que a autenticação
+aconteceu:
+
+```http
+POST /api/v1/auth/authenticate
+{ "email": "usuario@exemplo.com", "password": "senha123" }
+
+Response 200:
+{
+  "access_token": "...",
+  "refresh_token": "...",
+  "user": { ... },
+  "tenant": {
+    "tenantId": "a9f814d2-4dae-41f3-851b-8aa3d4706561",
+    "nome": null,
+    "descricao": null
+  }
+}
+```
+
+Vale para `/authenticate`, `/login`, `/login-flexible`, `/login-social` e `/refresh-token`. Não vem na
+resposta de desafio de MFA, onde o login ainda não se completou. O valor é o mesmo do claim
+`tenantId` do JWT, que continua sendo a fonte de verdade inforjável — o campo só o torna legível sem
+decodificar o token.
+
+O login já resolvia o tenant a partir do e-mail quando o pedido não trazia `tenantId`; o que faltava
+era devolvê-lo. Enviar `tenantId` no corpo (ou `X-TENANT-ID` no cabeçalho) continua funcionando e
+tem precedência.
+
+### Rótulo das organizações: quem tem o cadastro é a aplicação
+
+`GET /api/v1/auth/tenants?email=` lista os tenants de um e-mail, para telas que precisam de seleção
+antes do login. Ele devolve **apenas o `tenantId`**:
+
+```json
+[ { "tenantId": "a9f814d2-...", "nome": null, "descricao": null } ]
+```
+
+Antes, `nome` e `descricao` vinham das colunas `NOME`/`DESCRICAO` da linha de `SEGURANCA` — que, para
+`TP_SEGURANCA='USUARIO'`, são **o nome e a descrição da pessoa**. O endpoint é anônimo: qualquer um
+que soubesse um e-mail recebia de volta o nome do titular. E o seletor de tenant do cliente acabava
+exibindo o nome do próprio usuário no lugar da empresa.
+
+O framework não tem cadastro de organizações, então parou de inventar o rótulo. Quem tem esse
+cadastro é a aplicação:
+
+```java
+@Bean
+public ArchbaseTenantInfoResolver tenantInfoResolver(OrganizacaoRepository repository) {
+    return tenantId -> repository.findById(tenantId)
+            .map(org -> TenantLoginOption.builder()
+                    .nome(org.getNomeFantasia())
+                    .descricao(org.getRazaoSocial())
+                    .build())
+            .orElse(null);
+}
+```
+
+Com o bean registrado, os rótulos passam a vir preenchidos **tanto na descoberta quanto na resposta
+do login**. Sem ele, o cliente recebe o id e decide como exibi-lo. O `tenantId` sempre vem do banco,
+mesmo que o resolver não o preencha; devolver `null` é válido e significa "não tenho rótulo para
+este".
+
+> **Contrato:** o resolver é consultado em fluxo anônimo (pré-login). Não deve devolver informação
+> que exija autenticação. Exceção lançada por ele é registrada em log e não derruba o login — o id
+> sozinho já é suficiente para o cliente funcionar.
+
+### Contagem de tentativas na descoberta
+
+`GET /api/v1/auth/tenants` é anônimo e responde sobre a existência de um e-mail, então tem contagem
+própria, em **duas chaves**, e qualquer uma basta para recusar com `429` + `Retry-After`:
+
+| chave | contém |
+|---|---|
+| origem (IP) | **enumeração** — varredura usa um e-mail diferente por palpite, o que daria orçamento novo a cada tentativa se a contagem fosse só por e-mail |
+| e-mail | martelo sobre um alvo específico, vindo de várias origens |
+
+O escopo é separado do `login`: abusar da descoberta **não** tranca o login legítimo de quem tem
+aquele e-mail — seria negação de serviço contra a vítima. Usa as chaves
+`archbase.security.rate-limit.*` já existentes.
+
+### Enumeração por tempo no login
+
+E-mail inexistente e senha errada devolvem o **mesmo** `401` com o mesmo corpo
+(`Login ou senha inválido`) — e agora também custam o **mesmo tempo**.
+
+O `DaoAuthenticationProvider` do Spring já se defende disso: quando o usuário não existe, ele confere
+a senha apresentada contra um hash fictício e descarta o resultado, só para gastar o mesmo bcrypt.
+Mas esse ramo só roda em `catch (UsernameNotFoundException)`. O bean padrão do Archbase resolvia o
+usuário com `Optional.get()`, que lança `NoSuchElementException` — a mitigação nunca era alcançada, e
+o e-mail inexistente respondia rápido demais.
+
+> **Se a sua aplicação registra o próprio `UserDetailsService`**, o bean do framework
+> (`@ConditionalOnMissingBean`) não entra, e essa proteção é sua responsabilidade: lance
+> `UsernameNotFoundException` — não `NoSuchElementException`, não `null`, não uma exceção própria.
+
+---
+
 # Anotações de Segurança do Archbase
 
 > **Referência completa:** [ARQUITETURA.md](ARQUITETURA.md). Esta seção é o resumo prático.

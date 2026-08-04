@@ -1,6 +1,7 @@
 package br.com.archbase.security.auth;
 
 import br.com.archbase.security.exception.ArchbaseTooManyAttemptsException;
+import br.com.archbase.security.ratelimit.ArchbaseAuthRateLimiter;
 import br.com.archbase.security.service.ArchbaseAuthenticationService;
 import br.com.archbase.security.spi.ArchbaseSocialTokenValidator;
 import br.com.archbase.security.service.ArchbaseUserService;
@@ -34,7 +35,8 @@ public class ArchbaseAuthenticationController {
 
     private final ArchbaseAuthenticationService service;
     private final ArchbaseUserService userService;
-    
+    private final ArchbaseAuthRateLimiter rateLimiter;
+
     @Autowired(required = false)
     private AuthenticationBusinessDelegate businessDelegate;
 
@@ -161,11 +163,42 @@ public class ArchbaseAuthenticationController {
      * Quando um mesmo email pertence a múltiplos tenants, o frontend usa este
      * endpoint para exibir o seletor de tenant antes de chamar /authenticate.
      * Endpoint pré-autenticação (coberto pelo whitelist /api/v1/auth/**).
+     *
+     * <p><b>É um endpoint anônimo que responde sobre a existência de um e-mail</b>, então tem
+     * contagem própria. Duas chaves, e qualquer uma basta para recusar:
+     *
+     * <ul>
+     *   <li><b>por origem</b> — é a que contém enumeração de verdade. Varrer uma lista de e-mails
+     *       usa um e-mail diferente por tentativa, o que daria orçamento novo a cada palpite se a
+     *       contagem fosse só por e-mail; por origem, a varredura toda divide o mesmo orçamento.</li>
+     *   <li><b>por e-mail</b> — contém o martelo sobre um alvo específico vindo de várias origens.</li>
+     * </ul>
+     *
+     * <p>O escopo é separado do {@code "login"} de propósito: abusar da descoberta não pode trancar
+     * o login legítimo de quem tem aquele e-mail — seria negação de serviço contra a vítima.
      */
     @GetMapping("/tenants")
     @Operation(summary = "Listar tenants para um email",
                description = "Retorna os tenants disponíveis para login com o email informado")
-    public ResponseEntity<List<TenantLoginOption>> tenantsForEmail(@RequestParam("email") String email) {
+    public ResponseEntity<?> tenantsForEmail(@RequestParam("email") String email,
+                                             HttpServletRequest httpRequest) {
+        String chaveOrigem = ArchbaseAuthRateLimiter.key("tenants-ip", httpRequest.getRemoteAddr());
+        String chaveEmail = ArchbaseAuthRateLimiter.key("tenants", email);
+
+        for (String chave : List.of(chaveOrigem, chaveEmail)) {
+            if (rateLimiter.isBlocked(chave)) {
+                log.warn("Consulta de tenants bloqueada por excesso de tentativas");
+                return tooManyAttempts(new ArchbaseTooManyAttemptsException(
+                        "Muitas consultas. Tente novamente em alguns minutos.",
+                        rateLimiter.secondsUntilUnblock(chave)));
+            }
+        }
+
+        // Não existe "sucesso" aqui que justifique zerar a contagem: toda consulta é uma tentativa,
+        // e uma consulta bem-sucedida é justamente o que o atacante quer repetir.
+        rateLimiter.recordFailure(chaveOrigem);
+        rateLimiter.recordFailure(chaveEmail);
+
         return ResponseEntity.ok(service.findTenantsByEmail(email));
     }
 

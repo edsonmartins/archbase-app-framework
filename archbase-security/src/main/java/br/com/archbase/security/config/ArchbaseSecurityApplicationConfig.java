@@ -16,6 +16,7 @@ import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -27,12 +28,33 @@ public class ArchbaseSecurityApplicationConfig {
 
     private final UserJpaRepository repository;
 
+    /**
+     * Resolve o usuário pelo e-mail para o {@code DaoAuthenticationProvider}.
+     *
+     * <p><b>A exceção lançada aqui não é detalhe de estilo.</b> O Spring Security defende-se de
+     * enumeração por tempo em {@code DaoAuthenticationProvider.retrieveUser}: quando o usuário não
+     * existe, ele chama {@code mitigateAgainstTimingAttack}, que confere a senha apresentada contra
+     * um hash fictício e descarta o resultado — só para gastar o mesmo tempo de bcrypt que gastaria
+     * se o usuário existisse. Só que esse ramo está em {@code catch (UsernameNotFoundException)}.
+     *
+     * <p>Um {@code Optional.get()} lançaria {@code NoSuchElementException}, que cai no
+     * {@code catch (Exception)} seguinte e <b>nunca</b> chega à mitigação: e-mail inexistente
+     * responderia sem pagar bcrypt, visivelmente mais rápido que senha errada. O corpo 401 é
+     * idêntico nos dois casos, mas o relógio entregaria quem tem conta aqui.
+     *
+     * <p>Portanto: {@code UsernameNotFoundException}, sempre. Ela estende
+     * {@code AuthenticationException}, então o tratamento existente continua devolvendo o mesmo
+     * 401 "Login ou senha inválido" — a mudança é invisível para o cliente, só o tempo muda.
+     *
+     * <p>Aplicação que registrar o seu próprio {@code UserDetailsService} substitui este bean e
+     * assume essa responsabilidade por conta própria.
+     */
     @Bean
     @ConditionalOnMissingBean(UserDetailsService.class)
     public UserDetailsService userDetailsService() {
         return username -> {
             Optional<UserEntity> byEmail = repository.findByEmail(username);
-            return byEmail.get();
+            return byEmail.orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
         };
     }
 

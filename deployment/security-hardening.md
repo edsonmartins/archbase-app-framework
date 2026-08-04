@@ -1,4 +1,4 @@
-# Endurecimento de segurança — migração para 3.0.11
+# Endurecimento de segurança — migração para 3.1.0
 
 A auditoria de segurança do framework corrigiu escalações de privilégio, bypasses de autenticação e
 vazamentos de credencial. **Atualizar a dependência não muda o comportamento da sua aplicação**: as
@@ -26,6 +26,22 @@ Estas correções valem imediatamente porque não quebram uso legítimo:
 - **Credenciais fora dos logs** — token de API e headers `Cookie`/`API-key` mascarados.
 - **Tenant não vaza mais entre requisições** quando um endpoint lança exceção.
 - **`companyId` e usuário autenticado propagam para tarefas `@Async`**.
+- **Enumeração de usuários por tempo fechada no login** — e-mail inexistente passou a custar o mesmo
+  bcrypt de senha errada. O corpo do 401 já era idêntico; o relógio é que entregava.
+- **`GET /auth/tenants` parou de devolver o nome da pessoa** e ganhou contagem de tentativas.
+- **A resposta de login informa o tenant** (campo `tenant`), aditivo — clientes antigos ignoram.
+
+### Tenant no login
+
+Três correções relacionadas, todas ativas ao atualizar. Detalhe e exemplos em
+[readme-security.md](../archbase-security/readme-security.md#tenant-no-login).
+
+| Correção | O que muda para você |
+|---|---|
+| `GET /auth/tenants` devolve só `tenantId` | `nome`/`descricao` vinham da linha de **usuário** — era o nome do titular do e-mail, exposto a qualquer anônimo. Se a sua tela usa esse rótulo, registre um bean `ArchbaseTenantInfoResolver` mapeando `tenantId` → nome da organização |
+| `GET /auth/tenants` conta tentativas por origem e por e-mail | `429` + `Retry-After` ao estourar. Frontend que consulta a cada tecla digitada precisa de *debounce* — a maioria já tem |
+| Resposta de login traz `tenant` | Aditivo. Permite parar de embutir o tenant em variável de build (`VITE_TENANT_ID`) |
+| E-mail inexistente paga bcrypt | Só o tempo de resposta muda. **Se a sua aplicação define o próprio `UserDetailsService`**, o bean do framework não entra: lance `UsernameNotFoundException` para herdar a proteção |
 
 ### Mudanças de comportamento que continuam ativas por padrão
 
