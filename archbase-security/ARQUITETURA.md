@@ -4,7 +4,7 @@ Referência de como o módulo decide quem pode o quê — e de como aplicá-lo s
 Escrito a partir do código.
 
 > **Se você tem cinco minutos**, leia [O modelo em uma imagem](#o-modelo-em-uma-imagem) e
-> [Qual anotação usar](#qual-anotação-usar). O resto é referência.
+> [Qual anotação usar](#qual-usar). O resto é referência.
 
 ---
 
