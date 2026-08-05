@@ -62,7 +62,7 @@ public interface AccessTokenJpaRepository extends ArchbaseCommonJpaRepository<Ac
    * aleatória globalmente única: procurá-lo sem recorte de tenant é correto e é o único jeito de
    * o logout funcionar antes de haver contexto.
    */
-  @Query(value = "SELECT ID_USUARIO FROM SEGURANCA_TOKEN_ACESSO WHERE TOKEN = :token",
+  @Query(value = "SELECT id_usuario FROM seguranca_token_acesso WHERE token = :token",
           nativeQuery = true)
   Optional<String> findOwnerIdByToken(@Param("token") String token);
 
@@ -83,14 +83,18 @@ public interface AccessTokenJpaRepository extends ArchbaseCommonJpaRepository<Ac
    * padrão — revogando zero linha e devolvendo 200. O id do usuário já vem resolvido e é único,
    * então o comando não precisa do recorte para ser correto.
    *
+   * <p><b>Tudo em minúsculas</b>, como as demais queries nativas deste projeto: o MySQL em Linux
+   * diferencia maiúsculas em nome de tabela, e a versão em caixa alta falhava lá com
+   * "Table 'SEGURANCA_TOKEN_ACESSO' doesn't exist" — passando em H2 e PostgreSQL.
+   *
    * <p>Os literais são {@code 'S'}/{@code 'N'} e não booleanos: as colunas passam pelo
    * {@code BooleanToSNConverter}, que SQL nativo não aplica. Escrever {@code true} aqui gravaria
    * um valor que a leitura por JPA interpretaria como falso — a revogação sumiria na próxima
    * consulta.
    */
   @Modifying(clearAutomatically = true, flushAutomatically = true)
-  @Query(value = "UPDATE SEGURANCA_TOKEN_ACESSO SET TOKEN_EXPIRADO = 'S', TOKEN_REVOGADO = 'S' "
-          + "WHERE TOKEN_EXPIRADO = 'N' AND TOKEN_REVOGADO = 'N' AND ID_USUARIO = :userId",
+  @Query(value = "UPDATE seguranca_token_acesso SET token_expirado = 'S', token_revogado = 'S' "
+          + "WHERE token_expirado = 'N' AND token_revogado = 'N' AND id_usuario = :userId",
           nativeQuery = true)
   int revokeAllTokensOfUser(@Param("userId") String userId);
 
