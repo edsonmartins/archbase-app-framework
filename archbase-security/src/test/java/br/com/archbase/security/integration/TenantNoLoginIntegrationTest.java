@@ -60,6 +60,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "archbase.security.cors.allowed-headers=*",
         "archbase.security.cors.allow-credentials=false",
         "archbase.security.rate-limit.max-attempts=3",
+        // A descoberta tem limite próprio, folgado em produção: apertado aqui só para o
+        // cenário caber no teste. Reusar o limite do login foi o defeito que levou a
+        // separá-los — ver ArchbaseAuthenticationController#tenantsForEmail.
+        "archbase.security.rate-limit.discovery.max-attempts=3",
         "archbase.app.tenant.default.id=tenant-teste"
 })
 @DisplayName("Tenant no login (Spring + H2)")

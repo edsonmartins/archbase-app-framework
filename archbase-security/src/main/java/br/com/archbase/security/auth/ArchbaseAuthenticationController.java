@@ -2,6 +2,7 @@ package br.com.archbase.security.auth;
 
 import br.com.archbase.security.exception.ArchbaseTooManyAttemptsException;
 import br.com.archbase.security.ratelimit.ArchbaseAuthRateLimiter;
+import br.com.archbase.security.ratelimit.ArchbaseClientIpResolver;
 import br.com.archbase.security.service.ArchbaseAuthenticationService;
 import br.com.archbase.security.spi.ArchbaseSocialTokenValidator;
 import br.com.archbase.security.service.ArchbaseUserService;
@@ -14,6 +15,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -36,6 +38,20 @@ public class ArchbaseAuthenticationController {
     private final ArchbaseAuthenticationService service;
     private final ArchbaseUserService userService;
     private final ArchbaseAuthRateLimiter rateLimiter;
+    private final ArchbaseClientIpResolver clientIpResolver;
+
+    /**
+     * Limite da descoberta de tenants, separado do limite de credencial e folgado de propósito.
+     *
+     * <p>A tela chama este endpoint a cada digitação de e-mail, e a chave por origem é
+     * compartilhada por todos os usuários atrás do mesmo proxy. Um limite de dezenas, e não de
+     * unidades, é o que separa conter varredura de recusar serviço a quem está entrando.
+     */
+    @Value("${archbase.security.rate-limit.discovery.max-attempts:200}")
+    private int discoveryMaxAttempts;
+
+    @Value("${archbase.security.rate-limit.discovery.block-seconds:300}")
+    private long discoveryBlockSeconds;
 
     @Autowired(required = false)
     private AuthenticationBusinessDelegate businessDelegate;
@@ -176,13 +192,19 @@ public class ArchbaseAuthenticationController {
      *
      * <p>O escopo é separado do {@code "login"} de propósito: abusar da descoberta não pode trancar
      * o login legítimo de quem tem aquele e-mail — seria negação de serviço contra a vítima.
+     *
+     * <p><b>E o limite é próprio, folgado.</b> A primeira versão reusou o limite do login (10 em 15
+     * minutos) para não criar configuração nova. Foi erro: este endpoint é chamado pela tela a cada
+     * digitação de e-mail, e a chave por origem, atrás de qualquer proxy, é <b>compartilhada por
+     * todos os usuários</b>. A décima consulta do dia trancava o seletor de tenant para o mundo
+     * inteiro por quinze minutos. Ver {@code archbase.security.rate-limit.discovery.*}.
      */
     @GetMapping("/tenants")
     @Operation(summary = "Listar tenants para um email",
                description = "Retorna os tenants disponíveis para login com o email informado")
     public ResponseEntity<?> tenantsForEmail(@RequestParam("email") String email,
                                              HttpServletRequest httpRequest) {
-        String chaveOrigem = ArchbaseAuthRateLimiter.key("tenants-ip", httpRequest.getRemoteAddr());
+        String chaveOrigem = ArchbaseAuthRateLimiter.key("tenants-ip", clientIpResolver.resolve(httpRequest));
         String chaveEmail = ArchbaseAuthRateLimiter.key("tenants", email);
 
         for (String chave : List.of(chaveOrigem, chaveEmail)) {
@@ -196,8 +218,8 @@ public class ArchbaseAuthenticationController {
 
         // Não existe "sucesso" aqui que justifique zerar a contagem: toda consulta é uma tentativa,
         // e uma consulta bem-sucedida é justamente o que o atacante quer repetir.
-        rateLimiter.recordFailure(chaveOrigem);
-        rateLimiter.recordFailure(chaveEmail);
+        rateLimiter.recordFailure(chaveOrigem, discoveryMaxAttempts, discoveryBlockSeconds);
+        rateLimiter.recordFailure(chaveEmail, discoveryMaxAttempts, discoveryBlockSeconds);
 
         return ResponseEntity.ok(service.findTenantsByEmail(email));
     }

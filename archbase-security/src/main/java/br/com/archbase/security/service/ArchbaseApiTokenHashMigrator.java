@@ -1,17 +1,21 @@
 package br.com.archbase.security.service;
 
 import br.com.archbase.security.util.ApiTokenHasher;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -38,8 +42,21 @@ import java.util.List;
 @Slf4j
 public class ArchbaseApiTokenHashMigrator {
 
-    @PersistenceContext
-    private EntityManager entityManager;
+    /**
+     * Conexão JDBC própria, e <b>não</b> o {@code EntityManager}.
+     *
+     * <p>Este método rodava dentro de {@code @Transactional}, e por isso o {@code catch (Exception)}
+     * abaixo não cumpria o que promete: uma consulta que falha pelo {@code EntityManager} marca a
+     * transação como rollback-only, capturar a exceção não desfaz isso, e o commit ao sair do
+     * método estoura {@code UnexpectedRollbackException} — que, escapando de um listener de
+     * {@code ApplicationReadyEvent}, derruba a subida da aplicação. Exatamente o desfecho que o
+     * javadoc do {@code catch} diz evitar, numa aplicação que use estes beans sem o schema.
+     *
+     * <p>Com conexão própria em autocommit, cada comando se resolve sozinho: uma falha aborta a
+     * migração e nada mais.
+     */
+    @Autowired(required = false)
+    private DataSource dataSource;
 
     @Value("${archbase.security.api-token.hash-migration-enabled:true}")
     private boolean migrationEnabled;
@@ -53,10 +70,13 @@ public class ArchbaseApiTokenHashMigrator {
      */
     @EventListener(ApplicationReadyEvent.class)
     @Order(Ordered.LOWEST_PRECEDENCE - 100)
-    @Transactional
     public void migrate() {
         if (!migrationEnabled) {
             log.debug("Migração de hash de token de API desabilitada");
+            return;
+        }
+        if (dataSource == null) {
+            log.debug("Sem DataSource; migração de hash de token de API não executada");
             return;
         }
         try {
@@ -88,37 +108,46 @@ public class ArchbaseApiTokenHashMigrator {
      * {@code @TenantId}, e via JPA a migração enxergaria apenas o tenant presente no contexto no
      * momento da subida — deixando os demais para trás sem nenhum sinal.
      */
-    @SuppressWarnings("unchecked")
-    private int fillMissingHashes() {
-        List<Object[]> rows = entityManager.createNativeQuery(
-                        "SELECT id_token_api, token FROM seguranca_token_api "
-                                + "WHERE token_hash IS NULL AND token IS NOT NULL")
-                .getResultList();
+    private int fillMissingHashes() throws Exception {
+        List<Object[]> rows = new ArrayList<>();
+        try (Connection conexao = dataSource.getConnection();
+             Statement statement = conexao.createStatement();
+             ResultSet rs = statement.executeQuery(
+                     "SELECT id_token_api, token FROM seguranca_token_api "
+                             + "WHERE token_hash IS NULL AND token IS NOT NULL")) {
+            while (rs.next()) {
+                rows.add(new Object[]{rs.getString(1), rs.getString(2)});
+            }
+        }
 
         int updated = 0;
-        for (Object[] row : rows) {
-            String id = String.valueOf(row[0]);
-            String plaintext = (String) row[1];
-            updated += entityManager.createNativeQuery(
-                            "UPDATE seguranca_token_api SET token_hash = :hash WHERE id_token_api = :id")
-                    .setParameter("hash", ApiTokenHasher.hash(plaintext))
-                    .setParameter("id", id)
-                    .executeUpdate();
+        try (Connection conexao = dataSource.getConnection();
+             PreparedStatement ps = conexao.prepareStatement(
+                     "UPDATE seguranca_token_api SET token_hash = ? WHERE id_token_api = ?")) {
+            for (Object[] row : rows) {
+                ps.setString(1, ApiTokenHasher.hash((String) row[1]));
+                ps.setString(2, String.valueOf(row[0]));
+                updated += ps.executeUpdate();
+            }
         }
         return updated;
     }
 
-    private int purgePlaintextValues() {
-        return entityManager.createNativeQuery(
-                        "UPDATE seguranca_token_api SET token = NULL "
-                                + "WHERE token_hash IS NOT NULL AND token IS NOT NULL")
-                .executeUpdate();
+    private int purgePlaintextValues() throws Exception {
+        try (Connection conexao = dataSource.getConnection();
+             Statement statement = conexao.createStatement()) {
+            return statement.executeUpdate(
+                    "UPDATE seguranca_token_api SET token = NULL "
+                            + "WHERE token_hash IS NOT NULL AND token IS NOT NULL");
+        }
     }
 
-    private long countPlaintextRemaining() {
-        Object result = entityManager.createNativeQuery(
-                        "SELECT COUNT(*) FROM seguranca_token_api WHERE token IS NOT NULL")
-                .getSingleResult();
-        return result != null ? Long.parseLong(result.toString()) : 0L;
+    private long countPlaintextRemaining() throws Exception {
+        try (Connection conexao = dataSource.getConnection();
+             Statement statement = conexao.createStatement();
+             ResultSet rs = statement.executeQuery(
+                     "SELECT COUNT(*) FROM seguranca_token_api WHERE token IS NOT NULL")) {
+            return rs.next() ? rs.getLong(1) : 0L;
+        }
     }
 }

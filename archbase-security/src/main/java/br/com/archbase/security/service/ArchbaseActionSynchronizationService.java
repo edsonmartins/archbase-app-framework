@@ -1,4 +1,5 @@
 package br.com.archbase.security.service;
+import br.com.archbase.ddd.context.ArchbaseTenantContext;
 import br.com.archbase.security.access.AccessLevel;
 import br.com.archbase.security.annotation.ArchbaseResource;
 import br.com.archbase.security.annotation.HasPermission;
@@ -70,6 +71,17 @@ public class ArchbaseActionSynchronizationService {
         this.resourceRepository = resourceJpaRepository;
     }
 
+    /**
+     * Tenant usado pela varredura, que roda na subida e portanto fora de qualquer requisição.
+     *
+     * <p>Sem isto, {@code archbase.app.tenant.fail-on-missing=true} — recomendado no guia de
+     * endurecimento — <b>impedia a aplicação de subir</b>: o resolver de tenant recusa qualquer
+     * sessão aberta sem contexto, e esta varredura abre uma. A flag existe para recusar
+     * <i>requisição</i> sem tenant, não para proibir trabalho de sistema.
+     */
+    @Value("${archbase.app.tenant.default.id:archbase}")
+    private String tenantDaVarredura;
+
     @PostConstruct
     public void initialize() {
         if (StringUtils.isEmpty(scanPackages)) {
@@ -79,10 +91,22 @@ public class ArchbaseActionSynchronizationService {
         this.reflections = new Reflections(new ConfigurationBuilder()
                 .forPackages(scanPackages.split(","))
                 .setScanners(Scanners.MethodsAnnotated, Scanners.TypesAnnotated));
+
+        String tenantAnterior = ArchbaseTenantContext.getTenantId();
+        boolean definidoAqui = tenantAnterior == null || tenantAnterior.isBlank();
+        if (definidoAqui) {
+            ArchbaseTenantContext.setTenantId(tenantDaVarredura);
+        }
         try {
             synchronizeActionsAndResources();
         } catch (Exception ex) {
             log.error("Não foi possível sincronizar as ações do sistema {}",ex.getMessage());
+        } finally {
+            // A thread que sobe a aplicação volta para o pool: deixar o tenant gravado nela faria
+            // uma requisição futura herdar este valor sem ninguém ter pedido.
+            if (definidoAqui) {
+                ArchbaseTenantContext.clear();
+            }
         }
     }
 

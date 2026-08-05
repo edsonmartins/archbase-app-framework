@@ -2,8 +2,7 @@ package br.com.archbase.security.config;
 
 import br.com.archbase.security.persistence.UserEntity;
 import br.com.archbase.security.spi.ArchbaseRoleResolver;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.Query;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -12,7 +11,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.util.List;
 import java.util.Set;
 
-import static br.com.archbase.security.HardeningTestFixtures.entityManagerRetornando;
+import static br.com.archbase.security.HardeningTestFixtures.dataSourceRetornando;
 import static br.com.archbase.security.HardeningTestFixtures.validadorPadrao;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -180,14 +179,14 @@ class ArchbaseSecurityHardeningValidatorTest {
         @Test
         @DisplayName("off nem consulta o banco")
         void offNaoConsulta() {
-            EntityManager em = mock(EntityManager.class);
+            DataSource ds = mock(DataSource.class);
             var validator = validadorPadrao(0L);
-            ReflectionTestUtils.setField(validator, "entityManager", em);
+            ReflectionTestUtils.setField(validator, "dataSource", ds);
             ReflectionTestUtils.setField(validator, "purgePlaintext", true);
             ReflectionTestUtils.setField(validator, "validationMode", "off");
 
             assertThatCode(validator::validate).doesNotThrowAnyException();
-            org.mockito.Mockito.verifyNoInteractions(em);
+            org.mockito.Mockito.verifyNoInteractions(ds);
         }
     }
 
@@ -210,13 +209,15 @@ class ArchbaseSecurityHardeningValidatorTest {
     @Test
     @DisplayName("falha de consulta ao banco não vira falha de validação")
     void erroDeConsultaNaoBloqueia() {
-        EntityManager em = mock(EntityManager.class);
-        Query query = mock(Query.class);
-        when(em.createNativeQuery(anyString())).thenReturn(query);
-        when(query.getSingleResult()).thenThrow(new IllegalStateException("tabela ausente"));
+        DataSource ds = mock(DataSource.class);
+        try {
+            when(ds.getConnection()).thenThrow(new IllegalStateException("tabela ausente"));
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
 
         var validator = validadorPadrao(0L);
-        ReflectionTestUtils.setField(validator, "entityManager", em);
+        ReflectionTestUtils.setField(validator, "dataSource", ds);
         ReflectionTestUtils.setField(validator, "purgePlaintext", true);
 
         // Schema desatualizado é outro problema, com outra mensagem. Mascará-lo aqui esconderia a
@@ -240,10 +241,10 @@ class ArchbaseSecurityHardeningValidatorTest {
     }
 
     @Test
-    @DisplayName("EntityManager alternativo é usado (sanidade do mock compartilhado)")
+    @DisplayName("DataSource alternativo é usado (sanidade do mock compartilhado)")
     void sanidadeDoMock() {
         var validator = validadorPadrao(0L);
-        ReflectionTestUtils.setField(validator, "entityManager", entityManagerRetornando(9L));
+        ReflectionTestUtils.setField(validator, "dataSource", dataSourceRetornando(9L));
         ReflectionTestUtils.setField(validator, "strictTokenUse", true);
 
         assertThatThrownBy(validator::validate).hasMessageContaining("9 sessão(ões)");

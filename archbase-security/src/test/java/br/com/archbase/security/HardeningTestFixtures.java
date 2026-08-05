@@ -1,9 +1,13 @@
 package br.com.archbase.security;
 
 import br.com.archbase.security.config.ArchbaseSecurityHardeningValidator;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.Query;
 import org.springframework.test.util.ReflectionTestUtils;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Statement;
 
 import java.util.List;
 
@@ -27,7 +31,7 @@ public final class HardeningTestFixtures {
 
     public static ArchbaseSecurityHardeningValidator validadorPadrao(long contagemRetornada) {
         ArchbaseSecurityHardeningValidator validator = new ArchbaseSecurityHardeningValidator();
-        ReflectionTestUtils.setField(validator, "entityManager", entityManagerRetornando(contagemRetornada));
+        ReflectionTestUtils.setField(validator, "dataSource", dataSourceRetornando(contagemRetornada));
         ReflectionTestUtils.setField(validator, "roleResolvers", List.of());
         ReflectionTestUtils.setField(validator, "applicationContext", null);
         ReflectionTestUtils.setField(validator, "validationMode", "fail");
@@ -43,11 +47,34 @@ public final class HardeningTestFixtures {
         return validator;
     }
 
-    public static EntityManager entityManagerRetornando(long contagem) {
-        EntityManager em = mock(EntityManager.class);
-        Query query = mock(Query.class);
-        when(em.createNativeQuery(anyString())).thenReturn(query);
-        when(query.getSingleResult()).thenReturn(contagem);
-        return em;
+    /**
+     * DataSource que devolve {@code contagem} em qualquer consulta.
+     *
+     * <p>Substituiu o dublê de {@code EntityManager}: o validador passou a contar por conexão JDBC
+     * própria, porque uma consulta que falha pelo EntityManager marca a transação como
+     * rollback-only e derruba a subida a partir do listener de ApplicationReadyEvent.
+     */
+    public static DataSource dataSourceRetornando(long contagem) {
+        try {
+            ResultSet rs = mock(ResultSet.class);
+            when(rs.next()).thenReturn(true);
+            when(rs.getLong(1)).thenReturn(contagem);
+
+            Statement statement = mock(Statement.class);
+            when(statement.executeQuery(anyString())).thenReturn(rs);
+
+            PreparedStatement ps = mock(PreparedStatement.class);
+            when(ps.executeQuery()).thenReturn(rs);
+
+            Connection conexao = mock(Connection.class);
+            when(conexao.createStatement()).thenReturn(statement);
+            when(conexao.prepareStatement(anyString())).thenReturn(ps);
+
+            DataSource dataSource = mock(DataSource.class);
+            when(dataSource.getConnection()).thenReturn(conexao);
+            return dataSource;
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

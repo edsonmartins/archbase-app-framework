@@ -62,9 +62,18 @@ public class ArchbaseSecurityTestApplication {
 
     static class TestTenantResolver
             implements CurrentTenantIdentifierResolver<String>, HibernatePropertiesCustomizer {
+        /**
+         * Lê o {@code ArchbaseTenantContext}, com o tenant de teste como padrão.
+         *
+         * <p>Devolvia {@code TENANT} fixo, e isso tornava o harness incapaz de exercitar qualquer
+         * comportamento multi-tenant: o discriminador era o mesmo em toda consulta, houvesse ou não
+         * contexto. Foi por isso que a inércia do logout em tenant não-padrão passou por 246 testes
+         * sem nenhum acusar — o cenário era irreproduzível aqui.
+         */
         @Override
         public String resolveCurrentTenantIdentifier() {
-            return TENANT;
+            String doContexto = br.com.archbase.ddd.context.ArchbaseTenantContext.getTenantId();
+            return doContexto != null && !doContexto.isBlank() ? doContexto : TENANT;
         }
 
         @Override

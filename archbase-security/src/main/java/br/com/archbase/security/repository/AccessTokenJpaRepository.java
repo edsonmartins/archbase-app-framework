@@ -53,8 +53,17 @@ public interface AccessTokenJpaRepository extends ArchbaseCommonJpaRepository<Ac
    * <p>Projeção em vez de {@code findByToken(...).getUser().getId()}: o logout roda na cadeia de
    * filtros, fora do {@code OpenEntityManagerInView}, e navegar a associação LAZY ali estoura
    * {@code LazyInitializationException}.
+   *
+   * <p><b>Query nativa de propósito.</b> {@code AccessTokenEntity} é {@code @TenantId}, e o
+   * {@code LogoutFilter} do Spring roda <b>antes</b> do {@code ArchbaseJwtAuthenticationFilter} —
+   * ou seja, com o {@code ArchbaseTenantContext} ainda vazio. Em JPQL o Hibernate aplicava o
+   * discriminador com o tenant padrão, a busca não encontrava a linha de nenhum outro tenant, o
+   * serviço retornava cedo e o logout respondia 200 <b>sem revogar nada</b>. O token é uma cadeia
+   * aleatória globalmente única: procurá-lo sem recorte de tenant é correto e é o único jeito de
+   * o logout funcionar antes de haver contexto.
    */
-  @Query("SELECT t.user.id FROM AccessTokenEntity t WHERE t.token = :token")
+  @Query(value = "SELECT ID_USUARIO FROM SEGURANCA_TOKEN_ACESSO WHERE TOKEN = :token",
+          nativeQuery = true)
   Optional<String> findOwnerIdByToken(@Param("token") String token);
 
   /**
@@ -68,10 +77,21 @@ public interface AccessTokenJpaRepository extends ArchbaseCommonJpaRepository<Ac
    * <p>Recebe o {@code userId} já resolvido em vez de derivá-lo por subconsulta sobre esta mesma
    * tabela: {@code UPDATE ... WHERE x = (SELECT ... FROM a_mesma_tabela)} é recusado pelo MySQL e
    * pelo MariaDB (ERROR 1093), e o framework não pode assumir PostgreSQL aqui.
+   *
+   * <p><b>Nativa pelo mesmo motivo de {@link #findOwnerIdByToken(String)}</b>: o logout executa
+   * antes de haver tenant no contexto, e em JPQL o discriminador recortaria o UPDATE para o tenant
+   * padrão — revogando zero linha e devolvendo 200. O id do usuário já vem resolvido e é único,
+   * então o comando não precisa do recorte para ser correto.
+   *
+   * <p>Os literais são {@code 'S'}/{@code 'N'} e não booleanos: as colunas passam pelo
+   * {@code BooleanToSNConverter}, que SQL nativo não aplica. Escrever {@code true} aqui gravaria
+   * um valor que a leitura por JPA interpretaria como falso — a revogação sumiria na próxima
+   * consulta.
    */
   @Modifying(clearAutomatically = true, flushAutomatically = true)
-  @Query("UPDATE AccessTokenEntity t SET t.expired = true, t.revoked = true "
-          + "WHERE t.expired = false AND t.revoked = false AND t.user.id = :userId")
+  @Query(value = "UPDATE SEGURANCA_TOKEN_ACESSO SET TOKEN_EXPIRADO = 'S', TOKEN_REVOGADO = 'S' "
+          + "WHERE TOKEN_EXPIRADO = 'N' AND TOKEN_REVOGADO = 'N' AND ID_USUARIO = :userId",
+          nativeQuery = true)
   int revokeAllTokensOfUser(@Param("userId") String userId);
 
   /**

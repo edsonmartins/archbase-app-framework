@@ -39,6 +39,14 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
     private final ApiTokenService apiTokenService;
     private final AccessTokenPersistenceAdapter accessTokenPersistenceAdapter;
 
+    /**
+     * Mesma chave que o {@code ArchbaseTenantRequestInterceptor} usa. Ler o tenant da query
+     * string deixa o valor em log de acesso, histórico de proxy e Referer; desligar a chave
+     * precisa fechar os dois pontos, não só o interceptor.
+     */
+    @Value("${archbase.app.tenant.accept-query-param:true}")
+    private boolean acceptTenantQueryParam;
+
     @Value("${archbase.app.tenant.default.id:}")
     private String defaultTenantId;
 
@@ -70,14 +78,19 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
             log.debug("Requisição recebida: {} {}", request.getMethod(), request.getRequestURI());
             logAllHeaders(request);
 
+            // O fallback para a query string obedece archbase.app.tenant.accept-query-param.
+            // Antes ele era incondicional aqui, e como este filtro roda ANTES do
+            // ArchbaseTenantRequestInterceptor — o único que consultava a flag — desligá-la não
+            // tinha efeito nenhum: ?X-TENANT-ID=outro seguia definindo o tenant de qualquer
+            // requisição. O passo de endurecimento documentado dava por fechado um buraco aberto.
             String tenantId = request.getHeader(X_TENANT_ID);
-            if (tenantId == null || tenantId.isEmpty()) {
+            if ((tenantId == null || tenantId.isEmpty()) && acceptTenantQueryParam) {
                 tenantId = request.getParameter(X_TENANT_ID);
             }
             log.debug("TenantID recebido: {}", tenantId);
 
             String companyId = request.getHeader(X_COMPANY_ID);
-            if (companyId == null || companyId.isEmpty()) {
+            if ((companyId == null || companyId.isEmpty()) && acceptTenantQueryParam) {
                 companyId = request.getParameter(X_COMPANY_ID);
             }
             log.debug("CompanyID recebido: {}", companyId);

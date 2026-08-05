@@ -96,6 +96,18 @@ public class ArchbaseAuthRateLimiter {
 
     /** Registra uma tentativa falha e bloqueia a chave se o limite for atingido. */
     public void recordFailure(String key) {
+        recordFailure(key, maxAttempts, blockSeconds);
+    }
+
+    /**
+     * Idem, com limite e bloqueio próprios.
+     *
+     * <p>Existe porque nem todo fluxo contado aqui é uma tentativa de credencial. O limite do
+     * login — 10 em 15 minutos — é adequado para quem está adivinhando senha e <b>hostil</b> para
+     * uma consulta que a tela dispara a cada digitação. Aplicá-lo a um fluxo de leitura
+     * transformava a proteção em negação de serviço.
+     */
+    public void recordFailure(String key, int limite, long bloqueioSegundos) {
         if (!enabled || key == null) {
             return;
         }
@@ -109,10 +121,10 @@ public class ArchbaseAuthRateLimiter {
                 attempt.count.set(0);
             }
             int current = attempt.count.incrementAndGet();
-            if (current >= maxAttempts) {
-                attempt.blockedUntil = now.plusSeconds(blockSeconds);
+            if (current >= limite) {
+                attempt.blockedUntil = now.plusSeconds(bloqueioSegundos);
                 log.warn("Limite de tentativas atingido para '{}': bloqueado por {}s",
-                        key, blockSeconds);
+                        key, bloqueioSegundos);
             }
         }
     }

@@ -2,8 +2,6 @@ package br.com.archbase.security.config;
 
 import br.com.archbase.security.access.AccessLevel;
 import br.com.archbase.security.spi.ArchbaseRoleResolver;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,12 +10,12 @@ import org.springframework.context.event.EventListener;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.context.ApplicationContext;
 
 import javax.sql.DataSource;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -54,9 +52,6 @@ public class ArchbaseSecurityHardeningValidator {
     /** Recursos usados pelos endpoints administrativos do próprio módulo de segurança. */
     private static final List<String> RECURSOS_ADMINISTRATIVOS = List.of(
             "USER", "GROUP", "RESOURCE", "ACTION", "USER_PROFILE", "API_TOKEN", "ACCESS_TOKEN");
-
-    @PersistenceContext
-    private EntityManager entityManager;
 
     @Autowired(required = false)
     private List<ArchbaseRoleResolver> roleResolvers = List.of();
@@ -114,9 +109,11 @@ public class ArchbaseSecurityHardeningValidator {
      * Roda depois do {@code ArchbaseApiTokenHashMigrator}, que preenche os hashes na subida — a
      * checagem de {@code purge-plaintext} depende do resultado dele.
      */
+    // Sem @Transactional: todas as checagens passam por conexão JDBC própria, e a transação
+    // existia só por causa do EntityManager que não é mais usado aqui. Mantê-la reabriria a
+    // porta para o UnexpectedRollbackException derrubar a subida.
     @EventListener(ApplicationReadyEvent.class)
     @Order(Ordered.LOWEST_PRECEDENCE)
-    @Transactional(readOnly = true)
     public void validate() {
         if (MODE_OFF.equalsIgnoreCase(validationMode)) {
             return;
@@ -453,20 +450,41 @@ public class ArchbaseSecurityHardeningValidator {
         }
     }
 
+    /**
+     * Conta por conexão JDBC própria, <b>pelo mesmo motivo de {@link #contarOuVazio(String)}</b>.
+     *
+     * <p>A versão anterior usava o {@code EntityManager}, e o {@code catch} aqui dava uma falsa
+     * sensação de segurança: uma consulta que falha pelo {@code EntityManager} marca a transação
+     * como rollback-only, capturar a exceção não desfaz isso, e o commit de {@code validate()}
+     * estoura {@code UnexpectedRollbackException} — derrubando a subida a partir de um listener de
+     * {@code ApplicationReadyEvent}. O diagnóstico que existe para explicar um problema de schema
+     * passava a ser o problema, com uma mensagem que não tinha relação com a causa.
+     */
     private long contar(String sql) {
-        return contar(sql, Map.of());
+        return contarOuVazio(sql).orElse(0L);
     }
 
-    private long contar(String sql, Map<String, Object> parametros) {
-        try {
-            var query = entityManager.createNativeQuery(sql);
-            parametros.forEach(query::setParameter);
-            Object resultado = query.getSingleResult();
-            return resultado != null ? Long.parseLong(resultado.toString()) : 0L;
+    /**
+     * Idem, com um parâmetro nomeado — {@code :nome} vira {@code ?}.
+     *
+     * <p>Deliberadamente restrito a um parâmetro: atende o único chamador que precisa disso e não
+     * tenta ser um tradutor de SQL. Continua por {@link PreparedStatement}, e não por concatenação,
+     * para que o valor não vá parar dentro do comando.
+     */
+    private long contar(String sql, Map<String, String> parametro) {
+        if (dataSource == null || parametro.size() != 1) {
+            return 0L;
+        }
+        Map.Entry<String, String> entrada = parametro.entrySet().iterator().next();
+        String comPlaceholder = sql.replace(":" + entrada.getKey(), "?");
+        try (Connection conexao = dataSource.getConnection();
+             PreparedStatement ps = conexao.prepareStatement(comPlaceholder)) {
+            ps.setString(1, entrada.getValue());
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getLong(1) : 0L;
+            }
         } catch (Exception e) {
-            // Tabela ausente ou schema ainda não migrado: não é o que este validador apura, e
-            // transformar isso em falha esconderia o erro real de schema com uma mensagem errada.
-            log.debug("Não foi possível executar a checagem de pré-requisito: {}", e.getMessage());
+            log.debug("Checagem não pôde ser executada: {}", e.getMessage());
             return 0L;
         }
     }
