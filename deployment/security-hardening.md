@@ -1,4 +1,10 @@
-# Endurecimento de segurança — migração para 3.1.0
+# Endurecimento de segurança — migração para 3.1.1
+
+> **Se você está em 3.1.0, atualize.** Aquela versão saiu com dois defeitos graves,
+> corrigidos aqui: o logout não revogava nada para usuário fora do tenant padrão
+> (respondia 200 sem fazer nada), e o rate limit de `GET /auth/tenants` podia trancar
+> o seletor de tenant para todos os usuários por quinze minutos. Detalhe no commit
+> `fix(security): seis defeitos apontados pela revisão da 3.1.0`.
 
 A auditoria de segurança do framework corrigiu escalações de privilégio, bypasses de autenticação e
 vazamentos de credencial. **Atualizar a dependência não muda o comportamento da sua aplicação**: as
@@ -42,6 +48,21 @@ Três correções relacionadas, todas ativas ao atualizar. Detalhe e exemplos em
 | `GET /auth/tenants` conta tentativas por origem e por e-mail | `429` + `Retry-After` ao estourar. Frontend que consulta a cada tecla digitada precisa de *debounce* — a maioria já tem |
 | Resposta de login traz `tenant` | Aditivo. Permite parar de embutir o tenant em variável de build (`VITE_TENANT_ID`) |
 | E-mail inexistente paga bcrypt | Só o tempo de resposta muda. **Se a sua aplicação define o próprio `UserDetailsService`**, o bean do framework não entra: lance `UsernameNotFoundException` para herdar a proteção |
+
+### Se você roda atrás de proxy
+
+O limitador do `GET /auth/tenants` conta por origem, e `getRemoteAddr()` atrás de
+ingress ou balanceador devolve o endereço do **proxy** — o mesmo para todo mundo. Com o
+limite folgado da 3.1.1 (200 em 5 min) isso deixou de recusar serviço, mas a contagem
+por origem só distingue usuários de verdade com:
+
+```properties
+archbase.security.client-ip.trust-forwarded-for=true
+```
+
+**Só ligue se houver um proxy à frente que sobrescreva `X-Forwarded-For`.** Sem ele, o
+cabeçalho é escrito pelo cliente: o atacante troca de identidade a cada requisição,
+anulando o limitador, e ainda bloqueia terceiros forjando o endereço deles.
 
 ### Mudanças de comportamento que continuam ativas por padrão
 

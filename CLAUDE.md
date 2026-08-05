@@ -300,6 +300,19 @@ archbase.security.rate-limit.max-attempts=10
 archbase.security.rate-limit.window-seconds=900
 archbase.security.rate-limit.block-seconds=900
 
+# Descoberta de tenants (GET /auth/tenants) — limite PRÓPRIO e folgado.
+# A tela chama esse endpoint a cada digitação de e-mail, e a chave por origem é
+# compartilhada por todos atrás do mesmo proxy: reusar o limite do login o
+# transformava em negação de serviço.
+archbase.security.rate-limit.discovery.max-attempts=200
+archbase.security.rate-limit.discovery.block-seconds=300
+
+# Origem da requisição para efeito de contagem. Atrás de proxy, getRemoteAddr()
+# devolve o IP do proxy — igual para todos. Ligue SE houver proxy à frente que
+# sobrescreva o cabeçalho; sem ele, o atacante troca de identidade a cada
+# requisição e ainda bloqueia terceiros forjando o endereço deles.
+archbase.security.client-ip.trust-forwarded-for=false
+
 # Força de senha (inteiramente desligada por padrão)
 archbase.security.password.min-length=0
 archbase.security.password.require-digit=false
