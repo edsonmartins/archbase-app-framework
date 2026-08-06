@@ -127,7 +127,9 @@ class SyncOperationExecutorTest {
     }
 
     @Test
-    void skipException_retornaSkippedEgrava() {
+    void skipException_propaga_semGravarNoExecute() {
+        // SYNC-004: execute() não captura mais; propaga para o processador traduzir
+        // (e gravar o SKIPPED via recordSkipped, fora desta transação).
         ProcessedSyncOperationRepository repo = mock(ProcessedSyncOperationRepository.class);
         when(repo.existsByTenantIdAndOperationId(any(), any())).thenReturn(false);
         TestHandler h = new TestHandler("T", o -> {
@@ -135,14 +137,25 @@ class SyncOperationExecutorTest {
         });
         SyncOperationExecutor ex = new SyncOperationExecutor(repo, tenant, noUser, List.of(h));
 
-        SyncAckDTO ack = ex.execute(op("T"));
+        assertThrows(SyncSkippedException.class, () -> ex.execute(op("T")));
+        verify(repo, never()).save(any());
+    }
+
+    @Test
+    void recordSkipped_gravaLedgerEdevolveSkipped() {
+        ProcessedSyncOperationRepository repo = mock(ProcessedSyncOperationRepository.class);
+        when(repo.existsByTenantIdAndOperationId(any(), any())).thenReturn(false);
+        SyncOperationExecutor ex = new SyncOperationExecutor(repo, tenant, noUser, List.of());
+
+        SyncAckDTO ack = ex.recordSkipped(op("T"));
 
         assertEquals(SyncOpStatus.SKIPPED, ack.status);
         verify(repo).save(any(ProcessedSyncOperation.class));
     }
 
     @Test
-    void conflito_retornaConflictSemGravarIdempotencia() {
+    void conflito_propaga_semGravarIdempotencia() {
+        // SYNC-004: propaga; o processador mapeia para CONFLICT depois do rollback.
         ProcessedSyncOperationRepository repo = mock(ProcessedSyncOperationRepository.class);
         when(repo.existsByTenantIdAndOperationId(any(), any())).thenReturn(false);
         TestHandler h = new TestHandler("T", o -> {
@@ -150,10 +163,7 @@ class SyncOperationExecutorTest {
         });
         SyncOperationExecutor ex = new SyncOperationExecutor(repo, tenant, noUser, List.of(h));
 
-        SyncAckDTO ack = ex.execute(op("T"));
-
-        assertEquals(SyncOpStatus.CONFLICT, ack.status);
-        assertEquals(5L, ack.conflict.get("serverVersion"));
+        assertThrows(SyncConflictException.class, () -> ex.execute(op("T")));
         verify(repo, never()).save(any());
     }
 

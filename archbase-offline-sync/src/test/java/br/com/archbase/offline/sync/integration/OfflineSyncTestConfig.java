@@ -74,4 +74,50 @@ public class OfflineSyncTestConfig {
             }
         };
     }
+
+    /** Escreve domínio e DEPOIS rejeita: prova SYNC-004 (domínio reverte junto). */
+    @Bean
+    SyncOperationHandler rejectHandler(SyncCounterRepository repo) {
+        return new SyncOperationHandler() {
+            public String type() {
+                return "REJECT";
+            }
+
+            public SyncHandlerResult handle(SyncOperationDTO op) {
+                repo.save(new SyncCounter(op.aggregateId)); // deve ser revertido
+                throw new br.com.archbase.offline.sync.exception.SyncRejectedException(
+                        "regra de negócio violada");
+            }
+        };
+    }
+
+    /** No-op idempotente (→ SKIPPED, com ledger gravado pelo processador). */
+    @Bean
+    SyncOperationHandler skipHandler() {
+        return new SyncOperationHandler() {
+            public String type() {
+                return "SKIP";
+            }
+
+            public SyncHandlerResult handle(SyncOperationDTO op) {
+                throw new br.com.archbase.offline.sync.exception.SyncSkippedException(
+                        "já aplicado");
+            }
+        };
+    }
+
+    /** Conflito de versão/estado (→ CONFLICT, sem persistir). */
+    @Bean
+    SyncOperationHandler conflictHandler() {
+        return new SyncOperationHandler() {
+            public String type() {
+                return "CONFLICT";
+            }
+
+            public SyncHandlerResult handle(SyncOperationDTO op) {
+                throw new br.com.archbase.offline.sync.exception.SyncConflictException(
+                        "versão incompatível");
+            }
+        };
+    }
 }
