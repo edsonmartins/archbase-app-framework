@@ -20,17 +20,26 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SyncOperationProcessorTest {
 
-    /** Executor fake: devolve ACKs programados ou lança (erro transitório). */
+    /** Executor fake: devolve ACKs programados ou lança (transitório/tipado). */
     static class FakeExecutor implements SyncOperationExecutorPort {
         final Map<String, SyncAckDTO> responses = new HashMap<>();
         final Set<String> throwFor = new HashSet<>();
+        final Map<String, RuntimeException> throwTyped = new HashMap<>();
         final List<String> executed = new ArrayList<>();
+        final List<String> skipRecorded = new ArrayList<>();
 
         @Override
         public SyncAckDTO execute(SyncOperationDTO op) {
             executed.add(op.id);
+            if (throwTyped.containsKey(op.id)) throw throwTyped.get(op.id);
             if (throwFor.contains(op.id)) throw new RuntimeException("boom");
             return responses.getOrDefault(op.id, SyncAckDTO.processed(op.id, 1L));
+        }
+
+        @Override
+        public SyncAckDTO recordSkipped(SyncOperationDTO op) {
+            skipRecorded.add(op.id);
+            return SyncAckDTO.skipped(op.id);
         }
     }
 
@@ -94,6 +103,29 @@ class SyncOperationProcessorTest {
         assertEquals(SyncOpStatus.PROCESSED, ackOf(r, "opA").status);
         assertEquals(SyncOpStatus.PROCESSED, ackOf(r, "opB").status);
         assertTrue(ex.executed.contains("opB"));
+    }
+
+    @Test
+    void mapeiaExcecoesTipadasEmAcks_forDaTransacao() {
+        FakeExecutor ex = new FakeExecutor();
+        ex.throwTyped.put("opSkip",
+                new br.com.archbase.offline.sync.exception.SyncSkippedException("já"));
+        ex.throwTyped.put("opConf",
+                new br.com.archbase.offline.sync.exception.SyncConflictException("versão"));
+        ex.throwTyped.put("opRej",
+                new br.com.archbase.offline.sync.exception.SyncRejectedException("negócio"));
+        SyncOperationProcessor p = new SyncOperationProcessor(ex);
+
+        SyncBatchResponseDTO r = p.process(
+                batch(op("opSkip", null), op("opConf", null), op("opRej", null)));
+
+        assertEquals(SyncOpStatus.SKIPPED, ackOf(r, "opSkip").status);
+        assertEquals(SyncOpStatus.CONFLICT, ackOf(r, "opConf").status);
+        assertEquals(SyncOpStatus.REJECTED, ackOf(r, "opRej").status);
+        // skip roteia para o registro durável do ledger, fora da tx do executor.
+        assertTrue(ex.skipRecorded.contains("opSkip"));
+        assertFalse(ex.skipRecorded.contains("opConf"));
+        assertFalse(ex.skipRecorded.contains("opRej"));
     }
 
     @Test

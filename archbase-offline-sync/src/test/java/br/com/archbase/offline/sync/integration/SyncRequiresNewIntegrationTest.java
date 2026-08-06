@@ -4,6 +4,7 @@ import br.com.archbase.offline.sync.dto.SyncBatchRequestDTO;
 import br.com.archbase.offline.sync.dto.SyncBatchResponseDTO;
 import br.com.archbase.offline.sync.dto.SyncOpStatus;
 import br.com.archbase.offline.sync.dto.SyncOperationDTO;
+import br.com.archbase.offline.sync.exception.SyncRejectedException;
 import br.com.archbase.offline.sync.persistence.ProcessedSyncOperation;
 import br.com.archbase.offline.sync.persistence.ProcessedSyncOperationRepository;
 import br.com.archbase.offline.sync.service.SyncOperationExecutor;
@@ -68,6 +69,24 @@ class SyncRequiresNewIntegrationTest {
         processed.deleteAll();
     }
 
+    @Test
+    void sync004_rejectAposEscrita_reverteDominioEnaoGravaLedger() {
+        SyncBatchRequestDTO req = new SyncBatchRequestDTO();
+        req.operations.add(op("opRej", "REJECT", "cRej"));
+
+        SyncBatchResponseDTO resp = processor.process(req);
+
+        // Handler escreveu domínio e depois rejeitou: com domínio + ledger no MESMO
+        // commit (SYNC-004), tudo reverte junto e o ACK vira REJECTED (não FAILED).
+        assertEquals(SyncOpStatus.REJECTED, ack(resp, "opRej"));
+        assertFalse(counters.findById("cRej").isPresent(),
+                "domínio escrito pelo handler deve reverter junto");
+        assertFalse(processed.findByTenantIdAndOperationId("t1", "opRej").isPresent(),
+                "rejeitada não entra no ledger");
+
+        processed.deleteAll();
+    }
+
     private SyncOpStatus ack(SyncBatchResponseDTO r, String id) {
         return r.results.stream().filter(a -> a.id.equals(id)).findFirst().orElseThrow().status;
     }
@@ -125,6 +144,18 @@ class SyncRequiresNewIntegrationTest {
                 public SyncHandlerResult handle(SyncOperationDTO op) {
                     repo.save(new SyncCounter(op.aggregateId)); // deve ser revertido
                     throw new IllegalStateException("falha proposital");
+                }
+            };
+        }
+
+        /** Escreve domínio e DEPOIS rejeita: prova SYNC-004 (reverte junto). */
+        @Bean
+        SyncOperationHandler rejectHandler(SyncCounterRepository repo) {
+            return new SyncOperationHandler() {
+                public String type() { return "REJECT"; }
+                public SyncHandlerResult handle(SyncOperationDTO op) {
+                    repo.save(new SyncCounter(op.aggregateId)); // deve ser revertido
+                    throw new SyncRejectedException("regra de negócio violada");
                 }
             };
         }
