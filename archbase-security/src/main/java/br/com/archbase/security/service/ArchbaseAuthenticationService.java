@@ -221,7 +221,16 @@ public class ArchbaseAuthenticationService {
                 // precisam morrer junto. Sem isto, cada login dentro da validade do access token
                 // deixava mais um refresh vivo (dez logins, dez refresh válidos simultâneos),
                 // desfazendo na prática a rotação e a revogação que este fluxo existe para garantir.
-                revokeAllRefreshTokens(user);
+                //
+                // Só que isso vale para quem NÃO pode ter várias sessões. Revogar sempre ignorava
+                // allowMultipleLogins — o campo com que o framework modela exatamente esta
+                // permissão — e derrubava sessões legítimas: abrir uma segunda aba, recarregar a
+                // página ou qualquer caminho que reautentique matava o refresh que a primeira
+                // sessão guardava. Ela seguia viva enquanto o access token durasse e, na primeira
+                // renovação, era negada e deslogava o usuário sem que ele tivesse feito nada.
+                if (!Boolean.TRUE.equals(user.getAllowMultipleLogins())) {
+                    revokeAllRefreshTokens(user);
+                }
                 return buildAuthenticationResponse(accessToken, issueRefreshToken(user), user);
             }
 
