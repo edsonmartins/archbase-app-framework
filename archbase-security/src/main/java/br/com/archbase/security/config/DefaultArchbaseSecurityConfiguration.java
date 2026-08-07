@@ -84,9 +84,6 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
     @Value("${archbase.security.public-paths.static-files:true}")
     private boolean publicStaticFiles;
 
-    @Value("${archbase.security.public-paths.bootui:true}")
-    private boolean publicBootUi;
-
     /**
      * Rotas de uma aplicação específica que ficaram na whitelist do framework
      * ({@code /api/v1/assistente-virtual/webhook}, {@code /api/v1/licenca/verificar-tenants/**}) e
@@ -125,11 +122,6 @@ public class DefaultArchbaseSecurityConfiguration extends BaseArchbaseSecurityCo
                     "/v2/api-docs/**",
                     "/configuration/ui",
                     "/configuration/security"));
-        }
-
-        if (publicBootUi) {
-            // BootUI: console de desenvolvimento (ativo apenas em dev/local; rejeita acesso não-loopback)
-            finalWhitelist.addAll(List.of("/bootui", "/bootui/**"));
         }
 
         if (publicActuator) {
