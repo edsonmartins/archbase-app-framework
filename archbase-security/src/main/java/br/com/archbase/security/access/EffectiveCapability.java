@@ -9,6 +9,10 @@ package br.com.archbase.security.access;
  *
  * @param grantedByType {@code USUARIO}, {@code GRUPO} ou {@code PERFIL} — o discriminador da
  *                      entidade de segurança que recebeu a concessão
+ * @param minimumLevel  o piso que o portão LEVEL exige para esta capacidade. {@code null} quando a
+ *                      ação não declara nenhum — a maioria, hoje. Sem este campo a tela não
+ *                      consegue explicar por que uma concessão existente não vale: "concedida e
+ *                      bloqueada" fica indistinguível de "concedida e valendo"
  * @param situation     se a concessão vale hoje, e quando não, por quê
  */
 public record EffectiveCapability(
@@ -19,6 +23,7 @@ public record EffectiveCapability(
         String grantedByType,
         boolean actionActive,
         boolean resourceActive,
+        AccessLevel minimumLevel,
         Situation situation) {
 
     public String capability() {

@@ -5,6 +5,8 @@ import br.com.archbase.ddd.infraestructure.persistence.jpa.repository.ArchbaseCo
 import br.com.archbase.security.persistence.PermissionEntity;
 import br.com.archbase.security.persistence.ProfileEntity;
 import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -102,6 +104,28 @@ public interface PermissionJpaRepository extends ArchbaseCommonJpaRepository<Per
             + "JOIN p.action a JOIN a.resource r "
             + "WHERE a.active = false OR r.active = false")
     long countPointingToInactive();
+
+    /** Os itens por trás de {@link #countPointingToInactive()}. */
+    @Query("SELECT p FROM PermissionEntity p "
+            + "JOIN FETCH p.action a JOIN FETCH a.resource r JOIN FETCH p.security "
+            + "WHERE a.active = false OR r.active = false "
+            + "ORDER BY r.name, a.name")
+    Page<PermissionEntity> findPointingToInactive(Pageable pageable);
+
+    /**
+     * Quem recebeu concessão para uma ação — a consulta <b>reversa</b>.
+     *
+     * <p>Responde "quem consegue fazer isto?", que hoje só se responde abrindo grupo por grupo no
+     * admin. O {@code JOIN FETCH} do destinatário é necessário: a resposta precisa do nome de quem
+     * recebeu, e navegar a associação depois seria uma consulta por linha.
+     *
+     * <p>Devolve as concessões <b>de todas as vias</b> — usuário, grupo e perfil. Traduzir cada uma
+     * para as pessoas que alcançam é trabalho do serviço, porque só ele sabe quem está em qual
+     * grupo e quem tem qual perfil.
+     */
+    @Query("SELECT p FROM PermissionEntity p JOIN FETCH p.security "
+            + "WHERE p.action.id = :actionId")
+    List<PermissionEntity> findGrantsOfAction(@Param("actionId") String actionId);
 
     /** Total de concessões, para dar denominador ao número acima. */
     @Query("SELECT COUNT(p) FROM PermissionEntity p")

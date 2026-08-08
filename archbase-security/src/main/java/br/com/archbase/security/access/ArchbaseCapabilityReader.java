@@ -112,6 +112,7 @@ public class ArchbaseCapabilityReader {
                     tipoDe(destinatario),
                     acaoAtiva,
                     recursoAtivo,
+                    acao.getMinimumLevel(),
                     situacao));
         }
 

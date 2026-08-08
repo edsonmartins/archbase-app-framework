@@ -4,6 +4,8 @@ package br.com.archbase.security.repository;
 import br.com.archbase.ddd.infraestructure.persistence.jpa.repository.ArchbaseCommonJpaRepository;
 import br.com.archbase.security.persistence.UserEntity;
 import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -37,6 +39,45 @@ public interface UserJpaRepository extends ArchbaseCommonJpaRepository<UserEntit
      */
     @Query("SELECT COUNT(u) FROM UserEntity u WHERE u.isAdministrator = true")
     long countAdministrators();
+
+    /**
+     * Quem está no grupo, já com grupos e perfil materializados.
+     *
+     * <p>O {@code EntityGraph} não é detalhe de desempenho: cada membro vira um
+     * {@code AccessSubject} para que o painel some o que ele acumula de <b>todas</b> as origens —
+     * e montar o sujeito tocando associação lazy fora de transação é
+     * {@code LazyInitializationException}, o mesmo defeito que apareceu no logout.
+     */
+    @EntityGraph(attributePaths = {"groups", "groups.group", "profile"})
+    @Query("SELECT DISTINCT u FROM UserEntity u JOIN u.groups ug "
+            + "WHERE ug.group.id = :groupId ORDER BY u.name")
+    java.util.List<UserEntity> findMembersOfGroup(@Param("groupId") String groupId);
+
+    /** Ramo "Pessoas" da árvore, paginado e filtrado no servidor. */
+    @Query("SELECT u FROM UserEntity u "
+            + "WHERE (:filtro IS NULL OR LOWER(u.name) LIKE LOWER(CONCAT('%', :filtro, '%')) "
+            + "   OR LOWER(u.email) LIKE LOWER(CONCAT('%', :filtro, '%'))) "
+            + "ORDER BY u.name")
+    Page<UserEntity> findForTree(@Param("filtro") String filtro, Pageable pageable);
+
+    /** Quem tem este perfil, com grupos e perfil materializados — mesmo motivo de findMembersOfGroup. */
+    @EntityGraph(attributePaths = {"groups", "groups.group", "profile"})
+    @Query("SELECT u FROM UserEntity u WHERE u.profile.id = :profileId ORDER BY u.name")
+    java.util.List<UserEntity> findMembersOfProfile(@Param("profileId") String profileId);
+
+    /**
+     * Os administradores, para a consulta reversa de "quem alcança".
+     *
+     * <p>Eles não têm concessão nenhuma e alcançam tudo: sem esta lista, a resposta à pergunta
+     * "quem pode fazer isto?" ficaria errada exatamente para as contas que mais importam numa
+     * auditoria.
+     */
+    @Query("SELECT u FROM UserEntity u WHERE u.isAdministrator = true ORDER BY u.name")
+    java.util.List<UserEntity> findAllAdministrators();
+
+    /** Os itens por trás de {@link #countAdministrators()}. */
+    @Query("SELECT u FROM UserEntity u WHERE u.isAdministrator = true ORDER BY u.name")
+    Page<UserEntity> findAdministrators(Pageable pageable);
 
     /** Idem, por e-mail — o identificador que quem opera o admin tem em mãos. */
     @EntityGraph(attributePaths = {"groups", "groups.group", "profile"})
