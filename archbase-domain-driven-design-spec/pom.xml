@@ -36,6 +36,16 @@
             <groupId>org.springframework.data</groupId>
             <artifactId>spring-data-commons</artifactId>
         </dependency>
+        <!-- Só para compilar o @EntityListeners(AuditingEntityListener.class) da entidade base.
+
+             provided de propósito: em tempo de execução o spring-data-jpa já chega pelo
+             archbase-domain-driven-design, e declará-lo em compile aqui mudaria o grafo de
+             dependências de quem usa apenas o módulo de contratos. -->
+        <dependency>
+            <groupId>org.springframework.data</groupId>
+            <artifactId>spring-data-jpa</artifactId>
+            <scope>provided</scope>
+        </dependency>
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-core</artifactId>

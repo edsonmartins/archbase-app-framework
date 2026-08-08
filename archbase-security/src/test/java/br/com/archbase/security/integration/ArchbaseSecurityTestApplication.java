@@ -11,6 +11,7 @@ import org.springframework.boot.hibernate.autoconfigure.HibernatePropertiesCusto
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
+import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 import java.util.Map;
@@ -31,6 +32,10 @@ import java.util.Map;
 @EnableJpaRepositories(
         basePackages = "br.com.archbase.security.repository",
         repositoryBaseClass = CommonArchbaseJpaRepository.class)
+// Espelha a aplicação real: quem usa o archbase-starter recebe @EnableJpaAuditing do
+// starter-core. Sem isto aqui, o listener de autoria não tem o AuditingHandler e as colunas de
+// quem criou/alterou ficariam em branco nos testes por um motivo que não existe em produção.
+@EnableJpaAuditing
 public class ArchbaseSecurityTestApplication {
 
     public static final String TENANT = "tenant-teste";
