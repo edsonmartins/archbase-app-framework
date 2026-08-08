@@ -405,7 +405,10 @@ public class ArchbaseAccessDiagnosticsService {
      */
     @Transactional(readOnly = true)
     public Page<TreeNode> browse(TreeBranch branch, String parentId, String filtro, Pageable pageable) {
-        String f = (filtro == null || filtro.isBlank()) ? null : filtro.trim();
+        // String vazia, e NÃO nulo: um parâmetro solto num "IS NULL" não tem tipo que o PostgreSQL
+        // consiga inferir — ele assume bytea e a consulta morre em "function lower(bytea) does not
+        // exist". Sem filtro, LIKE '%%' casa com tudo e a consulta é a mesma para os dois casos.
+        String f = (filtro == null) ? "" : filtro.trim();
         return switch (branch) {
             case USERS -> userRepository.findForTree(f, pageable).map(this::toNode);
             case PROFILES -> profileRepository.findForTree(f, pageable)

@@ -53,9 +53,16 @@ public interface UserJpaRepository extends ArchbaseCommonJpaRepository<UserEntit
             + "WHERE ug.group.id = :groupId ORDER BY u.name")
     java.util.List<UserEntity> findMembersOfGroup(@Param("groupId") String groupId);
 
-    /** Ramo "Pessoas" da árvore, paginado e filtrado no servidor. */
+    /** Ramo "Pessoas" da árvore, paginado e filtrado no servidor.
+     *
+     * <p><b>Sem ramo {@code :filtro IS NULL}.</b> Um parâmetro solto num {@code IS NULL} não tem
+     * tipo que o PostgreSQL consiga inferir: ele assume {@code bytea} e a consulta morre em
+     * "function lower(bytea) does not exist". O H2 aceita, e foi por isso que passou nos testes e
+     * quebrou no ambiente real. O serviço passa string vazia em vez de nulo, e {@code LIKE '%%'}
+     * casa com tudo.
+     */
     @Query("SELECT u FROM UserEntity u "
-            + "WHERE (:filtro IS NULL OR LOWER(u.name) LIKE LOWER(CONCAT('%', :filtro, '%')) "
+            + "WHERE (LOWER(u.name) LIKE LOWER(CONCAT('%', :filtro, '%')) "
             + "   OR LOWER(u.email) LIKE LOWER(CONCAT('%', :filtro, '%'))) "
             + "ORDER BY u.name")
     Page<UserEntity> findForTree(@Param("filtro") String filtro, Pageable pageable);

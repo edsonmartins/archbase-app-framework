@@ -21,6 +21,10 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import br.com.archbase.security.diagnostics.ArchbaseAccessDiagnosticsService;
+import br.com.archbase.security.diagnostics.OverviewMetric;
+import br.com.archbase.security.diagnostics.TreeBranch;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
@@ -31,6 +35,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -93,6 +98,8 @@ abstract class BancoCompatibilidadeBaseTest {
     PasswordEncoder passwordEncoder;
     @Autowired
     ArchbaseJwtService jwtService;
+    @Autowired
+    ArchbaseAccessDiagnosticsService diagnostics;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -120,6 +127,40 @@ abstract class BancoCompatibilidadeBaseTest {
                 .build();
         user.setTenantId("tenant-teste");
         userRepository.save(user);
+    }
+
+    @Test
+    @DisplayName("os ramos da árvore de diagnóstico rodam neste banco")
+    void ramosDaArvoreRodam() {
+        // O defeito que este teste fixa: as consultas de ramo tinham um "(:filtro IS NULL OR ...)".
+        // Um parâmetro solto num IS NULL não tem tipo que o PostgreSQL consiga inferir — ele assume
+        // bytea, e "lower(bytea)" não existe. O H2 aceita sem reclamar, então a suíte passava e o
+        // ambiente real devolvia 500 em TODOS os cinco ramos.
+        //
+        // Percorre os cinco de propósito: o defeito era da forma da consulta, e a forma se repete.
+        for (TreeBranch ramo : TreeBranch.values()) {
+            String pai = ramo == TreeBranch.ACTIONS_OF_RESOURCE ? "recurso-inexistente" : null;
+
+            assertThatCode(() -> diagnostics.browse(ramo, pai, null, PageRequest.of(0, 10)))
+                    .as("ramo %s sem filtro", ramo)
+                    .doesNotThrowAnyException();
+
+            assertThatCode(() -> diagnostics.browse(ramo, pai, "texto", PageRequest.of(0, 10)))
+                    .as("ramo %s com filtro", ramo)
+                    .doesNotThrowAnyException();
+        }
+    }
+
+    @Test
+    @DisplayName("o panorama e o detalhe das métricas rodam neste banco")
+    void panoramaEDetalheRodam() {
+        assertThatCode(() -> diagnostics.overview()).doesNotThrowAnyException();
+
+        for (OverviewMetric metrica : OverviewMetric.values()) {
+            assertThatCode(() -> diagnostics.listOverviewItems(metrica, PageRequest.of(0, 10)))
+                    .as("métrica %s", metrica)
+                    .doesNotThrowAnyException();
+        }
     }
 
     @Test

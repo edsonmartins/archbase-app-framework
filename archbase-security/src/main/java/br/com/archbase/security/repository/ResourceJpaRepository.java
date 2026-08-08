@@ -43,9 +43,16 @@ public interface ResourceJpaRepository extends ArchbaseCommonJpaRepository<Resou
             + "ORDER BY r.name")
     Page<ResourceEntity> findWithoutAnyAction(Pageable pageable);
 
-    /** Ramo "Recursos" da árvore, paginado e filtrado no servidor. */
+    /** Ramo "Recursos" da árvore, paginado e filtrado no servidor.
+     *
+     * <p><b>Sem ramo {@code :filtro IS NULL}.</b> Um parâmetro solto num {@code IS NULL} não tem
+     * tipo que o PostgreSQL consiga inferir: ele assume {@code bytea} e a consulta morre em
+     * "function lower(bytea) does not exist". O H2 aceita, e foi por isso que passou nos testes e
+     * quebrou no ambiente real. O serviço passa string vazia em vez de nulo, e {@code LIKE '%%'}
+     * casa com tudo.
+     */
     @Query("SELECT r FROM ResourceEntity r "
-            + "WHERE (:filtro IS NULL OR LOWER(r.name) LIKE LOWER(CONCAT('%', :filtro, '%'))) "
+            + "WHERE LOWER(r.name) LIKE LOWER(CONCAT('%', :filtro, '%')) "
             + "ORDER BY r.name")
     Page<ResourceEntity> findForTree(@Param("filtro") String filtro, Pageable pageable);
 

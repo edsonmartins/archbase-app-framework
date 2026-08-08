@@ -47,9 +47,16 @@ public interface ActionJpaRepository extends ArchbaseCommonJpaRepository<ActionE
             + "ORDER BY a.name")
     Page<ActionEntity> findWithoutAnyPermission(Pageable pageable);
 
-    /** Ramo "Ações de um recurso" da árvore, paginado e filtrado no servidor. */
+    /** Ramo "Ações de um recurso" da árvore, paginado e filtrado no servidor.
+     *
+     * <p><b>Sem ramo {@code :filtro IS NULL}.</b> Um parâmetro solto num {@code IS NULL} não tem
+     * tipo que o PostgreSQL consiga inferir: ele assume {@code bytea} e a consulta morre em
+     * "function lower(bytea) does not exist". O H2 aceita, e foi por isso que passou nos testes e
+     * quebrou no ambiente real. O serviço passa string vazia em vez de nulo, e {@code LIKE '%%'}
+     * casa com tudo.
+     */
     @Query("SELECT a FROM ActionEntity a WHERE a.resource.id = :resourceId "
-            + "AND (:filtro IS NULL OR LOWER(a.name) LIKE LOWER(CONCAT('%', :filtro, '%'))) "
+            + "AND LOWER(a.name) LIKE LOWER(CONCAT('%', :filtro, '%')) "
             + "ORDER BY a.name")
     Page<ActionEntity> findForTree(@Param("resourceId") String resourceId,
                                    @Param("filtro") String filtro, Pageable pageable);
