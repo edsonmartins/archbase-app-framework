@@ -369,35 +369,26 @@ public class ArchbaseAuthenticationService {
      */
     @Transactional
     public void revokeAllRefreshTokens(UserEntity user) {
-        var refreshTokens = accessTokenPersistenceAdapter.findAllValidTokenByUser(user).stream()
-                .filter(token -> token.getTokenUse() == TokenUse.REFRESH)
-                .toList();
-        if (refreshTokens.isEmpty()) {
-            return;
-        }
-        log.debug("Revogando {} refresh token(s) anteriores do usuário {}", refreshTokens.size(), user.getEmail());
-        refreshTokens.forEach(token -> {
-            token.setExpired(true);
-            token.setRevoked(true);
-        });
-        tokenRepository.saveAll(refreshTokens);
+        // Update em lote pelo mesmo motivo de revokeAllUserTokens: o carregar-e-salvar expunha a
+        // operação ao conflito otimista de uma renovação concorrente.
+        int revogados = tokenRepository.revokeAllRefreshTokensOfUser(user.getId());
+        log.debug("Revogados {} refresh token(s) anteriores do usuário {}", revogados, user.getEmail());
     }
 
+    /**
+     * Revoga todos os tokens vivos do usuário.
+     *
+     * <p><b>Update em lote, e não carregar-e-salvar entidade a entidade.</b> {@code AccessTokenEntity}
+     * herda {@code @Version}: com uma renovação concorrente, o salvamento falhava por conflito
+     * otimista e derrubava a transação inteira de quem chamou — login, troca de senha, desativação
+     * de conta. O logout já havia sido migrado por exatamente este motivo; os demais chamadores
+     * ficaram para trás.
+     */
     @Transactional
     public void revokeAllUserTokens(UserEntity user) {
         log.debug("Revogando todos os tokens válidos para o usuário {}", user.getEmail());
-
-        var validUserTokens = accessTokenPersistenceAdapter.findAllValidTokenByUser(user);
-        if (!validUserTokens.isEmpty()) {
-            log.debug("Encontrados {} tokens válidos para revogação", validUserTokens.size());
-            validUserTokens.forEach(token -> {
-                token.setExpired(true);
-                token.setRevoked(true);
-            });
-            tokenRepository.saveAll(validUserTokens);
-        } else {
-            log.debug("Nenhum token válido encontrado para revogação");
-        }
+        int revogados = tokenRepository.revokeAllTokensOfUser(user.getId());
+        log.debug("{} token(s) revogado(s)", revogados);
     }
 
     @Transactional
@@ -458,9 +449,18 @@ public class ArchbaseAuthenticationService {
                 throw new CredentialsExpiredException("As credenciais do usuário expiraram");
             }
 
-            // Sempre revogar tokens antigos para evitar acumulação. Rotaciona o refresh junto:
-            // o token apresentado deixa de valer assim que o novo par é emitido.
-            revokeAllUserTokens(user);
+            // Rotação: o token apresentado deixa de valer assim que o novo par é emitido.
+            //
+            // O escopo é UMA sessão. Revogar todos os tokens do usuário aqui derrubava as demais
+            // sessões a cada renovação — e como o cliente renova de tempos em tempos sozinho,
+            // bastava uma aba renovar para as outras caírem, sem ninguém ter feito nada. Quem não
+            // pode ter múltiplas sessões continua tendo tudo revogado, que é o que garante sessão
+            // única.
+            if (Boolean.TRUE.equals(user.getAllowMultipleLogins())) {
+                tokenRepository.revokeTokenByValue(refreshToken.getToken());
+            } else {
+                revokeAllUserTokens(user);
+            }
 
             // Gerar novos tokens
             var jwtToken = jwtService.generateToken(user);

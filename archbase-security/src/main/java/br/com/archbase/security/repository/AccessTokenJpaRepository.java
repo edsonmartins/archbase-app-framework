@@ -92,11 +92,46 @@ public interface AccessTokenJpaRepository extends ArchbaseCommonJpaRepository<Ac
    * um valor que a leitura por JPA interpretaria como falso — a revogação sumiria na próxima
    * consulta.
    */
-  @Modifying(clearAutomatically = true, flushAutomatically = true)
+  @Modifying(clearAutomatically = false, flushAutomatically = true)
   @Query(value = "UPDATE seguranca_token_acesso SET token_expirado = 'S', token_revogado = 'S' "
           + "WHERE token_expirado = 'N' AND token_revogado = 'N' AND id_usuario = :userId",
           nativeQuery = true)
   int revokeAllTokensOfUser(@Param("userId") String userId);
+
+  /**
+   * Revoga um único token, o apresentado.
+   *
+   * <p>É a rotação da renovação: quem renova invalida o refresh que usou e recebe um par novo. O
+   * escopo é uma sessão só — as demais sessões do mesmo usuário não têm nada a ver com esta
+   * renovação e não podem ser derrubadas por ela.
+   *
+   * <p><b>Nativa e em lote</b> pelas mesmas razões de {@link #revokeAllTokensOfUser(String)}:
+   * carregar a entidade e salvar faz um refresh concorrente derrubar a transação inteira por
+   * conflito no {@code @Version} herdado. Literais {@code 'S'}/{@code 'N'} por causa do
+   * {@code BooleanToSNConverter}, que SQL nativo não aplica, e tudo em minúsculas porque o MySQL
+   * em Linux diferencia maiúsculas em nome de tabela.
+   */
+  @Modifying(clearAutomatically = false, flushAutomatically = true)
+  @Query(value = "UPDATE seguranca_token_acesso SET token_expirado = 'S', token_revogado = 'S' "
+          + "WHERE token_expirado = 'N' AND token_revogado = 'N' AND token = :token",
+          nativeQuery = true)
+  int revokeTokenByValue(@Param("token") String token);
+
+  /**
+   * Revoga todos os refresh tokens vivos de um usuário, preservando os access tokens.
+   *
+   * <p>Serve ao login de quem NÃO pode ter múltiplas sessões: o access ainda válido é reaproveitado
+   * e o refresh é reemitido, então os refresh anteriores precisam morrer para não acumularem.
+   *
+   * <p><b>Nativa e em lote</b> pelo mesmo motivo das irmãs acima — o carregar-e-salvar entidade a
+   * entidade expunha a operação ao conflito otimista de um refresh concorrente.
+   */
+  @Modifying(clearAutomatically = false, flushAutomatically = true)
+  @Query(value = "UPDATE seguranca_token_acesso SET token_expirado = 'S', token_revogado = 'S' "
+          + "WHERE token_expirado = 'N' AND token_revogado = 'N' AND id_usuario = :userId "
+          + "AND tp_uso_token = 'REFRESH'",
+          nativeQuery = true)
+  int revokeAllRefreshTokensOfUser(@Param("userId") String userId);
 
   /**
    * Conta a quantidade de tokens válidos para um usuário

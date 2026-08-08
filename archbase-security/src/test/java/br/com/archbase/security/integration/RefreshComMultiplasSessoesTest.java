@@ -13,6 +13,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -118,6 +119,32 @@ class RefreshComMultiplasSessoesTest {
         assertThat(resposta.getResponse().getStatus())
                 .as("negar aqui desloga uma sessão legítima de quem tem allowMultipleLogins")
                 .isEqualTo(200);
+    }
+
+    @Test
+    @DisplayName("renovar uma sessão não derruba as outras")
+    void renovarUmaSessaoNaoDerrubaAsOutras() throws Exception {
+        String refreshDaPrimeira = login().get("refresh_token").asText();
+        String refreshDaSegunda = login().get("refresh_token").asText();
+        assertThat(refreshDaPrimeira).isNotEqualTo(refreshDaSegunda);
+
+        // A primeira sessão renova. A rotação precisa alcançar o token que ELA apresentou — não os
+        // das outras sessões, que não têm nada a ver com esta renovação.
+        assertThat(renovar(refreshDaPrimeira).getResponse().getStatus())
+                .as("a renovação da própria sessão precisa funcionar")
+                .isEqualTo(200);
+
+        // A segunda sessão, que não participou de nada, tenta renovar.
+        assertThat(renovar(refreshDaSegunda).getResponse().getStatus())
+                .as("renovar numa aba não pode deslogar as demais de quem tem allowMultipleLogins")
+                .isEqualTo(200);
+    }
+
+    private MvcResult renovar(String refreshToken) throws Exception {
+        return mockMvc.perform(post("/api/v1/auth/refresh-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("token", refreshToken))))
+                .andReturn();
     }
 
     private JsonNode login() throws Exception {
