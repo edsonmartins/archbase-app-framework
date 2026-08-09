@@ -260,6 +260,13 @@ archbase.security.permission.cache.enabled=true
 # Validade da senha em dias (0 = sem expiração periódica)
 archbase.security.password.expiration-days=0
 
+# Esquema de segurança entregue pelo framework (ver deployment/esquema-de-seguranca.md)
+# Na subida, compara o mapeamento das entidades de segurança com o banco e cria o que falta.
+# Sem versão nem baseline: em banco que já tem tudo, não faz nada. Só comandos aditivos —
+# nunca drop, nunca alteração do que já existe — e nada fora das 15 entidades do módulo.
+archbase.security.schema.mode=apply                          # apply | report | off
+archbase.security.schema.fail-on-error=false                 # true = não sobe se o DDL falhar
+
 # Pre-validacao: nao sobe se uma protecao habilitada nao puder funcionar (fail|warn|off)
 archbase.security.hardening.validation=fail
 

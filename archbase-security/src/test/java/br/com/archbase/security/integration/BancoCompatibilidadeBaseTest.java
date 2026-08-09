@@ -100,6 +100,10 @@ abstract class BancoCompatibilidadeBaseTest {
     ArchbaseJwtService jwtService;
     @Autowired
     ArchbaseAccessDiagnosticsService diagnostics;
+    @Autowired
+    br.com.archbase.security.schema.ArchbaseSecuritySchemaInitializer schemaInitializer;
+    @Autowired
+    javax.sql.DataSource dataSource;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -229,6 +233,87 @@ abstract class BancoCompatibilidadeBaseTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("token", desafio))))
                 .andExpect(status().isUnauthorized());
+    }
+
+    /**
+     * A rotina de esquema do framework, no dialeto de verdade.
+     *
+     * <p>Testá-la só em H2 seria o erro que esta classe existe para evitar, e aqui com um agravante:
+     * o DDL não é fixo, é <b>gerado por dialeto</b>. O que o H2 aceita não diz nada sobre o que o
+     * PostgreSQL ou o MySQL aceitam — e a comparação com o catálogo, que decide se algo falta,
+     * também muda de banco para banco (o MySQL trata catálogo e schema de forma diferente do
+     * PostgreSQL).
+     *
+     * <p>O caso que precisa valer nos dois: num banco já completo, <b>nenhum comando</b>. Se falhar
+     * aqui, significa que toda subida da aplicação executaria DDL numa tabela de segurança em uso.
+     */
+    @Test
+    @DisplayName("num banco já completo, a rotina de esquema não executa nada")
+    void esquemaCompletoNaoGeraComando() {
+        assertThat(schemaInitializer.conferirAgora())
+                .as("esquema completo neste banco não deveria gerar comando")
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("tabela de segurança ausente é recriada neste banco")
+    void tabelaAusenteEhRecriada() {
+        // Pelo nome exato do catálogo, e não por uma constante em maiúsculas: no MySQL sobre Linux os
+        // nomes de tabela são sensíveis a maiúsculas, e o "DROP TABLE IF EXISTS SEGURANCA_EVENTO"
+        // não derrubava nada — o IF EXISTS engolia, o teste seguia com a tabela intacta e só não
+        // passou por causa do controle abaixo.
+        executarDdl("DROP TABLE IF EXISTS " + nomeNoCatalogo("seguranca_evento"));
+        assertThat(existeTabela("seguranca_evento"))
+                .as("controle: sem a tabela realmente ausente o teste não prova nada")
+                .isFalse();
+
+        assertThat(schemaInitializer.conferirAgora()).isNotEmpty();
+
+        assertThat(existeTabela("seguranca_evento"))
+                .as("a tabela deveria ter sido recriada no dialeto deste banco")
+                .isTrue();
+        // Deixa o banco íntegro: os demais testes desta classe compartilham o contexto.
+        assertThat(schemaInitializer.conferirAgora()).isEmpty();
+    }
+
+    private String nomeNoCatalogo(String nome) {
+        try (java.sql.Connection conexao = dataSource.getConnection();
+             java.sql.ResultSet rs = conexao.getMetaData()
+                     .getTables(conexao.getCatalog(), conexao.getSchema(), "%", new String[]{"TABLE"})) {
+            while (rs.next()) {
+                String encontrado = rs.getString("TABLE_NAME");
+                if (encontrado.equalsIgnoreCase(nome)) {
+                    return encontrado;
+                }
+            }
+            throw new IllegalStateException("tabela " + nome + " não existe neste banco");
+        } catch (java.sql.SQLException e) {
+            throw new IllegalStateException("não foi possível ler o catálogo", e);
+        }
+    }
+
+    private void executarDdl(String sql) {
+        try (java.sql.Connection conexao = dataSource.getConnection();
+             java.sql.Statement statement = conexao.createStatement()) {
+            statement.execute(sql);
+        } catch (java.sql.SQLException e) {
+            throw new IllegalStateException(sql, e);
+        }
+    }
+
+    private boolean existeTabela(String nome) {
+        try (java.sql.Connection conexao = dataSource.getConnection();
+             java.sql.ResultSet rs = conexao.getMetaData()
+                     .getTables(conexao.getCatalog(), conexao.getSchema(), "%", new String[]{"TABLE"})) {
+            while (rs.next()) {
+                if (rs.getString("TABLE_NAME").equalsIgnoreCase(nome)) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (java.sql.SQLException e) {
+            throw new IllegalStateException("não foi possível ler o catálogo", e);
+        }
     }
 
     private JsonNode login() throws Exception {
