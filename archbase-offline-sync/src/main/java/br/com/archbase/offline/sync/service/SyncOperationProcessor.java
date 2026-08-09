@@ -5,6 +5,9 @@ import br.com.archbase.offline.sync.dto.SyncBatchRequestDTO;
 import br.com.archbase.offline.sync.dto.SyncBatchResponseDTO;
 import br.com.archbase.offline.sync.dto.SyncOpStatus;
 import br.com.archbase.offline.sync.dto.SyncOperationDTO;
+import br.com.archbase.offline.sync.exception.SyncConflictException;
+import br.com.archbase.offline.sync.exception.SyncRejectedException;
+import br.com.archbase.offline.sync.exception.SyncSkippedException;
 import org.springframework.stereotype.Service;
 
 import java.time.ZoneOffset;
@@ -50,9 +53,24 @@ public class SyncOperationProcessor {
                 }
             }
 
+            // A tradução da exceção em ACK acontece AQUI, fora da transação
+            // REQUIRES_NEW do executor — depois do rollback (SYNC-004). Assim o
+            // efeito de domínio e o ledger nunca divergem, e não há
+            // catch-and-return dentro de uma tx rollback-only
+            // (UnexpectedRollbackException).
             SyncAckDTO ack;
             try {
                 ack = executor.execute(op);
+            } catch (SyncSkippedException e) {
+                // Idempotência de negócio: grava o SKIPPED em tx própria (sem
+                // efeito de domínio a preservar).
+                ack = executor.recordSkipped(op);
+            } catch (SyncConflictException e) {
+                // Versão/estado incompatível: não persiste; permite reenvio.
+                ack = SyncAckDTO.conflict(op.id, e.getDetail());
+            } catch (SyncRejectedException e) {
+                // Erro de negócio TERMINAL: não persiste, não retenta às cegas.
+                ack = SyncAckDTO.rejected(op.id, e.getMessage());
             } catch (RuntimeException e) {
                 // Erro transitório: o REQUIRES_NEW já reverteu SÓ esta operação.
                 ack = SyncAckDTO.failed(op.id, e.getMessage());
