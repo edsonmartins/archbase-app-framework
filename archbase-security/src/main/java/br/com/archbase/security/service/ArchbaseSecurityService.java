@@ -32,6 +32,10 @@ public class ArchbaseSecurityService {
      * O core de decisão. Opcional na injeção para que o serviço continue construível fora do
      * contêiner — ver {@link #evaluator()}.
      */
+    /** Opcional: a trilha é um módulo à parte e não deve ser exigência para autorizar. */
+    @Autowired(required = false)
+    private br.com.archbase.security.audit.ArchbaseSecurityEventLogger eventLogger;
+
     @Autowired(required = false)
     private ArchbaseAccessEvaluator accessEvaluator;
 
@@ -60,9 +64,24 @@ public class ArchbaseSecurityService {
 
     /**
      * Avalia um requisito já montado — a porta que os adaptadores de anotação usam.
+     *
+     * <p>É aqui que a negação entra na trilha, e não dentro do avaliador: o avaliador também serve
+     * à simulação da tela de diagnóstico, e registrar ali marcaria como acesso negado aquilo que
+     * alguém apenas testou. Simular é justamente descobrir o que aconteceria, e não deve poluir a
+     * lista de tentativas reais.
      */
     public AccessDecision decide(Authentication authentication, AccessRequirement requirement) {
-        return evaluator().decide(subjectOf(authentication), requirement);
+        AccessDecision decisao = evaluator().decide(subjectOf(authentication), requirement);
+        if (!decisao.allowed() && eventLogger != null) {
+            eventLogger.acessoNegado(
+                    authentication == null ? null : authentication.getName(),
+                    requirement.resource(),
+                    requirement.action(),
+                    // O portão que recusou é o que torna o registro acionável: parou em LEVEL manda
+                    // ajustar nível; em GRANT, manda conceder.
+                    decisao.deniedAt() == null ? decisao.reasonCode() : decisao.deniedAt().name());
+        }
+        return decisao;
     }
 
     /**

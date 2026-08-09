@@ -44,6 +44,10 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class ArchbaseAuthenticationService {
+    /** Opcional: sem a trilha configurada, autenticar continua funcionando igual. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private br.com.archbase.security.audit.ArchbaseSecurityEventLogger eventLogger;
+
     private final UserJpaRepository repository;
     private final GroupService groupService;
     private final UserProfileService userProfileService;
@@ -250,6 +254,13 @@ public class ArchbaseAuthenticationService {
             // Só senha errada conta como tentativa. Credencial expirada não entra aqui de propósito:
             // é uma falha do estado da conta, não um palpite, e trancaria quem já está travado.
             rateLimiter.recordFailure(rateLimitKey);
+            // Registrado aqui, e não por evento do Spring: o ProviderManager não publica falha neste
+            // fluxo, e uma tentativa de login sem rastro é justamente o que a trilha existe para
+            // impedir. O e-mail vai como foi digitado, mesmo sem corresponder a ninguém — é ele que
+            // revela alguém varrendo endereços.
+            if (eventLogger != null) {
+                eventLogger.loginFalhou(request.getEmail(), e.getClass().getSimpleName());
+            }
             log.warn("Falha na autenticação", e);
             throw new BadCredentialsException("Login ou senha inválido", e);
         }
