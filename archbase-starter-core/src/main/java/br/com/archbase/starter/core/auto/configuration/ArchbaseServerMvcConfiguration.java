@@ -12,7 +12,6 @@ import org.springframework.context.annotation.*;
 import org.springframework.context.support.ReloadableResourceBundleMessageSource;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.data.rest.webmvc.config.RepositoryRestConfigurer;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -25,6 +24,13 @@ import jakarta.persistence.EntityManager;
  * Configuração padrão do servidor MVC do Archbase Framework.
  * Esta configuração é carregada por padrão, mas pode ser desabilitada através de
  * propriedades ou sobrescrita por outra configuração com o nome 'customWebMvcConfigurer'.
+ *
+ * <p>Esta classe já declarou também {@code RepositoryRestConfigurer}, do Spring Data REST, sem
+ * jamais sobrescrever um método dessa interface. O preço era alto: a declaração obrigava o
+ * framework a depender de {@code spring-data-rest-webmvc}, que ia parar no classpath de toda
+ * aplicação e arrastava junto o {@code spring-hateoas}. Bastava essa presença para o springdoc
+ * ligar o {@code SpringDocDataRestConfiguration}, que no Spring Boot 4 exige autoconfigurações que
+ * quase ninguém tem — e a aplicação não subia.
  */
 @Configuration
 @EnableTransactionManagement
@@ -32,7 +38,7 @@ import jakarta.persistence.EntityManager;
 @Import(ArchbaseComponentScanConfiguration.class)
 @ConditionalOnMissingBean(name = "customWebMvcConfigurer")
 @ConditionalOnProperty(name = "archbase.web.mvc.enabled", havingValue = "true", matchIfMissing = true)
-public class ArchbaseServerMvcConfiguration implements WebMvcConfigurer, RepositoryRestConfigurer {
+public class ArchbaseServerMvcConfiguration implements WebMvcConfigurer {
 
     @Autowired
     @Lazy
@@ -43,11 +49,6 @@ public class ArchbaseServerMvcConfiguration implements WebMvcConfigurer, Reposit
 
     @Autowired(required = false)
     private ArchbaseInterceptorRegister interceptorRegister;
-
-    public ArchbaseServerMvcConfiguration() {
-        // Como debug, vamos imprimir quando esta classe é carregada
-        System.out.println("ArchbaseServerMvcConfiguration foi carregada");
-    }
 
     @Bean
     public SimpleArchbaseResourceAspect genericControllerAspect() {

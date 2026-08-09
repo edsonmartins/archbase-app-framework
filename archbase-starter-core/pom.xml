@@ -22,21 +22,16 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-persistence</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.data</groupId>
-            <artifactId>spring-data-rest-webmvc</artifactId>
-        </dependency>
-        <!-- Acompanha o spring-data-rest-webmvc acima, que arrasta o spring-hateoas.
+        <!-- O spring-data-rest-webmvc saiu daqui: era exigido apenas pela interface
+             RepositoryRestConfigurer que ArchbaseServerMvcConfiguration declarava sem usar. Ele
+             arrastava o spring-hateoas e, com os dois no classpath, o springdoc ativava
+             configurações que no Boot 4 pedem autoconfigurações separadas — derrubando a subida de
+             quem nunca pediu Spring Data REST.
 
-             No Boot 3 a HateoasProperties vivia dentro do spring-boot-autoconfigure, sempre
-             presente, e ninguém precisava declarar nada. No Boot 4 ela mudou para este artefato.
-             Sem ele, quem tiver springdoc no classpath não sobe: o SpringDocDataRestConfiguration
-             é ativado pela presença do data-rest e falha com ClassNotFoundException ao resolver
-             org.springframework.boot.hateoas.autoconfigure.HateoasProperties. -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-hateoas</artifactId>
-        </dependency>
+             Aplicações que realmente usem Spring Data REST ou HATEOAS devem declarar
+             spring-boot-starter-data-rest / spring-boot-starter-hateoas, que trazem a biblioteca e
+             a autoconfiguração correspondente. -->
+
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-multitenancy</artifactId>
