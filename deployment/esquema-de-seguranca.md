@@ -83,6 +83,30 @@ liberar, ou para descobrir divergências que a rotina não sabe corrigir sozinha
 
 `off` não olha o banco. Para quem controla o esquema por migrations e não quer nem a conferência.
 
+## Se você sobe com `hibernate.ddl-auto=validate`
+
+Duas tabelas do módulo precisam existir **antes** da subida, mesmo com a trilha de auditoria
+desligada: `seguranca_evento` e `seguranca_revisao`. Elas são entidades JPA comuns, encontradas pelo
+`@EntityScan` da própria aplicação, então o Hibernate as exige na validação — e a rotina descrita
+acima não ajuda aqui, porque ela roda **depois** que o `EntityManagerFactory` sobe. Com `validate`,
+o boot falha antes.
+
+O sintoma é este, e ele impede a aplicação de subir por inteiro:
+
+```
+Schema validation: missing table [seguranca_evento]
+```
+
+O DDL das duas está em `deployment/sql/auditoria-seguranca-{postgresql,mysql}.sql` — aplique só a
+parte dessas tabelas, ou o arquivo todo se pretende ligar a trilha.
+
+**As oito tabelas `_AUD` não são mais exigidas** com a trilha desligada. Até a 3.1.16 elas eram: o
+Envers continuava contribuindo o mapeamento mesmo com os listeners desativados, e quem atualizava
+usando `validate` deixava de subir por causa de tabelas que nunca pediu. Corrigido na 3.1.17,
+desligando o Envers por inteiro em vez de apenas os listeners.
+
+Quem usa `ddl-auto=update` ou `create` não é afetado por nada disto: o Hibernate cria o que faltar.
+
 ## Relação com o Flyway
 
 O `R__archbase_security_schema.sql` continua existindo e continua valendo para quem usa Flyway com

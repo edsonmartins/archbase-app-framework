@@ -46,9 +46,24 @@ public class ArchbaseSecurityAuditConfiguration {
                         + "permissão, ação e recurso passam a ser registradas nas tabelas _AUD.");
                 return;
             }
-            propriedades.put("hibernate.envers.autoRegisterListeners", false);
+            // Desligar o Envers INTEIRO, não apenas os listeners.
+            //
+            // Só os listeners não bastava, e a diferença é exatamente a que este bean existe para
+            // garantir: sem os listeners o Envers para de GRAVAR, mas continua CONTRIBUINDO o
+            // mapeamento das tabelas _AUD. Com hibernate.ddl-auto=validate — o arranjo de quem
+            // controla o schema por migrations, justamente quem esta chave protege — o Hibernate
+            // então exige tabelas que ninguém pediu e a aplicação não sobe:
+            //
+            //     Schema validation: missing table [seguranca_acao_aud]
+            //
+            // Encontrado ao atualizar um consumidor da 3.1.1 para a 3.1.16: 177 testes de
+            // integração pararam de carregar o contexto, todos por isto. A promessa escrita aqui
+            // ("nenhuma tabela _AUD é exigida") era falsa desde que a trilha foi introduzida.
+            propriedades.put(org.hibernate.envers.boot.internal.EnversService.INTEGRATION_ENABLED, "false");
+            propriedades.put("hibernate.envers.autoRegisterListeners", "false");
             log.debug("[segurança] Trilha de auditoria desligada (archbase.security.audit.enabled=false). "
-                    + "As entidades seguem anotadas, mas nada é gravado e nenhuma tabela _AUD é exigida.");
+                    + "As entidades seguem anotadas, mas o Envers está inativo: nada é gravado e "
+                    + "nenhuma tabela _AUD é mapeada ou exigida.");
         };
     }
 }

@@ -136,7 +136,12 @@ public class ArchbaseSecuritySchemaInitializer implements SmartInitializingSingl
      */
     private static final List<String> PREFIXOS_HERDADOS = List.of(
             "org.hibernate.envers.",
-            "hibernate.envers.");
+            "hibernate.envers.",
+            // hibernate.integration.envers.enabled é a chave que liga e desliga o Envers INTEIRO, e
+            // não casa com nenhum dos dois prefixos acima — o ponto é fácil de não ver. Sem ela, o
+            // mapeamento montado aqui tinha o Envers ativo mesmo com a trilha desligada, e a rotina
+            // CRIAVA as tabelas _AUD que a aplicação não havia pedido. Foi o que aconteceu.
+            "hibernate.integration.envers.");
 
     private final ObjectProvider<DataSource> dataSourceProvider;
     private final ObjectProvider<EntityManagerFactory> entityManagerFactory;

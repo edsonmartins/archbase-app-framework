@@ -74,27 +74,36 @@ class TrilhaDesligadaPorPadraoTest {
         recurso.setTenantId("tenant-teste");
         resourceRepository.saveAndFlush(recurso);
 
-        var consulta = entityManager.createNativeQuery("select count(*) from SEGURANCA_RECURSO_AUD");
+        // Antes esta verificação era "select count(*) from SEGURANCA_RECURSO_AUD ... isZero()", o que
+        // exigia que a tabela existisse. Ela não existe mais — e não existir é justamente a
+        // correção. Com a trilha desligada não há tabela de auditoria alguma, o que torna
+        // impossível gravar nelas.
+        var consulta = entityManager.createNativeQuery(
+                "select count(*) from information_schema.tables where upper(table_name) like '%\\_AUD' escape '\\'");
 
-        // É esta a promessa que importa: as anotações estão nas entidades, o mapeamento existe, e
-        // ainda assim nenhuma linha de trilha é escrita enquanto a chave estiver desligada.
         assertThat(((Number) consulta.getSingleResult()).intValue()).isZero();
     }
 
     @Test
     @Transactional
-    @DisplayName("as tabelas de trilha entram no mapeamento mesmo desligadas — e isso é esperado")
-    void tabelasDeTrilhaSaoMapeadasSempre() {
-        // Caracteriza o limite exato da promessa, que eu havia entendido errado: desligar os
-        // listeners do Envers impede a GRAVAÇÃO, não o MAPEAMENTO. As tabelas _AUD e a de revisão
-        // continuam fazendo parte do schema e são criadas por ddl-auto como quaisquer outras.
+    @DisplayName("as duas tabelas que são entidades JPA seguem no mapeamento, e só elas")
+    void apenasAsEntidadesJpaSeguemMapeadas() {
+        // ESTE TESTE AFIRMAVA O CONTRÁRIO, e o comentário que o acompanhava dizia que as tabelas
+        // _AUD ficarem no mapeamento "não é problema para quem usa migrations, porque sem gravação
+        // a ausência delas nunca é percebida". A conclusão estava errada: quem sobe com
+        // ddl-auto=validate percebe na hora, porque o Hibernate exige as tabelas e a aplicação não
+        // sobe. Um consumidor real levou 177 testes de integração ao chão por isso.
         //
-        // Para quem usa migrations isso não é problema: sem gravação, a ausência das tabelas nunca
-        // é percebida — nenhuma consulta as procura. Elas só passam a ser necessárias no dia em que
-        // a chave for ligada, e é para esse dia que existe o script em deployment/sql.
-        var consulta = entityManager.createNativeQuery(
+        // O teste consagrava o defeito, e foi por isso que ele durou. O que sobra agora são as duas
+        // tabelas que não vêm do Envers: seguranca_revisao e seguranca_evento são @Entity comuns,
+        // encontradas pelo @EntityScan da própria aplicação.
+        var aud = entityManager.createNativeQuery(
                 "select count(*) from information_schema.tables where upper(table_name) like '%\\_AUD' escape '\\'");
+        assertThat(((Number) aud.getSingleResult()).intValue()).isZero();
 
-        assertThat(((Number) consulta.getSingleResult()).intValue()).isPositive();
+        var entidades = entityManager.createNativeQuery(
+                "select count(*) from information_schema.tables "
+                        + "where upper(table_name) in ('SEGURANCA_REVISAO','SEGURANCA_EVENTO')");
+        assertThat(((Number) entidades.getSingleResult()).intValue()).isEqualTo(2);
     }
 }
