@@ -1,6 +1,6 @@
 package br.com.archbase.security.repository;
 
-import br.com.archbase.security.audit.SecurityEventEntity;
+import br.com.archbase.security.persistence.SecurityEventEntity;
 import br.com.archbase.security.audit.SecurityEventType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

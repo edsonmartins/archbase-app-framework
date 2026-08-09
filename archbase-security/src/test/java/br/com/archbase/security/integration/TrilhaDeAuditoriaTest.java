@@ -93,7 +93,7 @@ class TrilhaDeAuditoriaTest {
                         .getRevisions(ResourceEntity.class, recurso.getId())
                         .get(0);
                 return AuditReaderFactory.get(entityManager)
-                        .findRevision(br.com.archbase.security.audit.ArchbaseSecurityRevision.class, revisao);
+                        .findRevision(br.com.archbase.security.persistence.ArchbaseSecurityRevision.class, revisao);
             });
 
             assertThat(dados.getDataHora()).isNotNull();

@@ -1,5 +1,6 @@
 package br.com.archbase.security.audit;
 
+import br.com.archbase.security.persistence.ArchbaseSecurityRevision;
 import br.com.archbase.ddd.context.ArchbaseTenantContext;
 import org.hibernate.envers.RevisionListener;
 import org.slf4j.Logger;

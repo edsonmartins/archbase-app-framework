@@ -1,5 +1,6 @@
 package br.com.archbase.security.audit;
 
+import br.com.archbase.security.persistence.SecurityEventEntity;
 import br.com.archbase.ddd.context.ArchbaseTenantContext;
 import br.com.archbase.security.repository.SecurityEventJpaRepository;
 import org.slf4j.Logger;

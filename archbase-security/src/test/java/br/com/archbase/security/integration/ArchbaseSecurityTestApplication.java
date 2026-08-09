@@ -28,7 +28,10 @@ import java.util.Map;
 @SpringBootConfiguration
 @EnableAutoConfiguration
 @ComponentScan(basePackages = "br.com.archbase.security")
-@EntityScan(basePackages = {"br.com.archbase.security.persistence", "br.com.archbase.security.audit"})
+// Só o pacote de persistência, de propósito: é assim que as aplicações que montam o
+// EntityManagerFactory à mão configuram. Se uma entidade da trilha sair daqui, o contexto não sobe
+// e o teste acusa — foi exatamente essa regressão que a 3.1.10 levou para produção.
+@EntityScan(basePackages = "br.com.archbase.security.persistence")
 @EnableJpaRepositories(
         basePackages = "br.com.archbase.security.repository",
         repositoryBaseClass = CommonArchbaseJpaRepository.class)
