@@ -96,6 +96,13 @@ public class SecurityAdminAuthorizationManager implements AuthorizationManager<M
                 return new AuthorizationDecision(true);
             }
 
+            // Ler o próprio cadastro não é administração. Vem depois da checagem de conta ativa e
+            // antes das políticas: quem já passava continua passando, e só se acrescenta a liberação
+            // de quem pede os próprios dados.
+            if (marker.selfServiceOnOwnIdentity() && ehOProprioUsuario(user, methodInvocation)) {
+                return new AuthorizationDecision(true);
+            }
+
             if (POLICY_ADMIN_ONLY.equalsIgnoreCase(policy)) {
                 log.warn("Acesso negado a endpoint administrativo de segurança para não-administrador: {}",
                         user.getEmail());
@@ -127,6 +134,31 @@ public class SecurityAdminAuthorizationManager implements AuthorizationManager<M
             log.error("Erro ao avaliar acesso a endpoint administrativo de segurança", e);
             return new AuthorizationDecision(false);
         }
+    }
+
+    /**
+     * Se o alvo do método é o próprio usuário autenticado.
+     *
+     * <p>Compara os argumentos de texto com id, e-mail e nome de usuário — as três formas pelas quais
+     * estes controllers recebem a identificação de uma pessoa. A comparação é com a identidade de
+     * quem chama, então não há como um usuário passar por outro: para liberar, o valor precisa ser
+     * dele mesmo.
+     *
+     * <p>Só argumentos de texto entram. Um {@code UserDto} no corpo da requisição não conta — quem
+     * envia o corpo escolhe o que vai nele, e aceitar isso deixaria qualquer um se declarar o alvo.
+     */
+    private boolean ehOProprioUsuario(UserEntity user, MethodInvocation invocation) {
+        for (Object argumento : invocation.getArguments()) {
+            if (!(argumento instanceof String valor) || valor.isBlank()) {
+                continue;
+            }
+            if (valor.equalsIgnoreCase(user.getId())
+                    || valor.equalsIgnoreCase(user.getEmail())
+                    || valor.equalsIgnoreCase(user.getUsername())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String resolveResource(ArchbaseSecurityAdminEndpoint marker, MethodInvocation invocation) {

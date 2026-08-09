@@ -62,6 +62,10 @@ public class UserController {
         userService.removeUser(id);
     }
 
+    // Ler o PRÓPRIO cadastro é autoatendimento; ler o de outra pessoa continua sendo administração.
+    // Sem esta distinção, admin-only devolvia 403 para todo não-administrador que apenas abrisse a
+    // própria tela de perfil.
+    @ArchbaseSecurityAdminEndpoint(selfServiceOnOwnIdentity = true)
     @GetMapping("/{id}")
     public ResponseEntity<UserDto> getUserById(@PathVariable String id) {
         try {
@@ -72,6 +76,7 @@ public class UserController {
         }
     }
 
+    @ArchbaseSecurityAdminEndpoint(selfServiceOnOwnIdentity = true)
     @GetMapping("/byEmail/{email}")
     public ResponseEntity<UserDto> getUserByEmail(@PathVariable String email) {
         try {

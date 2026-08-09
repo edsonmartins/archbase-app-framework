@@ -40,4 +40,24 @@ public @interface ArchbaseSecurityAdminEndpoint {
      * Bloqueá-los junto transformaria a correção numa quebra de funcionalidade legítima.
      */
     boolean selfService() default false;
+
+    /**
+     * Autoatendimento <b>condicionado ao alvo</b>: libera quando o que o método recebe identifica o
+     * próprio usuário autenticado, e mantém a checagem administrativa para qualquer outro alvo.
+     *
+     * <p><b>O que isto conserta.</b> {@code selfService} é tudo ou nada, e há um caso frequente que
+     * ele não cobre: ler o próprio cadastro. {@code GET /api/v1/user/{id}} é o mesmo método tanto
+     * para "meus dados" quanto para "os dados de outra pessoa" — o primeiro é autoatendimento, o
+     * segundo é administração. Sem distinguir os dois, {@code admin-only} devolvia 403 para todo
+     * não-administrador que apenas abrisse a própria tela de perfil, o que torna a proteção
+     * inutilizável na prática e leva a desligá-la inteira.
+     *
+     * <p>Vale para id, e-mail e nome de usuário, porque são as três formas pelas quais estes
+     * controllers recebem a identificação de uma pessoa.
+     *
+     * <p><b>Só em métodos de leitura.</b> A comparação diz <i>quem</i> é o alvo, não <i>o que</i> vai
+     * ser feito com ele: marcar um método que altera ou remove daria a qualquer usuário o poder de
+     * alterar ou remover a si mesmo.
+     */
+    boolean selfServiceOnOwnIdentity() default false;
 }
