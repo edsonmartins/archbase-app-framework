@@ -6,6 +6,8 @@ import org.hibernate.boot.Metadata;
 import org.hibernate.boot.MetadataSources;
 import org.hibernate.boot.registry.StandardServiceRegistry;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
+import org.hibernate.engine.jdbc.connections.spi.ConnectionProvider;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.tool.schema.TargetType;
 import org.hibernate.tool.schema.internal.ExceptionHandlerCollectingImpl;
 import org.hibernate.tool.schema.spi.ExecutionOptions;
@@ -181,7 +183,7 @@ public class ArchbaseSecuritySchemaInitializer implements SmartInitializingSingl
      * @return os comandos que faltavam; vazia quando o esquema já estava completo
      */
     public List<String> conferirAgora() {
-        DataSource dataSource = dataSourceUnico();
+        DataSource dataSource = dataSourceDaSeguranca();
         if (dataSource == null) {
             return List.of();
         }
@@ -457,24 +459,75 @@ public class ArchbaseSecuritySchemaInitializer implements SmartInitializingSingl
     }
 
     /**
-     * O banco onde vivem as tabelas de segurança — se der para saber qual é.
+     * O banco onde vivem as tabelas de segurança.
      *
-     * <p>Com mais de um DataSource não há como adivinhar, e escrever no errado é pior do que não
-     * escrever: criaria as tabelas num banco onde ninguém vai procurá-las, enquanto o banco de
-     * verdade continua sem elas. Nesse caso a rotina se cala e diz como resolver.
+     * <p><b>Perguntado ao EntityManagerFactory antes de qualquer outra coisa</b>, porque é ele quem
+     * define a resposta: as tabelas de segurança vivem onde as entidades de segurança estão
+     * mapeadas. Contar beans {@code DataSource} responderia a outra pergunta — "quantos bancos esta
+     * aplicação tem" — que não é a mesma e leva ao erro justamente nos casos que importam.
+     *
+     * <p>Aplicações com mais de um banco são comuns (um relacional principal e um legado somente de
+     * leitura, por exemplo), e a primeira versão desta rotina simplesmente desistia quando havia mais
+     * de um candidato. Ela ficava inerte exatamente onde era mais necessária, e sem alarde nenhum.
+     *
+     * <p>Se o EntityManagerFactory não expuser o DataSource, sobra o {@code @Primary} — que é a
+     * declaração explícita de quem escreveu a aplicação sobre qual é o banco principal. Sem nada
+     * disso, a rotina se cala: escrever no banco errado é pior do que não escrever, porque criaria as
+     * tabelas onde ninguém vai procurá-las enquanto o banco de verdade segue sem elas.
+     *
+     * <p>{@code bancoEscolhido()} existe para o teste alcançar esta decisão: ela é a mais fácil de
+     * errar em silêncio, porque errada não dá exceção nenhuma — só deixa de fazer o que prometeu.
      */
-    private DataSource dataSourceUnico() {
-        List<DataSource> candidatos = dataSourceProvider.orderedStream().toList();
-        if (candidatos.size() == 1) {
-            return candidatos.get(0);
+    DataSource bancoEscolhido() {
+        return dataSourceDaSeguranca();
+    }
+
+    private DataSource dataSourceDaSeguranca() {
+        DataSource doMapeamento = dataSourceDoEntityManagerFactory();
+        if (doMapeamento != null) {
+            return doMapeamento;
         }
-        if (candidatos.isEmpty()) {
+
+        DataSource unicoOuPrimario = dataSourceProvider.getIfUnique();
+        if (unicoOuPrimario != null) {
+            return unicoOuPrimario;
+        }
+
+        long candidatos = dataSourceProvider.stream().count();
+        if (candidatos == 0) {
             log.debug("[archbase-security] Sem DataSource; o esquema de segurança não foi conferido.");
+        } else {
+            log.info("[archbase-security] {} DataSources e nenhum marcado como @Primary: não dá para "
+                    + "saber em qual vivem as tabelas de segurança, e o esquema não foi conferido. "
+                    + "Marque o principal com @Primary ou declare um bean "
+                    + "ArchbaseSecuritySchemaInitializer apontando para o DataSource correto.", candidatos);
+        }
+        return null;
+    }
+
+    /**
+     * O DataSource que o próprio Hibernate está usando para as entidades mapeadas.
+     *
+     * <p>Envolto em try/catch largo de propósito: é uma navegação por dentro do Hibernate, e nem todo
+     * arranjo a suporta (uma unidade de persistência sem DataSource, um provedor de conexão que não
+     * se deixa desembrulhar). Falhar aqui não é erro — é sinal de que a resposta vem do
+     * {@code @Primary}.
+     */
+    private DataSource dataSourceDoEntityManagerFactory() {
+        EntityManagerFactory emf = entityManagerFactory.getIfAvailable();
+        if (emf == null) {
             return null;
         }
-        log.info("[archbase-security] {} DataSources no contexto: não dá para saber em qual vivem as "
-                + "tabelas de segurança, e o esquema não foi conferido. Para conferir, declare um bean "
-                + "ArchbaseSecuritySchemaInitializer apontando para o DataSource correto.", candidatos.size());
+        try {
+            SessionFactoryImplementor sessionFactory = emf.unwrap(SessionFactoryImplementor.class);
+            ConnectionProvider provider = sessionFactory.getServiceRegistry().getService(ConnectionProvider.class);
+            if (provider != null && provider.isUnwrappableAs(DataSource.class)) {
+                return provider.unwrap(DataSource.class);
+            }
+        } catch (Exception e) {
+            log.debug("[archbase-security] O EntityManagerFactory não expôs o DataSource ({}); "
+                    + "usando o @Primary.", e.toString());
+        }
         return null;
     }
 

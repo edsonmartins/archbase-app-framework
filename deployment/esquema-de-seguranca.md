@@ -55,8 +55,12 @@ table` se refere a uma tabela que o banco já tem. Se sim, para tudo e registra 
 esquema visto com outro nome, e criar produziria um segundo conjunto de tabelas silenciosamente
 vazio enquanto a aplicação continua gravando no primeiro.
 
-**Com mais de um `DataSource`, não faz nada.** Não há como adivinhar em qual banco vivem as tabelas
-de segurança, e escrever no errado é pior do que não escrever. Nesse caso, declare um bean
+**Com mais de um banco, ela pergunta ao Hibernate.** As tabelas de segurança vivem onde as entidades
+de segurança estão mapeadas, então o `DataSource` vem do `EntityManagerFactory`. Se ele não o expuser,
+vale o `@Primary` — a declaração explícita de quem escreveu a aplicação sobre qual é o banco
+principal. Só quando há vários bancos e nenhum `@Primary` a rotina se cala, porque aí não há resposta:
+escrever no errado criaria as tabelas onde ninguém vai procurá-las enquanto o banco de verdade segue
+sem elas. Nesse caso, marque o principal com `@Primary` ou declare um bean
 `ArchbaseSecuritySchemaInitializer` apontando para o `DataSource` correto.
 
 **Falha não derruba a aplicação.** Sem permissão de DDL, a aplicação sobe exatamente como subia
