@@ -11,6 +11,9 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
+// Auditada: quem entrou e quem saiu de cada grupo.
+// A trilha só é gravada com archbase.security.audit.enabled=true e exige as tabelas _AUD.
+@org.hibernate.envers.Audited
 @Entity
 @Table(name="SEGURANCA_GRUPO_USUARIO")
 @Getter

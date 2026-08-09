@@ -18,6 +18,8 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+// Auditada junto com SecurityEntity: o Envers exige a anotação em cada subclasse.
+@org.hibernate.envers.Audited
 @Entity
 @DiscriminatorValue("USUARIO")
 @Getter
@@ -69,6 +71,9 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     @Convert(converter = BooleanToSNConverter.class)
     private Boolean isAdministrator;
 
+    // A troca do horário do usuário entra na trilha; o conteúdo do horário, não. Auditar a entidade
+    // inteira arrastaria uma tabela que não é decisão de permissão.
+    @org.hibernate.envers.Audited(targetAuditMode = org.hibernate.envers.RelationTargetAuditMode.NOT_AUDITED)
     @ManyToOne
     @JoinColumn(name = "HORARIO_ACESSO_ID")
     private AccessScheduleEntity accessSchedule;
@@ -114,6 +119,9 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     @Column(name = "MFA_RECOVERY_CODES", length = 2048)
     private String mfaRecoveryCodes;
 
+    // Fora da trilha de propósito: token é sessão, não permissão. Cada login e cada renovação
+    // gerariam revisões, e o volume esconderia justamente a alteração de acesso que se procura.
+    @org.hibernate.envers.NotAudited
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<AccessTokenEntity> tokens = new ArrayList<>();
 

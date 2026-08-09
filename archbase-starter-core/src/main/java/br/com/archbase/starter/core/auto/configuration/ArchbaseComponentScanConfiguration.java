@@ -26,7 +26,11 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
     "br.com.archbase.web.config"
 })
 @EntityScan(basePackages = {
-    "br.com.archbase.security.persistence"
+    "br.com.archbase.security.persistence",
+    // A entidade de revisão da trilha de auditoria mora aqui. Sem este pacote, o Envers cai na
+    // DefaultRevisionEntity e a trilha perde o usuário e o tenant — justamente o que ela existe
+    // para registrar.
+    "br.com.archbase.security.audit"
 })
 @EnableJpaRepositories(
     basePackages = {"br.com.archbase.security.repository"},

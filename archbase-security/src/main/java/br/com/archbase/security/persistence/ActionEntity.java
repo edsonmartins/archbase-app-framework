@@ -15,6 +15,9 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
+// Auditada: o catálogo do que existe para ser concedido.
+// A trilha só é gravada com archbase.security.audit.enabled=true e exige as tabelas _AUD.
+@org.hibernate.envers.Audited
 @Entity
 @Getter
 @Setter

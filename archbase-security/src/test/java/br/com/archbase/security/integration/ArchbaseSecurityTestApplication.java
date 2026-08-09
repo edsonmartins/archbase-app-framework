@@ -28,7 +28,7 @@ import java.util.Map;
 @SpringBootConfiguration
 @EnableAutoConfiguration
 @ComponentScan(basePackages = "br.com.archbase.security")
-@EntityScan(basePackages = "br.com.archbase.security.persistence")
+@EntityScan(basePackages = {"br.com.archbase.security.persistence", "br.com.archbase.security.audit"})
 @EnableJpaRepositories(
         basePackages = "br.com.archbase.security.repository",
         repositoryBaseClass = CommonArchbaseJpaRepository.class)

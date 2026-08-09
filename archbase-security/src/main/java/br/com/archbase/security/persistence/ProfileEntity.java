@@ -19,6 +19,8 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+// Auditada junto com SecurityEntity: o Envers exige a anotação em cada subclasse.
+@org.hibernate.envers.Audited
 @Entity
 @DiscriminatorValue("SEGURANCA_PERFIL")
 @Getter
