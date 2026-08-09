@@ -18,6 +18,19 @@
             <artifactId>archbase-security</artifactId>
             <version>3.1.15</version>
         </dependency>
+        <!-- Para verificar que as auto-configurações deste starter realmente são aplicadas. Este
+             módulo é só declaração: sem teste, um erro de digitação no arquivo .imports passaria
+             despercebido até alguém notar, em produção, que nada foi configurado. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
 
