@@ -2,6 +2,7 @@ package br.com.archbase.security.config;
 
 import br.com.archbase.security.persistence.UserEntity;
 import br.com.archbase.security.repository.UserJpaRepository;
+import org.springframework.beans.factory.ObjectProvider;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -117,11 +118,42 @@ class DefesaDeTimingNoLoginTest {
 
     // ─────────────────────────── apoio ───────────────────────────
 
-    /** O bean real de produção, com o repositório respondendo o que o cenário pedir. */
+    /**
+     * O bean real de produção, com o repositório respondendo o que o cenário pedir.
+     *
+     * <p>O repositório entra por {@code ObjectProvider} porque a configuração passou a recebê-lo
+     * assim: no construtor, ela obrigava o EntityManagerFactory a existir antes dela, e isso fechava
+     * um ciclo com o Flyway em aplicações cujas migrations Java são beans.
+     */
     private UserDetailsService beanDeProducao(Optional<UserEntity> resposta) {
         UserJpaRepository repository = Mockito.mock(UserJpaRepository.class);
         Mockito.when(repository.findByEmail(Mockito.anyString())).thenReturn(resposta);
-        return new ArchbaseSecurityApplicationConfig(repository).userDetailsService();
+        return new ArchbaseSecurityApplicationConfig(provedorDe(repository)).userDetailsService();
+    }
+
+    /** {@code ObjectProvider} mínimo: só o {@code getObject()} é exercitado por este teste. */
+    private ObjectProvider<UserJpaRepository> provedorDe(UserJpaRepository repository) {
+        return new ObjectProvider<>() {
+            @Override
+            public UserJpaRepository getObject() {
+                return repository;
+            }
+
+            @Override
+            public UserJpaRepository getObject(Object... args) {
+                return repository;
+            }
+
+            @Override
+            public UserJpaRepository getIfAvailable() {
+                return repository;
+            }
+
+            @Override
+            public UserJpaRepository getIfUnique() {
+                return repository;
+            }
+        };
     }
 
     private DaoAuthenticationProvider provedorCom(UserDetailsService service) {

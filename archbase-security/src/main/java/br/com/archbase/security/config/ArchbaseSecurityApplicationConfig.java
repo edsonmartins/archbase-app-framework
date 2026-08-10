@@ -6,6 +6,7 @@ import br.com.archbase.security.crypto.ArchbaseCryptoService;
 import br.com.archbase.security.persistence.UserEntity;
 import br.com.archbase.security.repository.UserJpaRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -26,7 +27,23 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class ArchbaseSecurityApplicationConfig {
 
-    private final UserJpaRepository repository;
+    /**
+     * O repositório vem por {@link ObjectProvider}, e não direto no construtor.
+     *
+     * <p><b>Por quê.</b> Recebê-lo no construtor faz esta classe de configuração inteira depender do
+     * EntityManagerFactory <b>para poder existir</b> — e o Flyway roda antes do EntityManagerFactory.
+     * Numa aplicação cujas migrations Java são beans Spring (o padrão do Flyway com
+     * {@code JavaMigration}), isso fecha um ciclo e a aplicação não sobe:
+     *
+     * <pre>
+     * flyway → migration Java → bean do módulo de segurança → archbaseSecurityApplicationConfig
+     *        → userJpaRepository → entityManagerFactory → flyway
+     * </pre>
+     *
+     * <p>O repositório só é usado dentro do lambda do {@code UserDetailsService}, ou seja, no login —
+     * muito depois da subida. Resolvê-lo sob demanda quebra o ciclo sem mudar comportamento algum.
+     */
+    private final ObjectProvider<UserJpaRepository> repository;
 
     /**
      * Resolve o usuário pelo e-mail para o {@code DaoAuthenticationProvider}.
@@ -53,7 +70,7 @@ public class ArchbaseSecurityApplicationConfig {
     @ConditionalOnMissingBean(UserDetailsService.class)
     public UserDetailsService userDetailsService() {
         return username -> {
-            Optional<UserEntity> byEmail = repository.findByEmail(username);
+            Optional<UserEntity> byEmail = repository.getObject().findByEmail(username);
             return byEmail.orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
         };
     }
