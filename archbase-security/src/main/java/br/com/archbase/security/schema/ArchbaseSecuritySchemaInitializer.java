@@ -192,6 +192,11 @@ public class ArchbaseSecuritySchemaInitializer implements SmartInitializingSingl
         if (dataSource == null) {
             return List.of();
         }
+        // ANTES de qualquer DDL aditivo. Se o ADD COLUMN rodar primeiro, a tabela fica com rev e
+        // id_revisao ao mesmo tempo — e aí não há mais o que renomear, só um NOT NULL órfão que
+        // recusa todo insert. A ordem aqui é o que separa migrar de estragar.
+        migrarColunasDeRevisao(dataSource);
+
         Map<String, Object> settings = settingsHerdadas(dataSource);
         StandardServiceRegistry registry = new StandardServiceRegistryBuilder()
                 .applySettings(settings)
@@ -287,6 +292,36 @@ public class ArchbaseSecuritySchemaInitializer implements SmartInitializingSingl
     }
 
     /**
+     * Acerta as colunas de revisão das tabelas de auditoria antes de qualquer outra coisa.
+     *
+     * <p>É o ponto cego que faltava: {@link #divergenciaDeNaming} compara <b>tabelas</b> e não vê
+     * divergência de <b>coluna</b>. Uma {@code _AUD} criada por versão anterior com o padrão do
+     * Envers ({@code rev}/{@code revtype}) passava batida — a tabela existe, então nada era acusado —
+     * e o DDL aditivo apenas acrescentava {@code id_revisao}, deixando o {@code rev NOT NULL} órfão.
+     * A partir daí todo registro de auditoria falha com {@code null value in column "rev"}.
+     *
+     * @see ArchbaseRevisionColumnMigrator
+     */
+    private void migrarColunasDeRevisao(DataSource dataSource) {
+        ArchbaseRevisionColumnMigrator migrador = new ArchbaseRevisionColumnMigrator(dataSource);
+
+        List<String> quebradas = migrador.tabelasComAsDuasNomenclaturas();
+        if (!quebradas.isEmpty()) {
+            // Estado que já não dá para consertar sozinho: as duas colunas existem e uma delas tem o
+            // histórico. Escolher qual descartar é decisão de quem conhece o dado, não desta rotina.
+            log.error("[archbase-security] {} tabela(s) de auditoria têm rev E id_revisao ao mesmo tempo: "
+                    + "{}. Isso vem de uma versão anterior que acrescentou a coluna nova sem migrar a "
+                    + "antiga, e enquanto durar NENHUM registro de auditoria consegue ser gravado — o "
+                    + "rev legado é NOT NULL e fica sempre nulo. A correção precisa ser feita à mão, "
+                    + "porque uma das duas colunas guarda o histórico: copie rev para id_revisao onde "
+                    + "este estiver nulo e então remova rev.", quebradas.size(), quebradas);
+            return;
+        }
+
+        migrador.migrar(properties.getMode() == ArchbaseSecuritySchemaProperties.Mode.APPLY);
+    }
+
+    /**
      * Descarta tudo que não seja estritamente aditivo.
      *
      * <p><b>Por que este filtro existe.</b> O migrator do Hibernate não se limita a criar o que
@@ -316,7 +351,7 @@ public class ArchbaseSecuritySchemaInitializer implements SmartInitializingSingl
         List<String> descartados = new ArrayList<>();
         for (String comando : comandos) {
             if (ehAditivo(comando, criadasAgora)) {
-                mantidos.add(comando);
+                mantidos.add(semNotNullEmTabelaExistente(comando, criadasAgora));
             } else {
                 descartados.add(comando);
             }
@@ -327,6 +362,37 @@ public class ArchbaseSecuritySchemaInitializer implements SmartInitializingSingl
                     descartados.size(), descartados);
         }
         return mantidos;
+    }
+
+    /**
+     * Tira o {@code not null} de um {@code ADD COLUMN} em tabela que já existia.
+     *
+     * <p><b>Por quê.</b> Adicionar coluna {@code NOT NULL} sem valor padrão a uma tabela que já tem
+     * linhas é recusado pelo banco — e, mesmo quando aceito, deixaria as linhas antigas violando a
+     * própria restrição. A rotina não tem como inventar o valor das linhas já gravadas: só quem
+     * conhece o dado sabe o que colocar ali.
+     *
+     * <p>Então a coluna nasce aceitando nulo. A aplicação passa a gravá-la a partir dali, e apertar a
+     * restrição depois — preenchendo o histórico e então aplicando {@code set not null} — é uma
+     * migração deliberada, que esta rotina não faz por conta própria.
+     *
+     * <p>Em tabela que <b>esta mesma passada</b> está criando não há linha alguma, e o {@code NOT
+     * NULL} original é preservado.
+     */
+    private String semNotNullEmTabelaExistente(String comando, Set<String> criadasAgora) {
+        String normalizado = comando.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
+        if (!normalizado.startsWith("alter table ") || !normalizado.contains(" not null")) {
+            return comando;
+        }
+        if (criadasAgora.contains(alvoDoAlterTable(comando))) {
+            return comando;
+        }
+
+        String semRestricao = comando.replaceAll("(?i)\\s+not\\s+null", "");
+        log.info("[archbase-security] A coluna nova nasce aceitando nulo, porque a tabela já tem linhas "
+                + "e não há valor para preencher o histórico. Original: {} — aplicado: {}",
+                comando.trim(), semRestricao.trim());
+        return semRestricao;
     }
 
     private boolean ehAditivo(String comando, Set<String> criadasAgora) {
