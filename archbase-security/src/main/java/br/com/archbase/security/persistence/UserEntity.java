@@ -104,6 +104,23 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     @Column(name = "EXTERNAL_ID", nullable = true, unique = true)
     private String externalId; // ID externo para integração com sistemas terceiros (ex: Keycloak, LDAP, etc.)
 
+    /**
+     * Matrícula do funcionário na empresa.
+     *
+     * <p>É o número pelo qual o RH e a folha identificam a pessoa, e costuma ser o elo com sistemas
+     * de ponto, crachá e folha de pagamento. Diferente de {@link #externalId}, que identifica a conta
+     * num provedor de identidade (Keycloak, LDAP): a matrícula identifica o vínculo empregatício, e
+     * as duas podem existir ao mesmo tempo sem se confundir.
+     *
+     * <p><b>Opcional e não única, de propósito.</b> Obrigatória invalidaria todo cadastro já
+     * existente — inclusive contas de serviço e usuários que não são funcionários. Única falharia na
+     * primeira base que tenha matrícula repetida ou herdada de sistema antigo. Quem quiser exigir
+     * unicidade pode criar o índice no próprio banco, decidindo o escopo (global ou por tenant), que
+     * é justamente o que o framework não tem como adivinhar.
+     */
+    @Column(name = "EMPLOYEE_ID", nullable = true, length = 60)
+    private String employeeId;
+
     // ===== MFA / 2FA (TOTP) =====
 
     /** Segundo fator TOTP habilitado para este usuário. */
@@ -130,7 +147,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
     }
 
     @Builder
-    public UserEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, LocalDateTime passwordChangedAt, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleEntity accessSchedule, Set<UserGroupEntity> groups, ProfileEntity profile, byte[] avatar, String email, String nickname, String externalId, List<AccessTokenEntity> tokens) {
+    public UserEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, LocalDateTime passwordChangedAt, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessScheduleEntity accessSchedule, Set<UserGroupEntity> groups, ProfileEntity profile, byte[] avatar, String email, String nickname, String externalId, String employeeId, List<AccessTokenEntity> tokens) {
         super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId, name, description);
         this.userName = userName;
         this.password = password;
@@ -150,6 +167,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
         this.email = email;
         this.nickname = nickname;
         this.externalId = externalId;
+        this.employeeId = employeeId;
         this.tokens = tokens;
     }
 
@@ -257,6 +275,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
                 .avatar(this.getAvatar())
                 .nickname(this.getNickname())
                 .externalId(this.getExternalId())
+                .employeeId(this.getEmployeeId())
                 .build();
     }
 
@@ -291,6 +310,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
                 .avatar(user.getAvatar())
                 .nickname(user.getNickname())
                 .externalId(user.getExternalId())
+                .employeeId(user.getEmployeeId())
                 .build();
 
         Set<UserGroupEntity> groups = user.getGroups() != null ? user.getGroups()
@@ -336,6 +356,7 @@ public class UserEntity extends SecurityEntity implements UserDetails {
                 .avatar(this.getAvatar())
                 .nickname(this.getNickname())
                 .externalId(this.getExternalId())
+                .employeeId(this.getEmployeeId())
                 .build();
     }
 

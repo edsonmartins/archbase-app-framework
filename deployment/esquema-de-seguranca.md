@@ -85,7 +85,15 @@ liberar, ou para descobrir divergências que a rotina não sabe corrigir sozinha
 
 ## Se você sobe com `hibernate.ddl-auto=validate`
 
-Duas tabelas do módulo precisam existir **antes** da subida, mesmo com a trilha de auditoria
+Vale para colunas também. A partir da 3.1.20, `seguranca` tem a coluna `EMPLOYEE_ID` (a matrícula do
+funcionário). Com `apply`, a rotina a cria sozinha na subida; com `validate`, ela precisa existir
+antes:
+
+```sql
+alter table seguranca add column if not exists employee_id varchar(60);
+```
+
+Duas tabelas do módulo também precisam existir **antes** da subida, mesmo com a trilha de auditoria
 desligada: `seguranca_evento` e `seguranca_revisao`. Elas são entidades JPA comuns, encontradas pelo
 `@EntityScan` da própria aplicação, então o Hibernate as exige na validação — e a rotina descrita
 acima não ajuda aqui, porque ela roda **depois** que o `EntityManagerFactory` sobe. Com `validate`,

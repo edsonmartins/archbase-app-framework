@@ -113,3 +113,14 @@ comment on column seguranca_permissao.effect is
 -- Consulta quente: a negação é procurada em toda decisão que encontra concessão.
 create index if not exists idx_seguranca_permissao_effect
     on seguranca_permissao (effect);
+
+-- ── 3.1.20: matrícula do funcionário (UserEntity) ─────────────────────────────────────────────
+-- Opcional e sem índice único: contas de serviço e usuários que não são funcionários não têm
+-- matrícula, e bases herdadas de sistemas antigos costumam ter repetição. Quem quiser exigir
+-- unicidade cria o índice decidindo o escopo — global ou por tenant —, que é o que o framework não
+-- tem como adivinhar.
+alter table seguranca
+    add column if not exists employee_id varchar(60);
+
+comment on column seguranca.employee_id is
+    'Matricula do funcionario na empresa. Elo com RH, ponto e folha. Diferente de external_id, que identifica a conta no provedor de identidade.';
