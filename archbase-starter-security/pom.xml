@@ -5,7 +5,7 @@
     <parent>
         <artifactId>archbase-app-framework</artifactId>
         <groupId>br.com.archbase</groupId>
-        <version>3.1.19</version>
+        <version>3.1.20</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -16,7 +16,7 @@
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-security</artifactId>
-            <version>3.1.19</version>
+            <version>3.1.20</version>
         </dependency>
         <!-- Para verificar que as auto-configurações deste starter realmente são aplicadas. Este
              módulo é só declaração: sem teste, um erro de digitação no arquivo .imports passaria
