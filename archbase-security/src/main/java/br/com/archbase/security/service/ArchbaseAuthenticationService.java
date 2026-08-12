@@ -220,21 +220,31 @@ public class ArchbaseAuthenticationService {
 
             // Verificar se o token existe e não está expirado
             if (accessToken != null && !jwtService.isTokenExpired(accessToken.getToken())) {
-                log.debug("Token válido encontrado para o usuário {}, reusando token", user.getEmail());
-                // Token ainda válido, retorna o mesmo — mas o refresh é reemitido, e os anteriores
-                // precisam morrer junto. Sem isto, cada login dentro da validade do access token
-                // deixava mais um refresh vivo (dez logins, dez refresh válidos simultâneos),
-                // desfazendo na prática a rotação e a revogação que este fluxo existe para garantir.
+                // QUEM NÃO PODE TER VÁRIAS SESSÕES: a anterior morre INTEIRA, agora.
                 //
-                // Só que isso vale para quem NÃO pode ter várias sessões. Revogar sempre ignorava
-                // allowMultipleLogins — o campo com que o framework modela exatamente esta
-                // permissão — e derrubava sessões legítimas: abrir uma segunda aba, recarregar a
-                // página ou qualquer caminho que reautentique matava o refresh que a primeira
-                // sessão guardava. Ela seguia viva enquanto o access token durasse e, na primeira
-                // renovação, era negada e deslogava o usuário sem que ele tivesse feito nada.
+                // Revogar só os refresh e reusar o access deixava a sessão anterior num estado
+                // ambíguo: ela seguia navegando com o access válido — por até um dia inteiro — mas
+                // com o refresh morto, então a renovação era negada a cada tentativa. O cliente
+                // ficava num laço de 401 sem nunca ser deslogado, e nos logs isso aparecia como um
+                // erro recorrente de minuto em minuto sem nenhuma causa visível. Aconteceu em
+                // produção e custou uma investigação inteira até virar isto aqui.
+                //
+                // Sessão única precisa significar sessão única: entrou de novo, a de antes acaba.
+                // Um meio-termo em que a sessão velha continua lendo dados mas não consegue se
+                // renovar não é mais seguro que derrubá-la — é só mais difícil de entender.
                 if (!Boolean.TRUE.equals(user.getAllowMultipleLogins())) {
-                    revokeAllRefreshTokens(user);
+                    log.debug("Sessão única para o usuário {}: revogando a sessão anterior por inteiro",
+                            user.getEmail());
+                    revokeAllUserTokens(user);
+                    AccessTokenEntity novoAccessToken = saveUserToken(user, jwtService.generateToken(user));
+                    return buildAuthenticationResponse(novoAccessToken, issueRefreshToken(user), user);
                 }
+
+                log.debug("Token válido encontrado para o usuário {}, reusando token", user.getEmail());
+                // Quem PODE ter várias sessões reusa o access que ainda vale e ganha um refresh
+                // novo, sem tocar nas outras sessões. Revogar aqui derrubava sessões legítimas:
+                // abrir uma segunda aba ou recarregar a página matava o refresh que a primeira
+                // guardava, e ela caía sozinha na renovação seguinte.
                 return buildAuthenticationResponse(accessToken, issueRefreshToken(user), user);
             }
 
@@ -334,6 +344,11 @@ public class ArchbaseAuthenticationService {
 
         var token = AccessTokenEntity.builder()
                 .id(UUID.randomUUID().toString())
+                // Sem isto a coluna fica nula em toda linha de token: não há como saber quando um
+                // token foi emitido, e a ordenação por data em findRefreshTokenByValue ordena sobre
+                // nada. Numa investigação real de sessão, os horários de emissão tiveram de ser
+                // deduzidos de trás para frente a partir das datas de expiração.
+                .createEntityDate(LocalDateTime.now())
                 .user(usuario)
                 .token(jwtToken.token())
                 .expirationTime(jwtToken.expiresIn())
