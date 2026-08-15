@@ -5,7 +5,7 @@
     <parent>
         <artifactId>archbase-app-framework</artifactId>
         <groupId>br.com.archbase</groupId>
-        <version>3.1.22</version>
+        <version>3.2.0</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -64,23 +64,23 @@
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-shared-kernel</artifactId>
-            <version>3.1.22</version>
+            <version>3.2.0</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-validation</artifactId>
-            <version>3.1.22</version>
+            <version>3.2.0</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>br.com.archbase</groupId>
-            <version>3.1.22</version>
+            <version>3.2.0</version>
             <artifactId>archbase-domain-driven-design-spec</artifactId>
         </dependency>
         <dependency>
             <groupId>br.com.archbase</groupId>
-            <version>3.1.22</version>
+            <version>3.2.0</version>
             <artifactId>archbase-domain-driven-design</artifactId>
         </dependency>
         <dependency>
