@@ -99,6 +99,20 @@ public class ArchbaseAuthenticationService {
      * "usuário não encontrado", e telas que exibem essa mensagem deixariam de recebê-la. Ligue
      * junto com o ajuste no frontend para "se o e-mail estiver cadastrado, você receberá as
      * instruções".
+     *
+     * <p><b>Uniformiza os três caminhos</b>, e não apenas o do e-mail inexistente:
+     *
+     * <ol>
+     *   <li>e-mail não cadastrado;</li>
+     *   <li>usuário sem autorização para trocar a senha — resposta que só um cadastro consegue
+     *       obter;</li>
+     *   <li>falha no envio do e-mail, que virava 500 enquanto o inexistente respondia 200.</li>
+     * </ol>
+     *
+     * <p>Os dois últimos foram encontrados exercitando a proteção num projeto real: ela estava
+     * ligada e ainda assim dava para separar quem tem conta de quem não tem, porque o vazamento
+     * vinha da falha e não da lógica. Em todos os casos o motivo continua registrado em log, que é
+     * do operador; o que fica uniforme é a resposta, que é de quem chamou.
      */
     @org.springframework.beans.factory.annotation.Value("${archbase.security.prevent-user-enumeration:false}")
     private boolean preventUserEnumeration;
@@ -539,8 +553,30 @@ public class ArchbaseAuthenticationService {
         // Coluna nula (base legada) é tratada como "pode alterar": o padrão do cadastro é true e
         // negar o reset por ausência de dado trancaria o usuário fora da conta.
         if (!Boolean.FALSE.equals(user.getAllowPasswordChange())) {
-            String passwordResetToken = createPasswordResetToken(user.toDomain());
-            archbaseEmailService.sendResetPasswordEmail(email, passwordResetToken, user.getUsername(), user.getName());
+            try {
+                String passwordResetToken = createPasswordResetToken(user.toDomain());
+                archbaseEmailService.sendResetPasswordEmail(email, passwordResetToken, user.getUsername(), user.getName());
+            } catch (RuntimeException e) {
+                if (!preventUserEnumeration) {
+                    throw e;
+                }
+                // Uniformizar só o caminho do e-mail inexistente não bastava: quando o e-mail EXISTE,
+                // o fluxo segue até o envio, e qualquer falha ali — SPI ArchbaseEmailService sem
+                // implementação, SMTP fora do ar, credencial vencida — virava 500 no controller,
+                // enquanto o e-mail inexistente respondia 200. A diferença entre 500 e 200 dizia
+                // exatamente o que a proteção existe para esconder, e dizia justamente quando a
+                // infraestrutura de e-mail está quebrada, que é quando ninguém está olhando.
+                //
+                // O diagnóstico continua inteiro no log, que é do operador. Quem chama recebe a mesma
+                // resposta dos demais casos.
+                log.error("Falha ao enviar e-mail de reset (resposta uniforme por "
+                        + "archbase.security.prevent-user-enumeration=true): {}", e.getMessage(), e);
+            }
+        } else if (preventUserEnumeration) {
+            // Mesmo raciocínio: "não possui autorização para alterar a senha" é uma resposta que só
+            // um e-mail cadastrado consegue obter — enumeração pela porta dos fundos.
+            log.info("Solicitação de reset para usuário sem autorização de troca de senha "
+                    + "(resposta uniforme)");
         } else {
             throw new ArchbaseValidationException(String.format("Usuário com email %s  não possui autorização para alterar a senha.",email));
         }
