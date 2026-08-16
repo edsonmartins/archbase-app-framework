@@ -15,10 +15,16 @@
     <description>Advanced Hibernate type support for Archbase applications including JSON, arrays, ranges, and optimized repositories</description>
 
     <dependencies>
-        <!-- Hypersistence Utils -->
+        <!-- Hypersistence Utils.
+             O artefato traz a linha do Hibernate no nome, e ela precisa acompanhar a que o
+             spring-boot-starter-parent nos entrega (hoje 7.4.1.Final). Estávamos no
+             -hibernate-71, compilado contra 7.1.11/7.2.17: duas linhas menores atrás do que roda
+             em execução. Como as classes do Hibernate vêm do runtime e não deste artefato, o
+             descompasso não aparece no build — aparece na primeira chamada a um método que mudou
+             de assinatura. O -hibernate-73 é compilado contra 7.3.6/7.4.0. -->
         <dependency>
             <groupId>io.hypersistence</groupId>
-            <artifactId>hypersistence-utils-hibernate-71</artifactId>
+            <artifactId>hypersistence-utils-hibernate-73</artifactId>
             <version>${hypersistence-utils.version}</version>
         </dependency>
 
