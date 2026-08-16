@@ -126,7 +126,8 @@ jobs:
             br.com.archbase.offline.sync.integration.SyncPostgresCompatibilidadeTest \
             br.com.archbase.offline.sync.integration.SyncMySqlCompatibilidadeTest \
             br.com.archbase.offline.sync.integration.DdlEntreguePostgresTest \
-            br.com.archbase.offline.sync.integration.DdlEntregueMySqlTest
+            br.com.archbase.offline.sync.integration.DdlEntregueMySqlTest \
+            br.com.archbase.hypersistence.TiposPostgreSQLFuncionamTest
           do
             arquivo=$(find . -name "TEST-$classe.xml" -path '*/surefire-reports/*' | head -1)
             if [ -z "$arquivo" ]; then

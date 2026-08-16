@@ -67,6 +67,16 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- Jackson 3 (tools.jackson), que o Spring Boot 4 usa na auto-configuração. O módulo
+             depende do jackson-databind 2 em compile porque é o que o JsonType do
+             hypersistence-utils consome; sem o 3 aqui, subir um contexto Spring nos testes morre em
+             NoClassDefFoundError: tools/jackson/databind/ObjectMapper. Versão gerida pelo parent. -->
+        <dependency>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
