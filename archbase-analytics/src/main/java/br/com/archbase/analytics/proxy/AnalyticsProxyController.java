@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.ResponseBody;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -47,8 +47,28 @@ import java.util.concurrent.Semaphore;
  *
  * <p>Streaming (repasse sem bufferização): pendente; o teto de linhas mantém o
  * corpo limitado.
+ *
+ * <p><b>Quem registra é a autoconfiguração, não o component scan.</b> Esta
+ * classe é {@code @ResponseBody} + {@code @RequestMapping} de propósito, e não
+ * {@code @RestController}: quem a publica é a
+ * {@code ArchbaseAnalyticsAutoConfiguration}, por {@code @Bean}, sob
+ * {@code archbase.analytics.enabled=true}.
+ *
+ * <p>Com {@code @RestController} ela era um componente estereotipado, e qualquer
+ * host que escaneasse {@code br.com.archbase} — o que é comum — a registrava
+ * <b>incondicionalmente</b>. Com o analytics desligado, o {@link CubeTokenMinter}
+ * exigido no construtor não existia e a aplicação inteira não subia:
+ *
+ * <pre>
+ *   Parameter 2 of constructor in AnalyticsProxyController
+ *   required a bean of type 'CubeTokenMinter' that could not be found
+ * </pre>
+ *
+ * <p>{@code @ResponseBody} preserva o comportamento REST — serialização direta
+ * do retorno, sem resolução de view — sem tornar a classe candidata a scan. O
+ * mapeamento das rotas continua idêntico.
  */
-@RestController
+@ResponseBody
 @RequestMapping("${archbase.analytics.base-path:/api/analytics}/v1")
 public class AnalyticsProxyController {
 

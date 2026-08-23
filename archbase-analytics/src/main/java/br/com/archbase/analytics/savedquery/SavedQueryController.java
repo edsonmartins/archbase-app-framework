@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.ResponseBody;
 
 import java.util.List;
 import java.util.Set;
@@ -29,8 +29,14 @@ import java.util.Set;
  * <p>Autorização: o dono é SEMPRE o usuário autenticado (o {@code ownerId} do
  * corpo é ignorado na escrita). Visibilidade: as próprias + escopo team/org.
  * Remoção: só o dono.
+ *
+ * <p><b>Quem registra é a autoconfiguração, não o component scan</b> —
+ * {@code @ResponseBody} em vez de {@code @RestController} pela mesma razão
+ * descrita em {@code AnalyticsProxyController}: como estereótipo, um host que
+ * escaneasse {@code br.com.archbase} registrava a classe mesmo com o analytics
+ * desligado, e ela subia sem as dependências que a autoconfig publicaria.
  */
-@RestController
+@ResponseBody
 @RequestMapping("${archbase.analytics.base-path:/api/analytics}/saved-queries")
 public class SavedQueryController {
 
