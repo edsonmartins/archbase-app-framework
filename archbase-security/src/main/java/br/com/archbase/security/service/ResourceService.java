@@ -63,10 +63,8 @@ public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery
     @Override
     @Transactional
     public ResourcePermissionsDto registerResource(ResourceRegisterDto resourceRegister) {
-        boolean isNewResource = false;
         ResourceDto resourceDto = adapter.findResource(resourceRegister.getResource().getResourceName());
         if (resourceDto == null) {
-            isNewResource = true;
             resourceDto = ResourceDto.builder()
                     .id(new ArchbaseIdentifier().toString())
                     .name(resourceRegister.getResource().getResourceName())
@@ -82,14 +80,34 @@ public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery
             resourceDto = adapter.createResource(resourceDto);
         }
         final var finalResourceDto = resourceDto;
-        List<String> actionNames = resourceRegister.getActions().stream().map(SimpleActionDto::getActionName).toList();
-        if (!isNewResource) {
-            List<ActionDto> missingActions = actionPersistenceAdapter.findMissingActionsByNames(actionNames, finalResourceDto.getId());
-            missingActions.forEach(missingAction -> {
-                missingAction.setActive(false);
-                actionPersistenceAdapter.updateAction(missingAction.getId(), missingAction);
-            });
-        }
+        // O REGISTRO DE TELA É ADITIVO: cria o que falta, reativa o que voltou, e NUNCA desativa.
+        //
+        // Antes, toda ação do recurso ausente do payload era desativada. A regra parece razoável
+        // — "sumiu do código, sai do catálogo" — e é insustentável aqui, por duas razões que se
+        // somam:
+        //
+        // 1. QUEM REGISTRA CONHECE UMA PARTE. Um recurso pode ser declarado por mais de uma tela,
+        //    e cada uma envia só as ações que ela usa. Com desativação, duas telas do mesmo
+        //    recurso apagam as ações uma da outra a cada abertura, alternadamente. Não há payload
+        //    "completo" para comparar contra: o cliente não tem essa informação.
+        //
+        // 2. PAYLOAD VAZIO É O CASO EXTREMO DISSO. O ArchbaseViewSecurityProvider do archbase-react
+        //    renderizava o loading no lugar dos filhos e chamava apply() antes de qualquer
+        //    registerAction, então a lista chegava vazia — e "vazia" casava com "todas faltando".
+        //    A primeira abertura de cada tela zerava o catálogo do recurso. No gestor-rq isso
+        //    zerou 56 dos 100 recursos e deixou 1.333 das 2.131 concessões (63%) apontando para
+        //    ação inativa: invisíveis na tela e prestes a virar revogação em massa no dia em que
+        //    permission.require-active fosse ligado.
+        //
+        // Poda continua existindo onde ela é sólida: no catálogo de tipo API, que o
+        // ArchbaseActionSynchronizationService varre a partir do código — lá existe a lista
+        // completa, e existe o sync.mode=report para conferir antes de escrever. Aqui não existe
+        // nem uma coisa nem outra, e o preço do erro é acesso perdido em silêncio.
+        //
+        // Consequência aceita: ação renomeada permanece ativa no catálogo até alguém desativá-la
+        // pelo admin. Fica visível e concedível sem efeito — barulhento e reversível, ao contrário
+        // do que se perdia antes.
+
         resourceRegister.getActions().forEach(simpleActionDto -> {
             Optional<ActionDto> actionOptional = actionPersistenceAdapter
                     .findActionByName(simpleActionDto.getActionName(), finalResourceDto.getId());
@@ -119,6 +137,11 @@ public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery
     @Override
     public ResourcePermissionsDto findLoggedUserResourcePermissions(String resourceName) {
         return adapter.findLoggedUserResourcePermissions(resourceName);
+    }
+
+    @Override
+    public LoggedUserPermissionsDto findLoggedUserPermissions() {
+        return adapter.findLoggedUserPermissions();
     }
 
     public List<ResoucePermissionsWithTypeDto> findResourcesPermissions(String securityId, SecurityType securityType) {
