@@ -8,6 +8,9 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
+// Auditada: usuário, grupo e perfil — a herança SINGLE_TABLE faz os três caírem aqui.
+// A trilha só é gravada com archbase.security.audit.enabled=true e exige as tabelas _AUD.
+@org.hibernate.envers.Audited
 @Entity
 @Table(name="SEGURANCA")
 @Inheritance(strategy = InheritanceType.SINGLE_TABLE)

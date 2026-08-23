@@ -2,6 +2,13 @@ package br.com.archbase.security.adapter;
 
 import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
 import br.com.archbase.query.rsql.jpa.SortUtils;
+import br.com.archbase.security.access.AccessSubject;
+import br.com.archbase.security.access.ArchbaseAccessSubjectLoader;
+import br.com.archbase.security.access.ArchbaseCapabilityReader;
+import br.com.archbase.security.access.EffectiveCapability;
+import br.com.archbase.validation.exception.ArchbaseValidationException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import br.com.archbase.security.adapter.port.ResourcePersistencePort;
 import br.com.archbase.security.domain.dto.*;
 import br.com.archbase.security.domain.entity.User;
@@ -27,13 +34,21 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
     private final ResourceJpaRepository repository;
     private final SecurityAdapter securityAdapter;
     private final PermissionJpaRepository permissionRepository;
+    private final ArchbaseAccessSubjectLoader subjectLoader;
+    private final ArchbaseCapabilityReader capabilityReader;
     private final JPAQueryFactory queryFactory;
 
     @Autowired
-    public ResourcePersistenceAdapter(ResourceJpaRepository repository, SecurityAdapter securityAdapter, PermissionJpaRepository permissionRepository, EntityManager entityManager) {
+    public ResourcePersistenceAdapter(ResourceJpaRepository repository, SecurityAdapter securityAdapter,
+                                      PermissionJpaRepository permissionRepository,
+                                      ArchbaseAccessSubjectLoader subjectLoader,
+                                      ArchbaseCapabilityReader capabilityReader,
+                                      EntityManager entityManager) {
         this.repository = repository;
         this.securityAdapter = securityAdapter;
         this.permissionRepository = permissionRepository;
+        this.subjectLoader = subjectLoader;
+        this.capabilityReader = capabilityReader;
         this.queryFactory = new JPAQueryFactory(entityManager);
     }
 
@@ -81,53 +96,100 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
     }
 
     @Override
+    /**
+     * As capacidades do usuário logado sobre um recurso — o que a tela consome para mostrar ou
+     * esconder botão, menu e aba.
+     *
+     * <p>Passou a usar o {@link ArchbaseCapabilityReader}, que é a mesma leitura do diagnóstico e
+     * do core. Antes, isto era uma segunda implementação de usuário ∪ grupos ∪ perfil em QueryDSL,
+     * independente da JPQL que o {@code @HasPermission} usa — e com regra diferente: filtrava
+     * {@code action.active}, coisa que o outro caminho não faz. Duas respostas para a mesma
+     * pergunta é como um sistema acaba concedendo mais do que a interface mostra.
+     *
+     * <p>O filtro preservado é exatamente o anterior: <b>{@code action.active}</b>. Recurso inativo
+     * continua não sendo filtrado aqui, como nunca foi — apertar isso é mudança de comportamento e
+     * pertence à flag {@code archbase.security.permission.require-active}, não a este passo.
+     *
+     * <p>Deixou de depender de sessão aberta: o sujeito é carregado com fetch join de grupos e
+     * perfil, em vez de converter a entidade tocando associação lazy.
+     */
     public ResourcePermissionsDto findLoggedUserResourcePermissions(String resourceName) {
-        User user = securityAdapter.getLoggedUser();
+        AccessSubject subject = subjectLoader.byId(loggedUserId())
+                .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado."));
 
-        QPermissionEntity permissionEntity = QPermissionEntity.permissionEntity;
-        QUserGroupEntity userGroupEntity = QUserGroupEntity.userGroupEntity;
-        QGroupEntity groupEntity = QGroupEntity.groupEntity;
-        QProfileEntity profileEntity = QProfileEntity.profileEntity;
-
-
-        // Construção das condições individuais
-        BooleanExpression resourceCondition = permissionEntity.action.resource.name.eq(resourceName);
-        BooleanExpression userCondition = permissionEntity.security.id.eq(user.getId().toString())
-                .and(permissionEntity.action.active.isTrue());
-
-        BooleanExpression groupCondition = permissionEntity.security.eq(groupEntity._super)
-                .and(userGroupEntity.group.eq(groupEntity))
-                .and(userGroupEntity.user.id.eq(user.getId().toString()))
-                .and(permissionEntity.action.active.isTrue());
-
-        BooleanExpression securityCondition = userCondition.or(groupCondition);
-
-        if (user.getProfile() != null) {
-            BooleanExpression profileCondition = permissionEntity.security.eq(profileEntity._super)
-                    .and(profileEntity.id.eq(user.getProfile().getId().toString()))
-                    .and(permissionEntity.action.active.isTrue());
-
-            securityCondition = securityCondition.or(profileCondition);
-        }
-
-        BooleanExpression predicate = resourceCondition
-                .and(securityCondition);
-
-        // Execução da consulta com junções apropriadas
-        List<PermissionEntity> permissionEntities = queryFactory
-                .selectFrom(permissionEntity)
-                .leftJoin(permissionEntity.security, groupEntity._super)
-                .leftJoin(userGroupEntity).on(userGroupEntity.group.eq(groupEntity))
-                .leftJoin(permissionEntity.security, profileEntity._super)
-                .where(predicate)
-                .fetch();
+        Set<String> acoes = capabilityReader.grantedTo(subject, resourceName).stream()
+                // Negada não entra: a tela mostraria um botão que o backend recusa.
+                .filter(c -> c.situation() != EffectiveCapability.Situation.DENIED)
+                .filter(EffectiveCapability::actionActive)
+                .map(EffectiveCapability::action)
+                .collect(Collectors.toSet());
 
         return ResourcePermissionsDto.builder()
                 .resourceName(resourceName)
-                .permissions(permissionEntities.stream()
-                        .map(permission -> permission.getAction().getName())
-                        .collect(Collectors.toSet()))
+                .permissions(acoes)
                 .build();
+    }
+
+    /**
+     * Todas as capacidades do usuário autenticado, agrupadas por recurso.
+     *
+     * <p>Uma consulta, não uma por recurso. Quem monta menu ou roteamento precisa da resposta para
+     * dezenas de recursos ao mesmo tempo, e o caminho por recurso transformava isso em dezenas de
+     * requisições — na prática, em desistir de perguntar.
+     *
+     * <p><b>O filtro é o mesmo</b> de {@link #findLoggedUserResourcePermissions(String)}: fora as
+     * negadas, fora as de ação inativa. Deliberadamente idêntico, e não "mais correto": se as duas
+     * listagens divergissem, o menu habilitaria um item cuja tela recusaria as ações — a mesma
+     * classe de divergência entre interface e decisão que o core existe para eliminar.
+     */
+    @Override
+    public LoggedUserPermissionsDto findLoggedUserPermissions() {
+        AccessSubject subject = subjectLoader.byId(loggedUserId())
+                .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado."));
+
+        Map<String, Set<String>> porRecurso = new LinkedHashMap<>();
+        for (EffectiveCapability capacidade : capabilityReader.grantedTo(subject)) {
+            if (capacidade.situation() == EffectiveCapability.Situation.DENIED || !capacidade.actionActive()) {
+                continue;
+            }
+            porRecurso.computeIfAbsent(capacidade.resource(), r -> new LinkedHashSet<>())
+                    .add(capacidade.action());
+        }
+
+        return LoggedUserPermissionsDto.builder()
+                .administrator(Boolean.TRUE.equals(subject.administrator()))
+                .permissions(porRecurso)
+                .build();
+    }
+
+    /**
+     * O id do usuário autenticado, sem converter a entidade para domínio.
+     *
+     * <p>{@code SecurityAdapter.getLoggedUser()} faria uma ida ao banco e um {@code toDomain()} que
+     * toca {@code groups}, associação lazy — o que só funciona dentro de uma requisição web, com a
+     * sessão que o Open Session In View mantém aberta.
+     */
+    /**
+     * Exclui as negações das listagens do admin.
+     *
+     * <p>Estas consultas respondem "o que foi concedido a esta pessoa/grupo/perfil". Uma linha
+     * {@code DENY} listada aí afirma o oposto do que o avaliador decide — e é a mesma divergência
+     * entre tela e decisão que o core existe para eliminar. Exibir as negações para que o admin
+     * possa removê-las é útil, mas exige que o DTO carregue o efeito; enquanto não carregar,
+     * mostrá-las é mentir.
+     */
+    private BooleanExpression naoENegacao(QPermissionEntity permission) {
+        return permission.effect.isNull()
+                .or(permission.effect.ne(br.com.archbase.security.access.PermissionEffect.DENY));
+    }
+
+    private String loggedUserId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()
+                || !(authentication.getPrincipal() instanceof UserEntity user)) {
+            throw new ArchbaseValidationException("Usuário não autenticado.");
+        }
+        return user.getId();
     }
 
     @Override
@@ -142,7 +204,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
         List<Tuple> userPermissions = queryFactory
                 .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.USER), permission.id)
                 .from(permission)
-                .where(permission.security.id.eq(userId).and(permission.action.active.isTrue()))
+                .where(permission.security.id.eq(userId).and(permission.action.active.isTrue()).and(naoENegacao(permission)))
                 .fetch();
 
         List<Tuple> profilePermissions = queryFactory
@@ -150,7 +212,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                 .from(permission)
                 .join(permission.security, profile._super)
                 .join(user).on(user.profile.eq(profile))
-                .where(user.id.eq(userId).and(permission.action.active.isTrue()))
+                .where(user.id.eq(userId).and(permission.action.active.isTrue()).and(naoENegacao(permission)))
                 .fetch();
 
         List<Tuple> groupPermissions = queryFactory
@@ -158,7 +220,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                 .from(permission)
                 .join(permission.security, group._super)
                 .join(userGroup).on(userGroup.group.eq(group))
-                .where(userGroup.user.id.eq(userId).and(permission.action.active.isTrue()))
+                .where(userGroup.user.id.eq(userId).and(permission.action.active.isTrue()).and(naoENegacao(permission)))
                 .fetch();
 
         List<Tuple> permissionsTuple = new ArrayList<>();
@@ -179,7 +241,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                 .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.PROFILE), permission.id)
                 .from(permission)
                 .join(permission.security, profile._super)
-                .where(profile.id.eq(profileId).and(permission.action.active.isTrue()))
+                .where(profile.id.eq(profileId).and(permission.action.active.isTrue()).and(naoENegacao(permission)))
                 .fetch();
 
         return groupTuplesToResourcePermissions(profilePermissions, permission);
@@ -195,7 +257,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                 .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.GROUP), permission.id)
                 .from(permission)
                 .join(permission.security, group._super)
-                .where(group.id.eq(groupId).and(permission.action.active.isTrue()))
+                .where(group.id.eq(groupId).and(permission.action.active.isTrue()).and(naoENegacao(permission)))
                 .fetch();
 
 
@@ -283,7 +345,12 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
 
     @Override
     public PermissionDto grantPermission(PermissionDto permissionDto) {
-        return permissionRepository.save(PermissionEntity.fromDomain(permissionDto.toDomain())).toDto();
+        // O efeito atravessa DTO → domínio → entidade como todos os demais campos. Uma versão
+        // anterior o atribuía direto na entidade, depois do fromDomain: funcionava, e deixava um
+        // campo fora do caminho que todos os outros percorrem — o tipo de exceção que o próximo a
+        // mexer aqui não tem como adivinhar.
+        return permissionRepository.save(
+                PermissionEntity.fromDomain(permissionDto.toDomain())).toDto();
     }
 
     @Override

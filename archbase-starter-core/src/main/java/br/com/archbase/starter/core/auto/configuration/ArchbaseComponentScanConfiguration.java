@@ -25,6 +25,10 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
     "br.com.archbase.security",
     "br.com.archbase.web.config"
 })
+// As entidades da trilha ficam neste mesmo pacote, e não num "audit" separado, de propósito: há
+// aplicações que montam o EntityManagerFactory à mão e listam os pacotes uma a uma. Um pacote novo
+// obrigaria cada uma delas a acrescentar a linha — e quem esquecesse não subiria mais, mesmo com a
+// auditoria desligada.
 @EntityScan(basePackages = {
     "br.com.archbase.security.persistence"
 })

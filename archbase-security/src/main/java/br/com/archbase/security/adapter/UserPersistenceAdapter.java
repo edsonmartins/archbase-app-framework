@@ -118,6 +118,13 @@ public class UserPersistenceAdapter implements UserPersistencePort, FindDataWith
                     existingEntity.setUnlimitedAccessHours(userDto.getUnlimitedAccessHours());
                     existingEntity.setUserName(userDto.getUserName());
                     existingEntity.setEmail(userDto.getEmail());
+                    // Sem estas duas linhas, os campos são somente-graváveis-na-criação: o create
+                    // usa fromDomain(toDomain()) e copia tudo, mas a atualização é campo a campo e
+                    // ignorava quem não estivesse listado aqui. O valor digitado na tela era
+                    // descartado em silêncio, sem erro nenhum — a entidade vinha do banco com o
+                    // valor antigo e voltava para o banco com ele.
+                    existingEntity.setExternalId(userDto.getExternalId());
+                    existingEntity.setEmployeeId(userDto.getEmployeeId());
                     existingEntity.setUpdateEntityDate(LocalDateTime.now());
                     existingEntity.setLastModifiedByUser(loggedUser.getUserName());
                     existingEntity.setProfile(userDto.getProfile() != null ? ProfileEntity.fromDomain(userDto.getProfile().toDomain()):null);

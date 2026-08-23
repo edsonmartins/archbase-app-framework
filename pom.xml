@@ -10,7 +10,7 @@
     </parent>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-app-framework</artifactId>
-    <version>3.0.9</version>
+    <version>3.3.0</version>
     <name>archbase-app-framework</name>
     <description>Archbase Application Framework</description>
 
@@ -93,6 +93,8 @@
         <module>archbase-starter-hypersistence</module>
         <module>archbase-starter-flyway</module>
         <module>archbase-starter-messaging</module>
+        <module>archbase-analytics</module>
+        <module>archbase-starter-analytics</module>
         <module>archbase-modular-monolith</module>
         <module>archbase-offline-sync</module>
         <module>archbase-starter-offline-sync</module>
@@ -115,7 +117,7 @@
         <reflections.version>0.10.2</reflections.version>
         <json-unit-assertj.version>5.1.2</json-unit-assertj.version>
         <caelum-stella-core.version>2.2.2</caelum-stella-core.version>
-        <hypersistence-utils.version>3.15.2</hypersistence-utils.version>
+        <hypersistence-utils.version>3.15.4</hypersistence-utils.version>
         <openfeign-querydsl.version>7.2</openfeign-querydsl.version>
         <modelmapper.version>3.2.6</modelmapper.version>
         <jjwt.version>0.13.0</jjwt.version>
@@ -126,7 +128,6 @@
         <maven-source-plugin.version>3.4.0</maven-source-plugin.version>
         <central-publishing-maven-plugin.version>0.10.0</central-publishing-maven-plugin.version>
         <maven-gpg-plugin.version>3.2.8</maven-gpg-plugin.version>
-        <bootui.version>0.1.0</bootui.version>
     </properties>
 
     <repositories>
@@ -168,12 +169,6 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- BootUI: console de desenvolvimento embarcado (dev/local apenas) -->
-            <dependency>
-                <groupId>com.julien-dubois.bootui</groupId>
-                <artifactId>bootui-spring-boot-starter</artifactId>
-                <version>${bootui.version}</version>
-            </dependency>
             <dependency>
                 <groupId>org.apache.tika</groupId>
                 <artifactId>tika-core</artifactId>

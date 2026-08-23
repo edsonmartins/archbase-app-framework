@@ -12,12 +12,14 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import br.com.archbase.security.annotation.ArchbaseSecurityAdminEndpoint;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/action")
+@ArchbaseSecurityAdminEndpoint(resource = "ACTION")
 public class ActionController {
 
     private final ActionService actionService;

@@ -3,6 +3,7 @@ package br.com.archbase.security.adapter.port;
 import br.com.archbase.security.domain.dto.PermissionDto;
 import br.com.archbase.security.domain.dto.ResoucePermissionsWithTypeDto;
 import br.com.archbase.security.domain.dto.ResourceDto;
+import br.com.archbase.security.domain.dto.LoggedUserPermissionsDto;
 import br.com.archbase.security.domain.dto.ResourcePermissionsDto;
 
 import java.util.List;
@@ -17,6 +18,7 @@ public interface ResourcePersistencePort {
     public Optional<ResourceDto> updateResource(String id, ResourceDto resourceDto);
     public void deleteResource(String id) ;
     public ResourcePermissionsDto findLoggedUserResourcePermissions(String resourceName);
+    public LoggedUserPermissionsDto findLoggedUserPermissions();
     public ResourceDto findResource(String resourceName);
     public List<ResoucePermissionsWithTypeDto> findUserResourcesPermissions(String userId);
     public List<ResoucePermissionsWithTypeDto> findProfileResourcesPermissions(String profileId);

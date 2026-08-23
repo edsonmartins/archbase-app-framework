@@ -1,5 +1,7 @@
 package br.com.archbase.security.domain.entity;
 
+import br.com.archbase.security.access.AccessLevel;
+
 import br.com.archbase.ddd.domain.annotations.DomainAggregateRoot;
 import br.com.archbase.ddd.domain.contracts.AggregateRoot;
 import br.com.archbase.ddd.domain.base.ArchbaseIdentifier;
@@ -16,9 +18,13 @@ import java.util.Set;
 @DomainAggregateRoot
 public class Profile extends Security<Profile, Profile> implements AggregateRoot<Profile, Identifier> {
 
+    /** Nível conferido por este perfil. Ver {@code AccessLevel}. */
+    protected AccessLevel accessLevel;
+
     @Builder
-    public Profile(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, AccessSchedule accessSchedule) {
+    public Profile(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, AccessSchedule accessSchedule, AccessLevel accessLevel) {
         super(id, code, version, updateEntityDate, createEntityDate, createdByUser, lastModifiedByUser, name, description, accessSchedule);
+        this.accessLevel = accessLevel;
     }
 
     static class Validator extends AbstractArchbaseValidator<Profile> {

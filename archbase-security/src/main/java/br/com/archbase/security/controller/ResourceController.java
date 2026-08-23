@@ -1,5 +1,6 @@
 package br.com.archbase.security.controller;
 
+import br.com.archbase.security.access.PermissionEffect;
 import br.com.archbase.query.rsql.jpa.SortUtils;
 import br.com.archbase.security.domain.dto.*;
 import br.com.archbase.security.domain.dto.ResourcePermissionsDto;
@@ -11,6 +12,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import br.com.archbase.security.annotation.ArchbaseSecurityAdminEndpoint;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,6 +21,7 @@ import java.util.Optional;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/resource")
+@ArchbaseSecurityAdminEndpoint(resource = "RESOURCE")
 public class ResourceController {
 
     private final ResourceService resourceService;
@@ -47,9 +50,27 @@ public class ResourceController {
         return ResponseEntity.ok(resourceService.registerResource(resourceRegister));
     }
 
+    // Consulta as permissões do próprio usuário logado — autoatendimento, não administração.
     @GetMapping("/permissions/{resourceName}")
+    @ArchbaseSecurityAdminEndpoint(selfService = true)
     public ResponseEntity<ResourcePermissionsDto> findLoggedUserResourcePermissions(@PathVariable String resourceName) {
         return ResponseEntity.ok(resourceService.findLoggedUserResourcePermissions(resourceName));
+    }
+
+    /**
+     * Tudo que o usuário logado pode, agrupado por recurso — em uma requisição.
+     *
+     * <p>Autoatendimento, como o irmão por recurso: a pessoa pergunta sobre si mesma, e não há
+     * parâmetro que permita perguntar sobre outra. Marcar como administrativo tornaria impossível a
+     * um usuário comum montar a própria navegação, que é justamente para o que o endpoint existe.
+     *
+     * <p>O caminho é literal e não colide com {@code /permissions/{resourceName}}: a rota mais
+     * específica vence, e nenhum recurso precisa se chamar assim.
+     */
+    @GetMapping("/my-permissions")
+    @ArchbaseSecurityAdminEndpoint(selfService = true)
+    public ResponseEntity<LoggedUserPermissionsDto> findLoggedUserPermissions() {
+        return ResponseEntity.ok(resourceService.findLoggedUserPermissions());
     }
 
     @GetMapping("/{id}")
@@ -85,6 +106,20 @@ public class ResourceController {
         }
     }
 
+    /**
+     * O escopo a gravar: o pedido quando declarado, o atual quando ausente.
+     *
+     * <p>String vazia limpa. Sem essa distinção, "não declarei escopo" e "quero sem escopo" seriam
+     * a mesma coisa — e o primeiro caso, que é o de todo cliente anterior, alargaria em silêncio
+     * uma permissão que alguém estreitou de propósito.
+     */
+    private String escopoResolvido(String doPedido, String oAtual) {
+        if (doPedido == null) {
+            return oAtual;
+        }
+        return doPedido.isBlank() ? null : doPedido;
+    }
+
     @PostMapping("/permissions")
     public ResponseEntity<?> grantPermission(@RequestBody GrantPermissionDto grantPermission) {
         try {
@@ -110,12 +145,45 @@ public class ResourceController {
             PermissionDto existingPermission = resourceService.findPermission(security.getId(), action.get().getId());
 
             if (existingPermission != null) {
-                return ResponseEntity.ok(ResouceActionPermissionDto.fromPermissionDto(existingPermission));
+                // Devolver a linha existente e ignorar o pedido tornava a NEGAÇÃO inalcançável
+                // exatamente no caso para o qual ela existe: "o time tem pelo perfil, tire desta
+                // pessoa" pressupõe que já há uma linha para o par (segurança, ação). O endpoint
+                // respondia 200 com a concessão antiga, nada era gravado, e a tela reportava
+                // sucesso enquanto o acesso continuava aberto.
+                PermissionEffect efeitoPedido = grantPermission.getEffect() == null
+                        ? PermissionEffect.GRANT : grantPermission.getEffect();
+
+                // Escopo AUSENTE preserva o que está gravado; só um valor explícito o substitui, e
+                // string vazia é a forma de limpar. Todo cliente anterior envia apenas
+                // {securityId, actionId, type}: sobrescrever com o nulo que chega alargaria uma
+                // permissão estreitada a uma empresa para TODAS elas, num pedido que o operador
+                // entende como "reconceder o que já estava lá".
+                String empresa = escopoResolvido(grantPermission.getCompanyId(), existingPermission.getCompanyId());
+                String projeto = escopoResolvido(grantPermission.getProjectId(), existingPermission.getProjectId());
+
+                boolean mudou = efeitoPedido != existingPermission.getEffect()
+                        || !java.util.Objects.equals(empresa, existingPermission.getCompanyId())
+                        || !java.util.Objects.equals(projeto, existingPermission.getProjectId());
+
+                if (!mudou) {
+                    return ResponseEntity.ok(ResouceActionPermissionDto.fromPermissionDto(existingPermission));
+                }
+
+                existingPermission.setEffect(efeitoPedido);
+                existingPermission.setCompanyId(empresa);
+                existingPermission.setProjectId(projeto);
+                PermissionDto atualizada = resourceService.grantPermission(existingPermission);
+                return ResponseEntity.ok(ResouceActionPermissionDto.fromPermissionDto(atualizada));
             }
 
             PermissionDto permission = PermissionDto.builder()
                     .action(action.get())
                     .security(security)
+                    // Nulo é GRANT. Declarar DENY aqui é o que permite tirar de uma pessoa algo
+                    // que o time inteiro tem, sem criar um grupo paralelo só para excluí-la.
+                    .effect(grantPermission.getEffect())
+                    .companyId(grantPermission.getCompanyId())
+                    .projectId(grantPermission.getProjectId())
                     .build();
             PermissionDto savedPermission = resourceService.grantPermission(permission);
             return ResponseEntity.ok(ResouceActionPermissionDto.fromPermissionDto(savedPermission));

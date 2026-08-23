@@ -1,0 +1,24 @@
+name: Build and Test
+
+# Gatilho de desenvolvimento: roda a suíte a cada push nas branches principais e em todo PR.
+# A definição dos testes vive em tests.yml, compartilhada com a publicação — assim o que roda
+# antes de um artefato ir para o Maven Central é exatamente o que roda num PR.
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Um push novo na mesma branch cancela a execução anterior: o runner é self-hosted e
+  # compartilhado, e builds enfileirados atrasam todo mundo.
+  group: build-and-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    uses: ./.github/workflows/tests.yml

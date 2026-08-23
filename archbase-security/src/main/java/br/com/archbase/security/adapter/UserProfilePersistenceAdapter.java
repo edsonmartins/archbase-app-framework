@@ -1,5 +1,6 @@
 package br.com.archbase.security.adapter;
 
+import br.com.archbase.security.access.AccessLevel;
 import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
 import br.com.archbase.query.rsql.jpa.SortUtils;
 import br.com.archbase.security.adapter.port.UserProfilePersistencePort;
@@ -58,6 +59,16 @@ public class UserProfilePersistenceAdapter implements UserProfilePersistencePort
                     existingEntity.setName(profileDto.getName());
                     existingEntity.setDescription(profileDto.getDescription());
                     existingEntity.setCode(profileDto.getCode());
+
+                    // Nulo PRESERVA o nível atual; para tirá-lo, envie NONE. Um cliente antigo,
+                    // que não conhece o campo, rebaixaria o perfil ao nível padrão ao salvar
+                    // qualquer edição — afrouxar segurança por omissão é o que não pode acontecer.
+                    if (profileDto.getAccessLevel() != null) {
+                        existingEntity.setAccessLevel(
+                                AccessLevel.isUnset(profileDto.getAccessLevel())
+                                        ? null : profileDto.getAccessLevel());
+                    }
+
                     return repository.save(existingEntity).toDto();
                 });
     }

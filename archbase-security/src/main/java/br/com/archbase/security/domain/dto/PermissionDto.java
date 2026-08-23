@@ -1,5 +1,7 @@
 package br.com.archbase.security.domain.dto;
 
+import br.com.archbase.security.access.PermissionEffect;
+
 import br.com.archbase.security.domain.entity.*;
 import com.fasterxml.jackson.annotation.JsonIdentityInfo;
 import com.fasterxml.jackson.annotation.ObjectIdGenerators;
@@ -14,6 +16,12 @@ import java.util.Set;
 @Setter
 @JsonIdentityInfo(generator = ObjectIdGenerators.UUIDGenerator.class, property = "@id")
 public class PermissionDto  {
+
+	/**
+	 * {@code GRANT} (padrão, inclusive quando nulo) ou {@code DENY}. A negação vence a concessão
+	 * dentro do escopo em que foi declarada.
+	 */
+	protected PermissionEffect effect;
 
     protected String id;
     protected String code;
@@ -32,7 +40,7 @@ public class PermissionDto  {
     }
 
     @Builder
-    public PermissionDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, SecurityDto security, ActionDto action, String tenantId, String companyId, String projectId) {
+    public PermissionDto(String id, String code, Long version, LocalDateTime createEntityDate, LocalDateTime updateEntityDate, String createdByUser, String lastModifiedByUser, SecurityDto security, ActionDto action, String tenantId, String companyId, String projectId, PermissionEffect effect) {
         this.id = id;
         this.code = code;
         this.version = version;
@@ -45,6 +53,7 @@ public class PermissionDto  {
         this.tenantId = tenantId;
         this.companyId = companyId;
         this.projectId = projectId;
+        this.effect = effect;
     }
 
     public static PermissionDto fromDomain(Permission permission) {
@@ -65,6 +74,7 @@ public class PermissionDto  {
 
 
         return PermissionDto.builder()
+                .effect(permission.getEffect())
                 .id(permission.getId().toString())
                 .code(permission.getCode())
                 .version(permission.getVersion())
@@ -94,6 +104,7 @@ public class PermissionDto  {
 
 
         return Permission.builder()
+                .effect(this.effect)
                 .id(this.id)
                 .code(this.code)
                 .version(this.version)

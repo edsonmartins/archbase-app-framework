@@ -5,7 +5,7 @@
     <parent>
         <artifactId>archbase-app-framework</artifactId>
         <groupId>br.com.archbase</groupId>
-        <version>3.0.9</version>
+        <version>3.3.0</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -15,37 +15,43 @@
     <dependencies>
         <dependency>
             <groupId>br.com.archbase</groupId>
-            <version>3.0.9</version>
+            <version>3.3.0</version>
             <artifactId>archbase-domain-driven-design</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-persistence</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.data</groupId>
-            <artifactId>spring-data-rest-webmvc</artifactId>
-        </dependency>
+        <!-- O spring-data-rest-webmvc saiu daqui: era exigido apenas pela interface
+             RepositoryRestConfigurer que ArchbaseServerMvcConfiguration declarava sem usar. Ele
+             arrastava o spring-hateoas e, com os dois no classpath, o springdoc ativava
+             configurações que no Boot 4 pedem autoconfigurações separadas — derrubando a subida de
+             quem nunca pediu Spring Data REST.
+
+             Aplicações que realmente usem Spring Data REST ou HATEOAS devem declarar
+             spring-boot-starter-data-rest / spring-boot-starter-hateoas, que trazem a biblioteca e
+             a autoconfiguração correspondente. -->
+
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-multitenancy</artifactId>
-            <version>3.0.9</version>
+            <version>3.3.0</version>
         </dependency>
         <dependency>
             <groupId>br.com.archbase</groupId>
-            <version>3.0.9</version>
+            <version>3.3.0</version>
             <artifactId>archbase-resource-logger</artifactId>
         </dependency>
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-domain-driven-design-spec</artifactId>
-            <version>3.0.9</version>
+            <version>3.3.0</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-validation</artifactId>
-            <version>3.0.9</version>
+            <version>3.3.0</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
@@ -58,10 +64,10 @@
             <artifactId>jackson-datatype-hibernate7</artifactId>
             <version>3.1.4</version>
         </dependency>
-        <!-- BootUI: console de desenvolvimento embarcado em /bootui (ativo apenas em dev/local ou com DevTools) -->
         <dependency>
-            <groupId>com.julien-dubois.bootui</groupId>
-            <artifactId>bootui-spring-boot-starter</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

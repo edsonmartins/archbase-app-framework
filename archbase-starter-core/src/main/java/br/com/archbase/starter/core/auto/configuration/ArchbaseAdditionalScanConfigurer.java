@@ -3,13 +3,16 @@ package br.com.archbase.starter.core.auto.configuration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
+import org.springframework.boot.persistence.autoconfigure.EntityScanPackages;
 import org.springframework.context.EnvironmentAware;
 import org.springframework.context.annotation.ClassPathBeanDefinitionScanner;
 import org.springframework.context.annotation.ImportBeanDefinitionRegistrar;
 import org.springframework.core.env.Environment;
 import org.springframework.core.type.AnnotationMetadata;
-import org.springframework.core.type.filter.AnnotationTypeFilter;
 import org.springframework.util.StringUtils;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Registrar que configura automaticamente component scan, entity scan e repository scan
@@ -58,6 +61,21 @@ public class ArchbaseAdditionalScanConfigurer implements ImportBeanDefinitionReg
         }
     }
 
+    /**
+     * Informa ao Spring Boot os pacotes de entidades — o mesmo que a anotação {@code @EntityScan} faz.
+     *
+     * <p>Antes isto usava um {@code ClassPathBeanDefinitionScanner} filtrando {@code @Entity},
+     * {@code @MappedSuperclass} e {@code @Embeddable}. Esse scanner <b>registra beans</b>: cada
+     * entidade da aplicação virava um singleton, instanciado pelo container na subida. Entidade JPA
+     * não é bean — quem precisa saber dos pacotes é a fábrica de EntityManager, e ela lê
+     * {@link EntityScanPackages}, não o registro de beans.
+     *
+     * <p>O engano ficou inócuo por muito tempo: sobravam instâncias vazias paradas no contexto. Com
+     * o Spring 7 deixou de ser: {@code PersistenceAnnotationBeanPostProcessor.requiresDestruction}
+     * consulta um mapa com o bean como chave, o que chama {@code hashCode()} na entidade recém
+     * criada. Toda entidade com {@code equals}/{@code hashCode} sobre os próprios campos —
+     * o padrão recomendado — derruba a subida com {@code NullPointerException}.
+     */
     private void registerEntityScan(BeanDefinitionRegistry registry) {
         String entitiesProperty = environment.getProperty("archbase.app.jpa.entities");
         if (!StringUtils.hasText(entitiesProperty)) {
@@ -65,17 +83,17 @@ public class ArchbaseAdditionalScanConfigurer implements ImportBeanDefinitionReg
         }
 
         String[] packages = StringUtils.commaDelimitedListToStringArray(entitiesProperty);
-        ClassPathBeanDefinitionScanner entityScanner = new ClassPathBeanDefinitionScanner(registry, false);
-        entityScanner.addIncludeFilter(new AnnotationTypeFilter(jakarta.persistence.Entity.class));
-        entityScanner.addIncludeFilter(new AnnotationTypeFilter(jakarta.persistence.MappedSuperclass.class));
-        entityScanner.addIncludeFilter(new AnnotationTypeFilter(jakarta.persistence.Embeddable.class));
-
+        List<String> pacotes = new ArrayList<>();
         for (String pkg : packages) {
             String trimmed = pkg.trim();
             if (StringUtils.hasText(trimmed)) {
-                int count = entityScanner.scan(trimmed);
-                logger.info("Archbase: Entity scan registrado automaticamente em '{}' ({} entidades encontradas)", trimmed, count);
+                pacotes.add(trimmed);
             }
+        }
+
+        if (!pacotes.isEmpty()) {
+            EntityScanPackages.register(registry, pacotes);
+            logger.info("Archbase: pacotes de entidades registrados para o entity scan: {}", pacotes);
         }
     }
 

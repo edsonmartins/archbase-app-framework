@@ -1,5 +1,11 @@
 package br.com.archbase.security.service;
 
+import br.com.archbase.security.access.AccessDecision;
+import br.com.archbase.security.access.AccessRequirement;
+import br.com.archbase.security.access.AccessSubject;
+import br.com.archbase.security.access.ArchbaseAccessEvaluator;
+import br.com.archbase.security.access.ArchbaseAccessSubjectLoader;
+import br.com.archbase.security.access.DefaultArchbaseAccessEvaluator;
 import br.com.archbase.security.domain.dto.ResourcePermissionsDto;
 import br.com.archbase.security.domain.entity.User;
 import br.com.archbase.security.persistence.PermissionEntity;
@@ -9,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
+import org.hibernate.Hibernate;
 import org.springframework.security.core.Authentication;
 
 import java.util.*;
@@ -21,25 +28,115 @@ public class ArchbaseSecurityService {
     @Autowired
     private PermissionJpaRepository permissionRepository;
 
+    /**
+     * O core de decisão. Opcional na injeção para que o serviço continue construível fora do
+     * contêiner — ver {@link #evaluator()}.
+     */
+    /** Opcional: a trilha é um módulo à parte e não deve ser exigência para autorizar. */
+    @Autowired(required = false)
+    private br.com.archbase.security.audit.ArchbaseSecurityEventLogger eventLogger;
+
+    @Autowired(required = false)
+    private ArchbaseAccessEvaluator accessEvaluator;
+
+    /**
+     * Recarrega o sujeito quando o principal chega com associações desanexadas. Opcional para que
+     * o serviço continue construível fora do contêiner.
+     */
+    @Autowired(required = false)
+    private ArchbaseAccessSubjectLoader subjectLoader;
+
     public boolean hasPermission(Authentication authentication, String action, String resource, String tenantId, String companyId, String projectId) {
-        UserEntity userEntity = (UserEntity) authentication.getPrincipal();
-        if (userEntity.getIsAdministrator() && userEntity.isEnabled()){
-            return  true;
-        }
-        Set<String> securityIds = collectSecurityIds(userEntity);
-        List<PermissionEntity> permissions = permissionRepository.findBySecurityIdsAndActionNameAndResourceName(
-                securityIds, action, resource);
+        return decide(authentication, action, resource, tenantId, companyId, projectId).allowed();
+    }
 
-        if (permissions.stream().anyMatch(PermissionEntity::allowAllTenantsAndCompaniesAndProjects)){
-            return true;
+    /**
+     * A mesma decisão de {@link #hasPermission}, com o motivo junto.
+     *
+     * <p>A informação de qual grupo ou perfil concedeu o acesso sempre veio da consulta e era
+     * descartada pelo {@code anyMatch}. É ela que permite explicar um acesso sem abrir grupo por
+     * grupo no admin, e é a base da tela de efetivo do usuário e da simulação.
+     */
+    public AccessDecision decide(Authentication authentication, String action, String resource,
+                                 String tenantId, String companyId, String projectId) {
+        return decide(authentication, AccessRequirement.of(resource, action, tenantId, companyId, projectId));
+    }
+
+    /**
+     * Avalia um requisito já montado — a porta que os adaptadores de anotação usam.
+     *
+     * <p>É aqui que a negação entra na trilha, e não dentro do avaliador: o avaliador também serve
+     * à simulação da tela de diagnóstico, e registrar ali marcaria como acesso negado aquilo que
+     * alguém apenas testou. Simular é justamente descobrir o que aconteceria, e não deve poluir a
+     * lista de tentativas reais.
+     */
+    public AccessDecision decide(Authentication authentication, AccessRequirement requirement) {
+        AccessDecision decisao = evaluator().decide(subjectOf(authentication), requirement);
+        if (!decisao.allowed() && eventLogger != null) {
+            eventLogger.acessoNegado(
+                    authentication == null ? null : authentication.getName(),
+                    requirement.resource(),
+                    requirement.action(),
+                    // O portão que recusou é o que torna o registro acionável: parou em LEVEL manda
+                    // ajustar nível; em GRANT, manda conceder.
+                    decisao.deniedAt() == null ? decisao.reasonCode() : decisao.deniedAt().name());
+        }
+        return decisao;
+    }
+
+    /**
+     * Resolve o sujeito do {@link Authentication}.
+     *
+     * <p>Devolve {@code null} quando o principal não é um {@code UserEntity} — em vez do
+     * {@code ClassCastException} de antes, que virava negação com stack trace apontando para o
+     * lugar errado. A decisão continua sendo negar; o que muda é que agora ela diz por quê.
+     */
+    private AccessSubject subjectOf(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof UserEntity userEntity)) {
+            return null;
         }
 
-        // Verifica permissão considerando tenantId, empresaId e projetoId se fornecidos
-        return permissions.stream().anyMatch(permission ->
-                (tenantId == null || permission.getTenantId() == null || tenantId.equals(permission.getTenantId())) &&
-                        (companyId == null || permission.getCompanyId() == null || companyId.equals(permission.getCompanyId())) &&
-                        (projectId == null || permission.getProjectId() == null || projectId.equals(permission.getProjectId()))
-        );
+        // O principal chega do filtro de autenticação, que lê o usuário pelo repositório: a
+        // transação curta fecha e `groups` e `profile` viram proxies DESANEXADOS. Montar o sujeito
+        // a partir deles é LazyInitializationException — que o interceptador converte em negação.
+        // Com open-in-view ligado (o padrão do Spring Boot) a sessão da requisição esconde isso;
+        // com ele desligado, TODO usuário que pertença a um grupo recebe 403.
+        //
+        // Quando as associações já estão utilizáveis, nada é consultado. Quando não estão, o
+        // sujeito é recarregado com grafo — uma consulta, só onde ela é indispensável.
+        if (associacoesUtilizaveis(userEntity)) {
+            return AccessSubject.of(userEntity);
+        }
+
+        if (subjectLoader == null) {
+            // Fora do contêiner (testes unitários), as entidades são objetos comuns e não há
+            // proxy a inicializar.
+            return AccessSubject.of(userEntity);
+        }
+
+        return subjectLoader.byId(userEntity.getId()).orElse(null);
+    }
+
+    /** {@code true} quando grupos e perfil podem ser lidos sem ida ao banco. */
+    private boolean associacoesUtilizaveis(UserEntity user) {
+        return Hibernate.isInitialized(user.getGroups())
+                && Hibernate.isInitialized(user.getProfile());
+    }
+
+    /**
+     * O avaliador injetado pelo Spring; fora do contêiner, um padrão construído sobre o repositório.
+     *
+     * <p>A construção tardia existe para que o serviço continue utilizável com
+     * {@code new ArchbaseSecurityService()} — como fazem os testes unitários que já cobriam este
+     * comportamento antes do core.
+     */
+    private ArchbaseAccessEvaluator evaluator() {
+        ArchbaseAccessEvaluator atual = this.accessEvaluator;
+        if (atual == null) {
+            atual = new DefaultArchbaseAccessEvaluator(permissionRepository);
+            this.accessEvaluator = atual;
+        }
+        return atual;
     }
 
     /**
@@ -145,6 +242,12 @@ public class ArchbaseSecurityService {
         Map<String, Set<String>> resourceActions = new LinkedHashMap<>();
 
         for (PermissionEntity permission : permissions) {
+            // Negação não é concessão. Sem esta exclusão, uma linha DENY entrava na lista como se
+            // a pessoa tivesse a capacidade — a mesma divergência entre tela e decisão que o core
+            // existe para eliminar.
+            if (permission.isDeny()) {
+                continue;
+            }
             if (permission.getAction() != null && permission.getAction().getResource() != null) {
                 String resourceName = permission.getAction().getResource().getName();
                 String actionName = permission.getAction().getName();

@@ -5,7 +5,7 @@
     <parent>
         <artifactId>archbase-app-framework</artifactId>
         <groupId>br.com.archbase</groupId>
-        <version>3.0.9</version>
+        <version>3.3.0</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -22,18 +22,18 @@
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-shared-kernel</artifactId>
-            <version>3.0.9</version>
+            <version>3.3.0</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-validation</artifactId>
-            <version>3.0.9</version>
+            <version>3.3.0</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>br.com.archbase</groupId>
-            <version>3.0.9</version>
+            <version>3.3.0</version>
             <artifactId>archbase-domain-driven-design</artifactId>
         </dependency>
         <dependency>
@@ -47,6 +47,21 @@
         <dependency>
             <groupId>jakarta.servlet</groupId>
             <artifactId>jakarta.servlet-api</artifactId>
+        </dependency>
+        <!--
+          Usada diretamente pelo ArchbaseTenantAwareTaskDecorator, que propaga o SecurityContext
+          para a thread do @Async. Já vinha transitivamente pelo archbase-shared-kernel, mas
+          depender de transitiva para código que a referencia quebra silenciosamente no dia em que
+          a cadeia mudar.
+        -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

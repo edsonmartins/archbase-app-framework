@@ -5,11 +5,28 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.TenantId;
+import org.springframework.data.annotation.CreatedBy;
+import org.springframework.data.annotation.LastModifiedBy;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+/**
+ * Base das entidades persistentes, com autoria preenchida pelo framework.
+ *
+ * <p><b>O {@code @EntityListeners} não é detalhe.</b> Sem ele, o {@code AuditorAware} que o
+ * archbase-security registra e o {@code @EnableJpaAuditing} do starter ficam ligados e <b>nunca são
+ * chamados</b> — nada aciona o listener. As colunas {@code USUARIO_CRIOU} e
+ * {@code ULTIMO_USUARIO_ALTEROU} existiam há tempos e só continham o que a aplicação escrevesse à
+ * mão, o que na prática significava vazio: era a auditoria que todo mundo supunha ter.
+ *
+ * <p>As datas seguem <b>sem</b> {@code @CreatedDate}/{@code @LastModifiedDate} de propósito. Muito
+ * código já as atribui explicitamente, e anotá-las faria o listener sobrescrever esses valores na
+ * gravação — mudança de comportamento que não tem a ver com o defeito sendo corrigido.
+ */
 @MappedSuperclass
+@EntityListeners(AuditingEntityListener.class)
 @Getter
 @Setter
 public class PersistenceEntityBase {
@@ -28,12 +45,14 @@ public class PersistenceEntityBase {
     @Column(name="DH_CRIACAO")
     protected LocalDateTime createEntityDate;
 
+    @CreatedBy
     @Column(name="USUARIO_CRIOU")
     protected String createdByUser;
 
     @Column(name="DH_ATUALIZACAO")
     protected LocalDateTime updateEntityDate;
 
+    @LastModifiedBy
     @Column(name="ULTIMO_USUARIO_ALTEROU")
     protected String lastModifiedByUser;
 

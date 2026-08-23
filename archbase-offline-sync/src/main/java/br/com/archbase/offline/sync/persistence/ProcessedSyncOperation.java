@@ -38,6 +38,13 @@ public class ProcessedSyncOperation {
     @Column(name = "aggregate_id", length = 64)
     private String aggregateId;
 
+    /**
+     * Id do usuário/promotor que originou a operação — metadado de AUDITORIA
+     * (nullable). Populado a partir do {@code SyncUserProvider} quando presente.
+     */
+    @Column(name = "user_id", length = 64)
+    private String userId;
+
     @Column(name = "server_version")
     private Long serverVersion;
 
@@ -49,14 +56,27 @@ public class ProcessedSyncOperation {
 
     public ProcessedSyncOperation(String tenantId, String operationId, String status,
                                   String operationType, String aggregateId,
-                                  Long serverVersion, LocalDateTime processedAt) {
+                                  String userId, Long serverVersion,
+                                  LocalDateTime processedAt) {
         this.tenantId = tenantId;
         this.operationId = operationId;
         this.status = status;
         this.operationType = operationType;
         this.aggregateId = aggregateId;
+        this.userId = userId;
         this.serverVersion = serverVersion;
         this.processedAt = processedAt;
+    }
+
+    /**
+     * Construtor legado (sem userId) — mantido para retrocompatibilidade; grava
+     * {@code user_id} nulo. Prefira o construtor com {@code userId}.
+     */
+    public ProcessedSyncOperation(String tenantId, String operationId, String status,
+                                  String operationType, String aggregateId,
+                                  Long serverVersion, LocalDateTime processedAt) {
+        this(tenantId, operationId, status, operationType, aggregateId,
+                null, serverVersion, processedAt);
     }
 
     public String getTenantId() { return tenantId; }
@@ -64,6 +84,7 @@ public class ProcessedSyncOperation {
     public String getStatus() { return status; }
     public String getOperationType() { return operationType; }
     public String getAggregateId() { return aggregateId; }
+    public String getUserId() { return userId; }
     public Long getServerVersion() { return serverVersion; }
     public LocalDateTime getProcessedAt() { return processedAt; }
 

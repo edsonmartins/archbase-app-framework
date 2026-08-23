@@ -12,6 +12,9 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
+// Auditada: idem, no nível do recurso.
+// A trilha só é gravada com archbase.security.audit.enabled=true e exige as tabelas _AUD.
+@org.hibernate.envers.Audited
 @Entity
 @Table(name="SEGURANCA_RECURSO", uniqueConstraints = @UniqueConstraint(columnNames = {"TENANT_ID", "NOME"}))
 @Getter

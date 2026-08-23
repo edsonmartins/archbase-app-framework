@@ -1,5 +1,6 @@
 package br.com.archbase.security.config;
 
+import br.com.archbase.security.annotation.ArchbaseSecurityAdminEndpoint;
 import br.com.archbase.security.annotation.HasPermission;
 import br.com.archbase.security.annotations.RequireProfile;
 import br.com.archbase.security.annotations.RequireRole;
@@ -18,15 +19,26 @@ public class MethodSecurityConfig {
     private final ProfileAuthorizationManager profileAuthorizationManager;
     private final RoleAuthorizationManager roleAuthorizationManager;
     private final PersonaAuthorizationManager personaAuthorizationManager;
+    private final SecurityAdminAuthorizationManager securityAdminAuthorizationManager;
 
     public MethodSecurityConfig(CustomAuthorizationManager customAuthorizationManager,
                                ProfileAuthorizationManager profileAuthorizationManager,
                                RoleAuthorizationManager roleAuthorizationManager,
-                               PersonaAuthorizationManager personaAuthorizationManager) {
+                               PersonaAuthorizationManager personaAuthorizationManager,
+                               SecurityAdminAuthorizationManager securityAdminAuthorizationManager) {
         this.customAuthorizationManager = customAuthorizationManager;
         this.profileAuthorizationManager = profileAuthorizationManager;
         this.roleAuthorizationManager = roleAuthorizationManager;
         this.personaAuthorizationManager = personaAuthorizationManager;
+        this.securityAdminAuthorizationManager = securityAdminAuthorizationManager;
+    }
+
+    @Bean
+    public AuthorizationManagerBeforeMethodInterceptor securityAdminAuthorizationManagerInterceptor() {
+        return new AuthorizationManagerBeforeMethodInterceptor(
+                CustomPointcutUtil.forAnnotations(ArchbaseSecurityAdminEndpoint.class),
+                securityAdminAuthorizationManager
+        );
     }
 
     @Bean

@@ -2,6 +2,7 @@ package br.com.archbase.security.service;
 
 import br.com.archbase.security.auth.ChangePasswordRequest;
 import br.com.archbase.security.domain.entity.User;
+import br.com.archbase.security.password.ArchbasePasswordStrengthPolicy;
 import br.com.archbase.security.persistence.UserEntity;
 import br.com.archbase.security.repository.UserJpaRepository;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,12 @@ public class ArchbaseUserService {
 
     private final PasswordEncoder passwordEncoder;
     private final UserJpaRepository repository;
+    private final ArchbasePasswordStrengthPolicy passwordStrengthPolicy;
+    private final ArchbaseAuthenticationService authenticationService;
+
+    @org.springframework.beans.factory.annotation.Value(
+            "${archbase.security.password-change.revoke-sessions:false}")
+    private boolean revokeSessionsOnPasswordChange;
     public void changePassword(ChangePasswordRequest request, Principal connectedUser) {
 
         var user = (UserEntity) ((UsernamePasswordAuthenticationToken) connectedUser).getPrincipal();
@@ -30,6 +37,7 @@ public class ArchbaseUserService {
         if (!request.getNewPassword().equals(request.getConfirmationPassword())) {
             throw new IllegalStateException("Senhas não conferem");
         }
+        passwordStrengthPolicy.validate(request.getNewPassword());
 
         // atualiza a senha
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
@@ -37,6 +45,8 @@ public class ArchbaseUserService {
 
         // salva usuário
         repository.save(user);
+
+        revokeSessionsIfEnabled(user);
     }
 
     public void changePassword(ChangePasswordRequest request, User connectedUser) {
@@ -54,6 +64,7 @@ public class ArchbaseUserService {
         if (!request.getNewPassword().equals(request.getConfirmationPassword())) {
             throw new IllegalStateException("Senhas não conferem");
         }
+        passwordStrengthPolicy.validate(request.getNewPassword());
 
         // atualiza a senha
         userEntity.get().setPassword(passwordEncoder.encode(request.getNewPassword()));
@@ -61,6 +72,26 @@ public class ArchbaseUserService {
 
         // salva usuário
         repository.save(userEntity.get());
+
+        revokeSessionsIfEnabled(userEntity.get());
+    }
+
+    /**
+     * Encerra as sessões abertas depois da troca de senha — <b>desligado por padrão</b>.
+     *
+     * <p>O reset por token sempre revogou; a troca autenticada, não. Ligar isto é a postura
+     * correta quando a troca acontece por suspeita de comprometimento (do contrário, os tokens
+     * emitidos com a senha antiga seguem válidos até expirar), mas é a mudança mais visível para o
+     * usuário final de toda esta revisão: ele passa a ser deslogado ao trocar a própria senha.
+     * Quem opera decide quando absorver isso, e o frontend costuma precisar de ajuste.
+     *
+     * <pre>archbase.security.password-change.revoke-sessions=true</pre>
+     */
+    private void revokeSessionsIfEnabled(UserEntity user) {
+        if (!revokeSessionsOnPasswordChange) {
+            return;
+        }
+        authenticationService.revokeAllUserTokens(user);
     }
     
     /**

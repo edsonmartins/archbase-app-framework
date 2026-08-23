@@ -6,13 +6,17 @@ import br.com.archbase.security.adapter.PasswordResetTokenPersistenceAdapter;
 import br.com.archbase.security.auth.*;
 import br.com.archbase.security.domain.dto.UserDto;
 import br.com.archbase.security.domain.entity.*;
+import br.com.archbase.security.exception.ArchbaseTooManyAttemptsException;
 import br.com.archbase.security.persistence.AccessTokenEntity;
+import br.com.archbase.security.password.ArchbasePasswordStrengthPolicy;
+import br.com.archbase.security.ratelimit.ArchbaseAuthRateLimiter;
 import br.com.archbase.security.persistence.ProfileEntity;
 import br.com.archbase.security.persistence.UserEntity;
 import br.com.archbase.security.persistence.UserGroupEntity;
 import br.com.archbase.security.repository.AccessTokenJpaRepository;
 import br.com.archbase.security.repository.UserJpaRepository;
 import br.com.archbase.security.token.TokenType;
+import br.com.archbase.security.token.TokenUse;
 import br.com.archbase.security.util.TokenGeneratorUtil;
 import br.com.archbase.validation.exception.ArchbaseValidationException;
 import io.jsonwebtoken.JwtException;
@@ -40,6 +44,10 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class ArchbaseAuthenticationService {
+    /** Opcional: sem a trilha configurada, autenticar continua funcionando igual. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private br.com.archbase.security.audit.ArchbaseSecurityEventLogger eventLogger;
+
     private final UserJpaRepository repository;
     private final GroupService groupService;
     private final UserProfileService userProfileService;
@@ -51,18 +59,63 @@ public class ArchbaseAuthenticationService {
     private final UserService userService;
     private final PasswordResetTokenPersistenceAdapter passwordResetTokenPersistenceAdapter;
     private final AccessTokenPersistenceAdapter accessTokenPersistenceAdapter;
+    private final ArchbaseAuthRateLimiter rateLimiter;
+    private final ArchbasePasswordStrengthPolicy passwordStrengthPolicy;
 
     // Injection opcional de enrichers - não quebra se não existir nenhum
     @Autowired(required = false)
     private List<AuthenticationResponseEnricher> enrichers;
 
-    // Injection do business delegate - usa implementação padrão se não existir customizada
-    @Autowired
+    /**
+     * Delegate de regra de negócio da aplicação. <b>Opcional</b> — todo uso abaixo é guardado por
+     * {@code businessDelegate != null}.
+     *
+     * <p>Era {@code @Autowired} obrigatório, e o único candidato,
+     * {@link DefaultAuthenticationBusinessDelegate}, é um {@code @Component} anotado com
+     * {@code @ConditionalOnMissingBean} — condição que só é confiável em classe de
+     * autoconfiguração, não em componente varrido: a avaliação depende da ordem do scan. Quando
+     * ela decidia não registrar, o contexto inteiro falhava na subida por dependência não
+     * satisfeita, num serviço que já estava escrito para funcionar sem o delegate.
+     */
+    @Autowired(required = false)
     private AuthenticationBusinessDelegate businessDelegate;
 
     // MFA/2FA - opcional; ausente ou desabilitado para o usuário ⇒ fluxo de login inalterado.
     @Autowired(required = false)
     private br.com.archbase.security.mfa.MfaService mfaService;
+
+    /**
+     * Rótulo de apresentação dos tenants — <b>opcional</b>. Sem bean registrado, o framework devolve
+     * apenas o {@code tenantId}, porque não tem cadastro de organização de onde tirar um nome.
+     * Ver {@link ArchbaseTenantInfoResolver}.
+     */
+    @Autowired(required = false)
+    private ArchbaseTenantInfoResolver tenantInfoResolver;
+
+    /**
+     * Faz o pedido de reset responder igual para e-mail cadastrado e não cadastrado.
+     *
+     * <p>Desligado por padrão porque muda o contrato do endpoint: hoje ele responde 400 com
+     * "usuário não encontrado", e telas que exibem essa mensagem deixariam de recebê-la. Ligue
+     * junto com o ajuste no frontend para "se o e-mail estiver cadastrado, você receberá as
+     * instruções".
+     *
+     * <p><b>Uniformiza os três caminhos</b>, e não apenas o do e-mail inexistente:
+     *
+     * <ol>
+     *   <li>e-mail não cadastrado;</li>
+     *   <li>usuário sem autorização para trocar a senha — resposta que só um cadastro consegue
+     *       obter;</li>
+     *   <li>falha no envio do e-mail, que virava 500 enquanto o inexistente respondia 200.</li>
+     * </ol>
+     *
+     * <p>Os dois últimos foram encontrados exercitando a proteção num projeto real: ela estava
+     * ligada e ainda assim dava para separar quem tem conta de quem não tem, porque o vazamento
+     * vinha da falha e não da lógica. Em todos os casos o motivo continua registrado em log, que é
+     * do operador; o que fica uniforme é a resposta, que é de quem chamou.
+     */
+    @org.springframework.beans.factory.annotation.Value("${archbase.security.prevent-user-enumeration:false}")
+    private boolean preventUserEnumeration;
 
     @Transactional
     public void register(RegisterNewUser request) {
@@ -118,6 +171,13 @@ public class ArchbaseAuthenticationService {
 
     @Transactional
     public AuthenticationResponse authenticate(AuthenticationRequest request) {
+        String rateLimitKey = ArchbaseAuthRateLimiter.key("login", request.getEmail());
+        if (rateLimiter.isBlocked(rateLimitKey)) {
+            log.warn("Login bloqueado por excesso de tentativas: {}", request.getEmail());
+            throw new ArchbaseTooManyAttemptsException(
+                    "Muitas tentativas de login. Tente novamente em alguns minutos.",
+                    rateLimiter.secondsUntilUnblock(rateLimitKey));
+        }
         try {
             // Resolver o tenant ANTES da autenticação, de modo que o
             // authenticationManager.authenticate e o findByEmail subsequente
@@ -146,6 +206,10 @@ public class ArchbaseAuthenticationService {
                     )
             );
 
+            // Senha conferiu: zera a contagem para o usuário legítimo não carregar o histórico de
+            // tentativas de um atacante que usou o mesmo e-mail.
+            rateLimiter.recordSuccess(rateLimitKey);
+
             var user = repository.findByEmail(request.getEmail())
                     .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
 
@@ -170,10 +234,32 @@ public class ArchbaseAuthenticationService {
 
             // Verificar se o token existe e não está expirado
             if (accessToken != null && !jwtService.isTokenExpired(accessToken.getToken())) {
+                // QUEM NÃO PODE TER VÁRIAS SESSÕES: a anterior morre INTEIRA, agora.
+                //
+                // Revogar só os refresh e reusar o access deixava a sessão anterior num estado
+                // ambíguo: ela seguia navegando com o access válido — por até um dia inteiro — mas
+                // com o refresh morto, então a renovação era negada a cada tentativa. O cliente
+                // ficava num laço de 401 sem nunca ser deslogado, e nos logs isso aparecia como um
+                // erro recorrente de minuto em minuto sem nenhuma causa visível. Aconteceu em
+                // produção e custou uma investigação inteira até virar isto aqui.
+                //
+                // Sessão única precisa significar sessão única: entrou de novo, a de antes acaba.
+                // Um meio-termo em que a sessão velha continua lendo dados mas não consegue se
+                // renovar não é mais seguro que derrubá-la — é só mais difícil de entender.
+                if (!Boolean.TRUE.equals(user.getAllowMultipleLogins())) {
+                    log.debug("Sessão única para o usuário {}: revogando a sessão anterior por inteiro",
+                            user.getEmail());
+                    revokeAllUserTokens(user);
+                    AccessTokenEntity novoAccessToken = saveUserToken(user, jwtService.generateToken(user));
+                    return buildAuthenticationResponse(novoAccessToken, issueRefreshToken(user), user);
+                }
+
                 log.debug("Token válido encontrado para o usuário {}, reusando token", user.getEmail());
-                // Token ainda válido, retorna o mesmo
-                var refreshToken = jwtService.generateRefreshToken(user);
-                return buildAuthenticationResponse(accessToken, refreshToken.token(), user);
+                // Quem PODE ter várias sessões reusa o access que ainda vale e ganha um refresh
+                // novo, sem tocar nas outras sessões. Revogar aqui derrubava sessões legítimas:
+                // abrir uma segunda aba ou recarregar a página matava o refresh que a primeira
+                // guardava, e ela caía sozinha na renovação seguinte.
+                return buildAuthenticationResponse(accessToken, issueRefreshToken(user), user);
             }
 
             log.debug("Nenhum token válido encontrado para o usuário {}, criando novo token", user.getEmail());
@@ -183,21 +269,31 @@ public class ArchbaseAuthenticationService {
             // Gerar novos tokens
             var jwtToken = jwtService.generateToken(user);
             accessToken = saveUserToken(user, jwtToken);
-            var refreshToken = jwtService.generateRefreshToken(user);
 
-            return buildAuthenticationResponse(accessToken, refreshToken.token(), user);
+            return buildAuthenticationResponse(accessToken, issueRefreshToken(user), user);
         } catch (CredentialsExpiredException e) {
             log.warn("Credenciais expiradas para usuário: {}", request.getEmail());
             throw e; // Re-lançar para tratamento específico no controller
         } catch (AuthenticationException e) {
+            // Só senha errada conta como tentativa. Credencial expirada não entra aqui de propósito:
+            // é uma falha do estado da conta, não um palpite, e trancaria quem já está travado.
+            rateLimiter.recordFailure(rateLimitKey);
+            // Registrado aqui, e não por evento do Spring: o ProviderManager não publica falha neste
+            // fluxo, e uma tentativa de login sem rastro é justamente o que a trilha existe para
+            // impedir. O e-mail vai como foi digitado, mesmo sem corresponder a ninguém — é ele que
+            // revela alguém varrendo endereços.
+            if (eventLogger != null) {
+                eventLogger.loginFalhou(request.getEmail(), e.getClass().getSimpleName());
+            }
             log.warn("Falha na autenticação", e);
             throw new BadCredentialsException("Login ou senha inválido", e);
-        } finally {
-            // Limpa o tenant resolvido acima do thread do pool. Sem isto, num login que falha
-            // (BadCredentials / "usuário não encontrado"), o postHandle do interceptor é pulado e o
-            // tenant vaza para a próxima requisição servida pelo mesmo thread (ThreadLocal herdável).
-            ArchbaseTenantContext.clear();
         }
+        // Sem finally { clear() }. Ele existia porque, com a limpeza do interceptor no postHandle,
+        // um login que falhasse deixava o tenant na thread do pool. O interceptor agora limpa no
+        // afterCompletion, que roda mesmo com exceção — e limpar aqui atrapalhava o caminho de
+        // sucesso: o /login-flexible chama os hooks da aplicação (postAuthenticate, enrichers)
+        // DEPOIS deste método, e eles abriam sessão nova sem tenant no contexto, resolvendo para o
+        // tenant padrão. Ou seja: leitura (e possível gravação) no tenant errado, em silêncio.
     }
 
     /**
@@ -218,43 +314,79 @@ public class ArchbaseAuthenticationService {
                 ArchbaseTenantContext.setTenantId(tenant);
             }
             String email = jwtService.extractUsername(challengeToken);
+
+            // Segundo fator é um código de 6 dígitos: sem contagem de tentativas, o desafio de 5
+            // minutos é tempo de sobra para varrer boa parte do espaço.
+            String rateLimitKey = ArchbaseAuthRateLimiter.key("mfa", email);
+            if (rateLimiter.isBlocked(rateLimitKey)) {
+                log.warn("Verificação de MFA bloqueada por excesso de tentativas: {}", email);
+                throw new ArchbaseTooManyAttemptsException(
+                        "Muitas tentativas de verificação. Tente novamente em alguns minutos.",
+                        rateLimiter.secondsUntilUnblock(rateLimitKey));
+            }
+
             var user = repository.findByEmail(email)
                     .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
 
             if (mfaService == null || !mfaService.verificar(user, code)) {
+                rateLimiter.recordFailure(rateLimitKey);
                 throw new BadCredentialsException("Código de verificação inválido");
             }
+            rateLimiter.recordSuccess(rateLimitKey);
 
             // Segundo fator confirmado — emite tokens novos (revoga os antigos).
             accessTokenPersistenceAdapter.markExpiredTokens();
             revokeAllUserTokens(user);
             var jwtToken = jwtService.generateToken(user);
             var accessToken = saveUserToken(user, jwtToken);
-            var refreshToken = jwtService.generateRefreshToken(user);
-            return buildAuthenticationResponse(accessToken, refreshToken.token(), user);
+            return buildAuthenticationResponse(accessToken, issueRefreshToken(user), user);
         } finally {
             ArchbaseTenantContext.clear();
         }
     }
 
     private AccessTokenEntity saveUserToken(UserEntity usuario, ArchbaseJwtService.TokenResult jwtToken) {
+        return saveUserToken(usuario, jwtToken, TokenUse.ACCESS);
+    }
+
+    private AccessTokenEntity saveUserToken(UserEntity usuario, ArchbaseJwtService.TokenResult jwtToken, TokenUse tokenUse) {
         // Usar UTC para datas de expiração
         LocalDateTime expirationDateTime = convertToLocalDateTimeViaInstant(jwtService.extractExpiration(jwtToken.token()));
 
-        log.debug("Salvando novo token para usuário {} com expiração em {}",
-                usuario.getEmail(), expirationDateTime);
+        log.debug("Salvando novo token ({}) para usuário {} com expiração em {}",
+                tokenUse, usuario.getEmail(), expirationDateTime);
 
         var token = AccessTokenEntity.builder()
                 .id(UUID.randomUUID().toString())
+                // Sem isto a coluna fica nula em toda linha de token: não há como saber quando um
+                // token foi emitido, e a ordenação por data em findRefreshTokenByValue ordena sobre
+                // nada. Numa investigação real de sessão, os horários de emissão tiveram de ser
+                // deduzidos de trás para frente a partir das datas de expiração.
+                .createEntityDate(LocalDateTime.now())
                 .user(usuario)
                 .token(jwtToken.token())
                 .expirationTime(jwtToken.expiresIn())
                 .expirationDate(expirationDateTime)
                 .tokenType(TokenType.BEARER)
+                .tokenUse(tokenUse)
                 .expired(false)
                 .revoked(false)
                 .build();
         return tokenRepository.save(token);
+    }
+
+    /**
+     * Emite e persiste o refresh token.
+     *
+     * <p>Persistir é o ponto: enquanto o refresh existia só como JWT assinado, nada no sistema
+     * conseguia invalidá-lo — logout, reset de senha e revogação de sessão mexiam apenas nas linhas
+     * de access token, e o refresh vazado seguia produzindo credenciais novas até a expiração
+     * natural. Com a linha em banco, {@link #revokeAllUserTokens} alcança os dois.
+     */
+    private String issueRefreshToken(UserEntity user) {
+        var refreshToken = jwtService.generateRefreshToken(user);
+        saveUserToken(user, refreshToken, TokenUse.REFRESH);
+        return refreshToken.token();
     }
 
     private LocalDateTime convertToLocalDateTimeViaInstant(Date dateToConvert) {
@@ -269,26 +401,48 @@ public class ArchbaseAuthenticationService {
                 .toLocalDateTime();
     }
 
+    /**
+     * Revoga apenas os refresh tokens do usuário, preservando o access token em uso.
+     *
+     * <p>Serve ao login que reaproveita um access token ainda válido: o refresh é reemitido, e
+     * deixar os anteriores vivos acumularia credenciais de renovação sem limite.
+     */
+    @Transactional
+    public void revokeAllRefreshTokens(UserEntity user) {
+        // Update em lote pelo mesmo motivo de revokeAllUserTokens: o carregar-e-salvar expunha a
+        // operação ao conflito otimista de uma renovação concorrente.
+        int revogados = tokenRepository.revokeAllRefreshTokensOfUser(user.getId());
+        log.debug("Revogados {} refresh token(s) anteriores do usuário {}", revogados, user.getEmail());
+    }
+
+    /**
+     * Revoga todos os tokens vivos do usuário.
+     *
+     * <p><b>Update em lote, e não carregar-e-salvar entidade a entidade.</b> {@code AccessTokenEntity}
+     * herda {@code @Version}: com uma renovação concorrente, o salvamento falhava por conflito
+     * otimista e derrubava a transação inteira de quem chamou — login, troca de senha, desativação
+     * de conta. O logout já havia sido migrado por exatamente este motivo; os demais chamadores
+     * ficaram para trás.
+     */
     @Transactional
     public void revokeAllUserTokens(UserEntity user) {
         log.debug("Revogando todos os tokens válidos para o usuário {}", user.getEmail());
-
-        var validUserTokens = accessTokenPersistenceAdapter.findAllValidTokenByUser(user);
-        if (!validUserTokens.isEmpty()) {
-            log.debug("Encontrados {} tokens válidos para revogação", validUserTokens.size());
-            validUserTokens.forEach(token -> {
-                token.setExpired(true);
-                token.setRevoked(true);
-            });
-            tokenRepository.saveAll(validUserTokens);
-        } else {
-            log.debug("Nenhum token válido encontrado para revogação");
-        }
+        int revogados = tokenRepository.revokeAllTokensOfUser(user.getId());
+        log.debug("{} token(s) revogado(s)", revogados);
     }
 
     @Transactional
     public AuthenticationResponse refreshToken(RefreshTokenRequest refreshToken) {
         try {
+            // Só um token emitido COMO refresh entra aqui. Sem esta checagem, qualquer JWT assinado
+            // com o subject do usuário servia — inclusive o desafio de MFA, que é emitido depois da
+            // senha conferir e antes do segundo fator: trocá-lo aqui devolvia os tokens reais e o
+            // segundo fator deixava de existir.
+            if (!jwtService.isRefreshToken(refreshToken.getToken())) {
+                log.warn("Refresh negado: token apresentado não é um refresh token");
+                throw new JwtException("Token de refresh inválido");
+            }
+
             String userEmail = jwtService.extractUsername(refreshToken.getToken());
             if (userEmail == null) {
                 log.warn("Refresh token inválido: não foi possível extrair o email do usuário");
@@ -306,6 +460,23 @@ public class ArchbaseAuthenticationService {
                 throw new JwtException("Token de refresh inválido");
             }
 
+            // Assinatura válida não basta: o token precisa corresponder a uma linha viva. É o que
+            // faz logout, troca de senha e revogação de sessão realmente encerrarem a renovação —
+            // um refresh revogado continua com assinatura boa até a data de expiração.
+            //
+            // A tolerância é estreita de propósito: só um refresh SEM o claim token_use é anterior
+            // a esta versão e, portanto, legitimamente não tem linha em banco. Tendo o claim, foi
+            // emitido por este código e a linha existe — a ausência dela significa revogado, e aí
+            // não há o que tolerar. Assim a revogação vale de imediato para todo token novo, e a
+            // atualização não derruba as sessões que já estavam em curso.
+            boolean issuedByCurrentVersion = jwtService.extractTokenUse(refreshToken.getToken()) != null;
+            AccessTokenEntity storedRefreshToken =
+                    accessTokenPersistenceAdapter.findRefreshTokenByValue(refreshToken.getToken());
+            if (storedRefreshToken == null && issuedByCurrentVersion) {
+                log.warn("Refresh negado: token revogado, expirado ou desconhecido para o usuário {}", userEmail);
+                throw new JwtException("Token de refresh inválido");
+            }
+
             // O estado da conta é reavaliado a cada refresh: sem isto, uma conta desativada,
             // bloqueada ou marcada para troca obrigatória de senha continuaria renovando tokens
             // indefinidamente, driblando as checagens feitas no login.
@@ -318,16 +489,25 @@ public class ArchbaseAuthenticationService {
                 throw new CredentialsExpiredException("As credenciais do usuário expiraram");
             }
 
-            // Sempre revogar tokens antigos para evitar acumulação
-            revokeAllUserTokens(user);
+            // Rotação: o token apresentado deixa de valer assim que o novo par é emitido.
+            //
+            // O escopo é UMA sessão. Revogar todos os tokens do usuário aqui derrubava as demais
+            // sessões a cada renovação — e como o cliente renova de tempos em tempos sozinho,
+            // bastava uma aba renovar para as outras caírem, sem ninguém ter feito nada. Quem não
+            // pode ter múltiplas sessões continua tendo tudo revogado, que é o que garante sessão
+            // única.
+            if (Boolean.TRUE.equals(user.getAllowMultipleLogins())) {
+                tokenRepository.revokeTokenByValue(refreshToken.getToken());
+            } else {
+                revokeAllUserTokens(user);
+            }
 
             // Gerar novos tokens
             var jwtToken = jwtService.generateToken(user);
             AccessTokenEntity accessToken = saveUserToken(user, jwtToken);
-            var newRefreshToken = jwtService.generateRefreshToken(user);
 
             log.debug("Token refreshed com sucesso para o usuário: {}", userEmail);
-            return buildAuthenticationResponse(accessToken, newRefreshToken.token(), user);
+            return buildAuthenticationResponse(accessToken, issueRefreshToken(user), user);
 
         } catch (JwtException e) {
             log.error("Erro ao processar refresh token", e);
@@ -335,7 +515,14 @@ public class ArchbaseAuthenticationService {
         }
     }
 
-    // Método auxiliar para construir resposta de autenticação
+    /**
+     * Método auxiliar para construir resposta de autenticação.
+     *
+     * <p>Funil único de todos os retornos de login bem-sucedido — {@code /authenticate},
+     * {@code /login}, {@code /login-flexible}, {@code /login-social} e refresh — por isso o tenant é
+     * preenchido aqui uma vez só. A resposta de desafio MFA é montada à parte e de propósito não
+     * traz tenant: ali o login ainda não se completou.
+     */
     private AuthenticationResponse buildAuthenticationResponse(AccessTokenEntity accessToken, String refreshToken, UserEntity user) {
         return AuthenticationResponse.builder()
                 .id(accessToken.getId())
@@ -344,6 +531,7 @@ public class ArchbaseAuthenticationService {
                 .tokenType(TokenType.BEARER)
                 .refreshToken(refreshToken)
                 .user(user != null ? user.toDomain() : null)
+                .tenant(user != null ? describeTenant(user.getTenantId()) : null)
                 .build();
     }
 
@@ -351,6 +539,13 @@ public class ArchbaseAuthenticationService {
     public void sendResetPasswordEmail(String email)  {
         Optional<UserEntity> usuarioOptional = repository.findByEmail(email);
         if(usuarioOptional.isEmpty()) {
+            if (preventUserEnumeration) {
+                // Responder "não encontrado" transforma o endpoint anônimo de reset numa consulta
+                // de quem tem conta aqui — útil para montar lista de alvos antes de tentar senha.
+                // Com a proteção ligada, e-mail existente e inexistente produzem a mesma resposta.
+                log.info("Solicitação de reset para e-mail não cadastrado (resposta uniforme)");
+                return;
+            }
             throw new ArchbaseValidationException(String.format("Usuário com email %s  não foi encontrado.",email));
         }
         UserEntity user = usuarioOptional.get();
@@ -358,8 +553,30 @@ public class ArchbaseAuthenticationService {
         // Coluna nula (base legada) é tratada como "pode alterar": o padrão do cadastro é true e
         // negar o reset por ausência de dado trancaria o usuário fora da conta.
         if (!Boolean.FALSE.equals(user.getAllowPasswordChange())) {
-            String passwordResetToken = createPasswordResetToken(user.toDomain());
-            archbaseEmailService.sendResetPasswordEmail(email, passwordResetToken, user.getUsername(), user.getName());
+            try {
+                String passwordResetToken = createPasswordResetToken(user.toDomain());
+                archbaseEmailService.sendResetPasswordEmail(email, passwordResetToken, user.getUsername(), user.getName());
+            } catch (RuntimeException e) {
+                if (!preventUserEnumeration) {
+                    throw e;
+                }
+                // Uniformizar só o caminho do e-mail inexistente não bastava: quando o e-mail EXISTE,
+                // o fluxo segue até o envio, e qualquer falha ali — SPI ArchbaseEmailService sem
+                // implementação, SMTP fora do ar, credencial vencida — virava 500 no controller,
+                // enquanto o e-mail inexistente respondia 200. A diferença entre 500 e 200 dizia
+                // exatamente o que a proteção existe para esconder, e dizia justamente quando a
+                // infraestrutura de e-mail está quebrada, que é quando ninguém está olhando.
+                //
+                // O diagnóstico continua inteiro no log, que é do operador. Quem chama recebe a mesma
+                // resposta dos demais casos.
+                log.error("Falha ao enviar e-mail de reset (resposta uniforme por "
+                        + "archbase.security.prevent-user-enumeration=true): {}", e.getMessage(), e);
+            }
+        } else if (preventUserEnumeration) {
+            // Mesmo raciocínio: "não possui autorização para alterar a senha" é uma resposta que só
+            // um e-mail cadastrado consegue obter — enumeração pela porta dos fundos.
+            log.info("Solicitação de reset para usuário sem autorização de troca de senha "
+                    + "(resposta uniforme)");
         } else {
             throw new ArchbaseValidationException(String.format("Usuário com email %s  não possui autorização para alterar a senha.",email));
         }
@@ -388,11 +605,23 @@ public class ArchbaseAuthenticationService {
         }
         UserEntity user = usuarioOptional.get();
 
+        // O token de reset tem 8 dígitos numéricos. Contar as tentativas é o que impede varrer o
+        // espaço: sem isso, adivinhá-lo é só uma questão de quantas requisições cabem na validade.
+        String rateLimitKey = ArchbaseAuthRateLimiter.key("reset", request.getEmail());
+        if (rateLimiter.isBlocked(rateLimitKey)) {
+            log.warn("Redefinição de senha bloqueada por excesso de tentativas: {}", request.getEmail());
+            throw new ArchbaseTooManyAttemptsException(
+                    "Muitas tentativas. Tente novamente em alguns minutos.",
+                    rateLimiter.secondsUntilUnblock(rateLimitKey));
+        }
+
         PasswordResetToken token = passwordResetTokenPersistenceAdapter.findToken(user, request.getPasswordResetToken());
 
         if (token == null) {
+            rateLimiter.recordFailure(rateLimitKey);
             throw new ArchbaseValidationException("Token de redefinição de senha inválido.");
         }
+        rateLimiter.recordSuccess(rateLimitKey);
         token.updateExpired();
         passwordResetTokenPersistenceAdapter.save(token);
 
@@ -404,6 +633,7 @@ public class ArchbaseAuthenticationService {
             throw new ArchbaseValidationException("Token de redefinição de senha inválido, favor utilizar o token mais recente.");
         }
 
+        passwordStrengthPolicy.validate(request.getNewPassword());
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         // A troca obrigatória foi cumprida com token válido: limpa a exigência e
         // reinicia a contagem da expiração periódica.
@@ -425,11 +655,23 @@ public class ArchbaseAuthenticationService {
         }
         UserEntity user = usuarioOptional.get();
 
+        // O token de reset tem 8 dígitos numéricos. Contar as tentativas é o que impede varrer o
+        // espaço: sem isso, adivinhá-lo é só uma questão de quantas requisições cabem na validade.
+        String rateLimitKey = ArchbaseAuthRateLimiter.key("reset", request.getEmail());
+        if (rateLimiter.isBlocked(rateLimitKey)) {
+            log.warn("Redefinição de senha bloqueada por excesso de tentativas: {}", request.getEmail());
+            throw new ArchbaseTooManyAttemptsException(
+                    "Muitas tentativas. Tente novamente em alguns minutos.",
+                    rateLimiter.secondsUntilUnblock(rateLimitKey));
+        }
+
         PasswordResetToken token = passwordResetTokenPersistenceAdapter.findToken(user, request.getPasswordResetToken());
 
         if (token == null) {
+            rateLimiter.recordFailure(rateLimitKey);
             throw new ArchbaseValidationException("Token de redefinição de senha inválido.");
         }
+        rateLimiter.recordSuccess(rateLimitKey);
         token.updateExpired();
         passwordResetTokenPersistenceAdapter.save(token);
 
@@ -441,6 +683,7 @@ public class ArchbaseAuthenticationService {
             throw new ArchbaseValidationException("Token de redefinição de senha inválido, favor utilizar o token mais recente.");
         }
 
+        passwordStrengthPolicy.validate(request.getNewPassword());
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         user.markPasswordChanged();
 
@@ -608,11 +851,10 @@ public class ArchbaseAuthenticationService {
         // Gerar novos tokens
         var jwtToken = jwtService.generateToken(user);
         AccessTokenEntity accessToken = saveUserToken(user, jwtToken);
-        var refreshToken = jwtService.generateRefreshToken(user);
 
         log.debug("Autenticação sem senha bem-sucedida para: {}", email);
 
-        return buildAuthenticationResponse(accessToken, refreshToken.token(), user);
+        return buildAuthenticationResponse(accessToken, issueRefreshToken(user), user);
     }
 
     /**
@@ -630,17 +872,47 @@ public class ArchbaseAuthenticationService {
      * Utiliza query nativa que ignora o @Filter de tenant, enxergando todos os tenants.
      * Se o email não possuir usuários, retorna lista vazia.
      *
+     * <p><b>Só o {@code tenantId} sai daqui por conta própria.</b> As colunas {@code NOME} e
+     * {@code DESCRICAO} desta consulta são as da linha de <b>usuário</b> — o nome e a descrição da
+     * pessoa, não da organização. Devolvê-las expunha o nome do titular de qualquer e-mail
+     * conhecido, num endpoint anônimo, e ainda fazia o seletor de tenant exibir o nome do próprio
+     * usuário no lugar da empresa. O rótulo agora vem do {@link ArchbaseTenantInfoResolver}, que a
+     * aplicação registra se tiver cadastro de organizações; sem ele, o cliente recebe o id.
+     *
      * @param email Email a consultar
      * @return Lista de tenants disponíveis para login com esse email
      */
     public List<TenantLoginOption> findTenantsByEmail(String email) {
         return repository.findTenantsByEmailIgnoringTenant(email).stream()
-                .map(opt -> TenantLoginOption.builder()
-                        .tenantId(opt[0] != null ? opt[0].toString() : null)
-                        .nome(opt[1] != null ? opt[1].toString() : null)
-                        .descricao(opt[2] != null ? opt[2].toString() : null)
-                        .build())
+                .map(opt -> opt[0] != null ? opt[0].toString() : null)
+                .filter(Objects::nonNull)
+                .distinct()
+                .map(this::describeTenant)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Monta o descritor de um tenant: o id sempre, o rótulo só quando a aplicação souber informá-lo.
+     *
+     * <p>Falha do resolver não derruba o login nem a listagem — o id sozinho é suficiente para o
+     * cliente funcionar, e um cadastro de organizações indisponível não é motivo para negar acesso.
+     */
+    private TenantLoginOption describeTenant(String tenantId) {
+        if (tenantId == null || tenantId.isBlank()) {
+            return null;
+        }
+        if (tenantInfoResolver != null) {
+            try {
+                TenantLoginOption resolvido = tenantInfoResolver.resolve(tenantId);
+                if (resolvido != null) {
+                    resolvido.setTenantId(tenantId);
+                    return resolvido;
+                }
+            } catch (Exception e) {
+                log.warn("Resolver de tenant falhou para {}; devolvendo apenas o id", tenantId, e);
+            }
+        }
+        return TenantLoginOption.builder().tenantId(tenantId).build();
     }
 
     /**

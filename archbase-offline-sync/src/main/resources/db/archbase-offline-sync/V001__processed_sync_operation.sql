@@ -12,7 +12,10 @@ CREATE TABLE IF NOT EXISTS processed_sync_operation (
     CONSTRAINT ck_pso_status CHECK (status IN ('PROCESSED', 'SKIPPED'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_pso_processed_at
+-- Sem IF NOT EXISTS nos índices: o MySQL não suporta essa cláusula em CREATE INDEX, e ela é
+-- desnecessária numa migration versionada — o Flyway já garante execução única. Com ela, este
+-- script (que a documentação manda copiar para cada aplicação) quebrava em qualquer projeto MySQL.
+CREATE INDEX idx_pso_processed_at
     ON processed_sync_operation (processed_at);
-CREATE INDEX IF NOT EXISTS idx_pso_aggregate
+CREATE INDEX idx_pso_aggregate
     ON processed_sync_operation (tenant_id, aggregate_id);

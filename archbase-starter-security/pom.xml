@@ -5,7 +5,7 @@
     <parent>
         <artifactId>archbase-app-framework</artifactId>
         <groupId>br.com.archbase</groupId>
-        <version>3.0.9</version>
+        <version>3.3.0</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -16,7 +16,20 @@
         <dependency>
             <groupId>br.com.archbase</groupId>
             <artifactId>archbase-security</artifactId>
-            <version>3.0.9</version>
+            <version>3.3.0</version>
+        </dependency>
+        <!-- Para verificar que as auto-configurações deste starter realmente são aplicadas. Este
+             módulo é só declaração: sem teste, um erro de digitação no arquivo .imports passaria
+             despercebido até alguém notar, em produção, que nada foi configurado. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

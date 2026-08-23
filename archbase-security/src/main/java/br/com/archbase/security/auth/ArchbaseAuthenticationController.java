@@ -1,6 +1,10 @@
 package br.com.archbase.security.auth;
 
+import br.com.archbase.security.exception.ArchbaseTooManyAttemptsException;
+import br.com.archbase.security.ratelimit.ArchbaseAuthRateLimiter;
+import br.com.archbase.security.ratelimit.ArchbaseClientIpResolver;
 import br.com.archbase.security.service.ArchbaseAuthenticationService;
+import br.com.archbase.security.spi.ArchbaseSocialTokenValidator;
 import br.com.archbase.security.service.ArchbaseUserService;
 import br.com.archbase.validation.exception.ArchbaseValidationException;
 import io.jsonwebtoken.JwtException;
@@ -11,6 +15,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -32,9 +37,62 @@ public class ArchbaseAuthenticationController {
 
     private final ArchbaseAuthenticationService service;
     private final ArchbaseUserService userService;
-    
+    private final ArchbaseAuthRateLimiter rateLimiter;
+    private final ArchbaseClientIpResolver clientIpResolver;
+
+    /**
+     * Limite da descoberta de tenants, separado do limite de credencial e folgado de propósito.
+     *
+     * <p>A tela chama este endpoint a cada digitação de e-mail, e a chave por origem é
+     * compartilhada por todos os usuários atrás do mesmo proxy. Um limite de dezenas, e não de
+     * unidades, é o que separa conter varredura de recusar serviço a quem está entrando.
+     */
+    @Value("${archbase.security.rate-limit.discovery.max-attempts:200}")
+    private int discoveryMaxAttempts;
+
+    @Value("${archbase.security.rate-limit.discovery.block-seconds:300}")
+    private long discoveryBlockSeconds;
+
     @Autowired(required = false)
     private AuthenticationBusinessDelegate businessDelegate;
+
+    /** Validadores de login social registrados pela aplicação; vazio = login social indisponível. */
+    @Autowired(required = false)
+    private List<ArchbaseSocialTokenValidator> socialTokenValidators = List.of();
+
+    /**
+     * 429 com {@code Retry-After}: o cliente precisa distinguir "credencial errada" de "pare de
+     * tentar por enquanto". Devolver 401 de novo faria um app com retry automático continuar
+     * batendo e prolongar o próprio bloqueio.
+     */
+    /**
+     * Mensagem que pode ir para o cliente.
+     *
+     * <p>Só a de {@link ArchbaseValidationException}, que é escrita para o usuário final. Qualquer
+     * outra exceção carrega detalhe interno — nome de tabela, coluna e fragmento de SQL numa
+     * violação de integridade, por exemplo — e estes handlers atendem endpoints anônimos como
+     * {@code /auth/register}. O diagnóstico completo fica no log.
+     *
+     * <p>Nunca devolve {@code null}: {@code Map.of} rejeita valor nulo, e uma exceção sem mensagem
+     * (um {@code NullPointerException} vindo de um delegate, por exemplo) faria o próprio bloco de
+     * tratamento estourar, trocando a resposta por um 500 sem corpo.
+     */
+    private String safeMessage(Exception e) {
+        if (e instanceof ArchbaseValidationException && e.getMessage() != null) {
+            return e.getMessage();
+        }
+        return "Não foi possível completar a operação.";
+    }
+
+    private ResponseEntity<?> tooManyAttempts(ArchbaseTooManyAttemptsException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+            .header("Retry-After", String.valueOf(e.getRetryAfterSeconds()))
+            .body(Map.of(
+                "error", "TOO_MANY_ATTEMPTS",
+                "message", e.getMessage(),
+                "retryAfterSeconds", e.getRetryAfterSeconds()
+            ));
+    }
 
     @PostMapping("/authenticate")
     public ResponseEntity<?> authenticate(
@@ -42,6 +100,8 @@ public class ArchbaseAuthenticationController {
     ) {
         try {
             return ResponseEntity.ok(service.authenticate(request));
+        } catch (ArchbaseTooManyAttemptsException e) {
+            return tooManyAttempts(e);
         } catch (CredentialsExpiredException e) {
             log.warn("Credenciais expiradas para usuário: {}", request.getEmail());
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
@@ -64,6 +124,8 @@ public class ArchbaseAuthenticationController {
     public ResponseEntity<?> verifyMfa(@RequestBody MfaVerifyRequest request) {
         try {
             return ResponseEntity.ok(service.completeMfaAuthentication(request.challengeToken(), request.code()));
+        } catch (ArchbaseTooManyAttemptsException e) {
+            return tooManyAttempts(e);
         } catch (BadCredentialsException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(e.getMessage());
         }
@@ -88,6 +150,8 @@ public class ArchbaseAuthenticationController {
                 httpRequest
             );
             return ResponseEntity.ok(response);
+        } catch (ArchbaseTooManyAttemptsException e) {
+            return tooManyAttempts(e);
         } catch (CredentialsExpiredException e) {
             log.warn("Credenciais expiradas para usuário: {}", contextualRequest.getEmail());
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
@@ -105,7 +169,7 @@ public class ArchbaseAuthenticationController {
                 .body(Map.of(
                     "error", "INTERNAL_ERROR",
                     "message", "Erro interno do servidor",
-                    "detail", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()
+                    "detail", "Erro interno do servidor"
                 ));
         }
     }
@@ -115,11 +179,48 @@ public class ArchbaseAuthenticationController {
      * Quando um mesmo email pertence a múltiplos tenants, o frontend usa este
      * endpoint para exibir o seletor de tenant antes de chamar /authenticate.
      * Endpoint pré-autenticação (coberto pelo whitelist /api/v1/auth/**).
+     *
+     * <p><b>É um endpoint anônimo que responde sobre a existência de um e-mail</b>, então tem
+     * contagem própria. Duas chaves, e qualquer uma basta para recusar:
+     *
+     * <ul>
+     *   <li><b>por origem</b> — é a que contém enumeração de verdade. Varrer uma lista de e-mails
+     *       usa um e-mail diferente por tentativa, o que daria orçamento novo a cada palpite se a
+     *       contagem fosse só por e-mail; por origem, a varredura toda divide o mesmo orçamento.</li>
+     *   <li><b>por e-mail</b> — contém o martelo sobre um alvo específico vindo de várias origens.</li>
+     * </ul>
+     *
+     * <p>O escopo é separado do {@code "login"} de propósito: abusar da descoberta não pode trancar
+     * o login legítimo de quem tem aquele e-mail — seria negação de serviço contra a vítima.
+     *
+     * <p><b>E o limite é próprio, folgado.</b> A primeira versão reusou o limite do login (10 em 15
+     * minutos) para não criar configuração nova. Foi erro: este endpoint é chamado pela tela a cada
+     * digitação de e-mail, e a chave por origem, atrás de qualquer proxy, é <b>compartilhada por
+     * todos os usuários</b>. A décima consulta do dia trancava o seletor de tenant para o mundo
+     * inteiro por quinze minutos. Ver {@code archbase.security.rate-limit.discovery.*}.
      */
     @GetMapping("/tenants")
     @Operation(summary = "Listar tenants para um email",
                description = "Retorna os tenants disponíveis para login com o email informado")
-    public ResponseEntity<List<TenantLoginOption>> tenantsForEmail(@RequestParam("email") String email) {
+    public ResponseEntity<?> tenantsForEmail(@RequestParam("email") String email,
+                                             HttpServletRequest httpRequest) {
+        String chaveOrigem = ArchbaseAuthRateLimiter.key("tenants-ip", clientIpResolver.resolve(httpRequest));
+        String chaveEmail = ArchbaseAuthRateLimiter.key("tenants", email);
+
+        for (String chave : List.of(chaveOrigem, chaveEmail)) {
+            if (rateLimiter.isBlocked(chave)) {
+                log.warn("Consulta de tenants bloqueada por excesso de tentativas");
+                return tooManyAttempts(new ArchbaseTooManyAttemptsException(
+                        "Muitas consultas. Tente novamente em alguns minutos.",
+                        rateLimiter.secondsUntilUnblock(chave)));
+            }
+        }
+
+        // Não existe "sucesso" aqui que justifique zerar a contagem: toda consulta é uma tentativa,
+        // e uma consulta bem-sucedida é justamente o que o atacante quer repetir.
+        rateLimiter.recordFailure(chaveOrigem, discoveryMaxAttempts, discoveryBlockSeconds);
+        rateLimiter.recordFailure(chaveEmail, discoveryMaxAttempts, discoveryBlockSeconds);
+
         return ResponseEntity.ok(service.findTenantsByEmail(email));
     }
 
@@ -149,7 +250,10 @@ public class ArchbaseAuthenticationController {
         } catch (Exception e) {
             log.error("Erro ao renovar token: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of("error", "INTERNAL_ERROR", "detail", e.getMessage()));
+                // Sem e.getMessage(): a mensagem de exceção carrega nome de tabela, coluna e
+                // fragmento de SQL. O diagnóstico fica no log, que é do operador — não na resposta,
+                // que é de quem chamou.
+                .body(Map.of("error", "INTERNAL_ERROR", "detail", "Erro interno do servidor"));
         }
     }
 
@@ -164,7 +268,10 @@ public class ArchbaseAuthenticationController {
         } catch (Exception e) {
             log.error("Erro ao enviar email de reset de senha para {}: {}", email, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of("error", "INTERNAL_ERROR", "detail", e.getMessage()));
+                // Sem e.getMessage(): a mensagem de exceção carrega nome de tabela, coluna e
+                // fragmento de SQL. O diagnóstico fica no log, que é do operador — não na resposta,
+                // que é de quem chamou.
+                .body(Map.of("error", "INTERNAL_ERROR", "detail", "Erro interno do servidor"));
         }
     }
 
@@ -173,12 +280,17 @@ public class ArchbaseAuthenticationController {
         try {
             service.resetPassword(request);
             return ResponseEntity.ok().build();
+        } catch (ArchbaseTooManyAttemptsException e) {
+            return tooManyAttempts(e);
         } catch (ArchbaseValidationException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         } catch (Exception e) {
             log.error("Erro ao resetar senha: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of("error", "INTERNAL_ERROR", "detail", e.getMessage()));
+                // Sem e.getMessage(): a mensagem de exceção carrega nome de tabela, coluna e
+                // fragmento de SQL. O diagnóstico fica no log, que é do operador — não na resposta,
+                // que é de quem chamou.
+                .body(Map.of("error", "INTERNAL_ERROR", "detail", "Erro interno do servidor"));
         }
     }
     
@@ -222,7 +334,7 @@ public class ArchbaseAuthenticationController {
         } catch (Exception e) {
             log.error("Erro ao registrar usuário: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(Map.of("error", e.getMessage()));
+                .body(Map.of("error", safeMessage(e)));
         }
     }
     
@@ -272,6 +384,8 @@ public class ArchbaseAuthenticationController {
             
             return ResponseEntity.ok(response);
 
+        } catch (ArchbaseTooManyAttemptsException e) {
+            return tooManyAttempts(e);
         } catch (CredentialsExpiredException e) {
             log.warn("Credenciais expiradas para usuário: {}", request.getIdentifier());
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
@@ -287,7 +401,7 @@ public class ArchbaseAuthenticationController {
         } catch (Exception e) {
             log.error("Erro no login: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(Map.of("error", e.getMessage()));
+                .body(Map.of("error", safeMessage(e)));
         }
     }
 
@@ -345,11 +459,15 @@ public class ArchbaseAuthenticationController {
             }
             
             return ResponseEntity.ok(response);
-            
+
+        } catch (SocialLoginNotConfiguredException e) {
+            log.warn("Login social solicitado sem validador registrado: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
+                .body(Map.of("error", "SOCIAL_LOGIN_NOT_CONFIGURED", "message", e.getMessage()));
         } catch (Exception e) {
             log.error("Erro no login social: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(Map.of("error", e.getMessage()));
+                .body(Map.of("error", safeMessage(e)));
         }
     }
     
@@ -414,24 +532,36 @@ public class ArchbaseAuthenticationController {
         throw new ArchbaseValidationException("Identificador inválido");
     }
     
+    /**
+     * Delega a validação ao {@link ArchbaseSocialTokenValidator} registrado pela aplicação.
+     *
+     * <p>A implementação anterior não validava nada: montava um mapa com o token recebido e
+     * devolvia. O login só não acontecia porque o {@code email} vinha nulo — proteção por acidente.
+     * Sem validador registrado, agora a recusa é explícita.
+     */
     private Map<String, Object> validateSocialToken(String provider, String token) {
-        // Implementação básica - em produção usar SDK do provedor
-        // Por enquanto apenas validação simples
         if (token == null || token.isEmpty()) {
             throw new ArchbaseValidationException("Token inválido");
         }
-        
-        // Simular dados do provedor
-        Map<String, Object> data = new HashMap<>();
-        data.put("provider", provider);
-        data.put("token", token);
-        
-        // Em produção, estes dados viriam do provedor
-        // data.put("email", decodedToken.getEmail());
-        // data.put("name", decodedToken.getName());
-        // data.put("picture", decodedToken.getPicture());
-        
+
+        ArchbaseSocialTokenValidator validator = socialTokenValidators.stream()
+                .filter(candidate -> candidate.supports(provider))
+                .findFirst()
+                .orElseThrow(() -> new SocialLoginNotConfiguredException(provider));
+
+        Map<String, Object> data = validator.validate(provider, token);
+        if (data == null || data.get("email") == null) {
+            throw new ArchbaseValidationException("Provedor não retornou o e-mail do usuário");
+        }
         return data;
+    }
+
+    /** Login social pedido sem validador registrado para o provedor. */
+    static class SocialLoginNotConfiguredException extends RuntimeException {
+        SocialLoginNotConfiguredException(String provider) {
+            super("Login social não configurado para o provedor '" + provider
+                    + "'. Registre um bean ArchbaseSocialTokenValidator.");
+        }
     }
     
     private String generateSecurePassword() {

@@ -41,8 +41,11 @@ public class User extends Security<User, User> implements AggregateRoot<User, Id
     protected String nickname;
     protected String externalId; // ID externo para integração com sistemas terceiros (ex: Keycloak, LDAP, etc.)
 
+    /** Matrícula do funcionário na empresa — o elo com RH, ponto e folha. Opcional. */
+    protected String employeeId;
+
     @Builder
-    public User(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, AccessSchedule accessSchedule, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, LocalDateTime passwordChangedAt, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessSchedule accessSchedule1, List<UserGroup> groups, Profile profile, byte[] avatar, String email, String nickname, String externalId) {
+    public User(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, AccessSchedule accessSchedule, String userName, String password, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange, Boolean allowMultipleLogins, Boolean passwordNeverExpires, LocalDateTime passwordChangedAt, Boolean accountDeactivated, Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator, AccessSchedule accessSchedule1, List<UserGroup> groups, Profile profile, byte[] avatar, String email, String nickname, String externalId, String employeeId) {
         super(id, code, version, updateEntityDate, createEntityDate, createdByUser, lastModifiedByUser, name, description, accessSchedule);
         this.userName = userName;
         this.password = password;
@@ -62,6 +65,7 @@ public class User extends Security<User, User> implements AggregateRoot<User, Id
         this.email = email;
         this.nickname = nickname;
         this.externalId = externalId;
+        this.employeeId = employeeId;
     }
 
     static class Validator extends AbstractArchbaseValidator<User> {

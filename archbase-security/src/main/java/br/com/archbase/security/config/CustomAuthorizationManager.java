@@ -1,8 +1,11 @@
 package br.com.archbase.security.config;
 
 import br.com.archbase.ddd.context.ArchbaseTenantContext;
+import br.com.archbase.security.access.AccessDecision;
+import br.com.archbase.security.access.AccessRequirement;
 import br.com.archbase.security.annotation.HasPermission;
 import br.com.archbase.security.service.ArchbaseSecurityService;
+import br.com.archbase.security.util.AuthorizationAnnotationUtils;
 import org.aopalliance.intercept.MethodInvocation;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.authorization.AuthorizationManager;
@@ -11,7 +14,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
-import java.lang.reflect.Method;
 import java.util.function.Supplier;
 
 @Component
@@ -27,31 +29,54 @@ public class CustomAuthorizationManager implements AuthorizationManager<MethodIn
 
     @Override
     public AuthorizationDecision authorize(Supplier<? extends Authentication> authentication, MethodInvocation methodInvocation) {
-        Method method = methodInvocation.getMethod();
-        HasPermission hasPermission = method.getAnnotation(HasPermission.class);
-        
+        HasPermission hasPermission = AuthorizationAnnotationUtils.findAnnotation(methodInvocation, HasPermission.class);
+
         if (hasPermission == null) {
-            // Se não tem a anotação, permite acesso (já que o pointcut só deve interceptar métodos com a anotação)
-            return new AuthorizationDecision(true);
+            // O interceptador só roda quando o pointcut casou, ou seja: a anotação existe em algum
+            // lugar e a resolução é que falhou. Liberar aqui transformaria uma falha de leitura em
+            // acesso concedido — nega, e deixa rastro para a investigação.
+            log.error("Interceptação de @HasPermission sem anotação resolvível em {}#{} — acesso negado",
+                    methodInvocation.getMethod().getDeclaringClass().getName(),
+                    methodInvocation.getMethod().getName());
+            return new AuthorizationDecision(false);
         }
-        
+
         try {
-            String tenantId = hasPermission.tenantId().isEmpty() ? 
+            String tenantId = hasPermission.tenantId().isEmpty() ?
                 ArchbaseTenantContext.getTenantId() : hasPermission.tenantId();
-            String companyId = hasPermission.companyId().isEmpty() ? 
+            String companyId = hasPermission.companyId().isEmpty() ?
                 ArchbaseTenantContext.getCompanyId() : hasPermission.companyId();
-            
-            boolean hasAccess = securityService.hasPermission(
-                authentication.get(), 
-                hasPermission.action(), 
-                hasPermission.resource(),
-                tenantId, 
-                companyId, 
-                hasPermission.projectId()
-            );
-            
-            return new AuthorizationDecision(hasAccess);
-            
+
+            String origem = AuthorizationAdapters.origin(methodInvocation);
+
+            // O recurso pode vir de @ArchbaseResource na classe. Resolver aqui, e pela MESMA
+            // função que a varredura usa, é o que garante que a capacidade seja consultada com o
+            // nome com que foi catalogada.
+            String resource = AuthorizationAnnotationUtils.resolveResourceName(
+                    methodInvocation, hasPermission.resource());
+
+            if (resource == null) {
+                log.error("@HasPermission em {} não declara resource, e a classe não tem "
+                                + "@ArchbaseResource — acesso negado. Declare um dos dois.", origem);
+                return new AuthorizationDecision(false);
+            }
+
+            AccessDecision decisao = securityService.decide(
+                    authentication.get(),
+                    AccessRequirement.of(
+                            resource,
+                            hasPermission.action(),
+                            tenantId,
+                            companyId,
+                            // Vazio vira NULO, como tenant e empresa. Encaminhado cru, o padrão ""
+                            // da anotação nunca casa um PROJECT_ID gravado: a concessão estreitada
+                            // por projeto dava 403 permanente, e a negação por projeto nunca valia.
+                            hasPermission.projectId().isEmpty() ? null : hasPermission.projectId())
+                            .withOrigin(origem));
+
+            AuthorizationAdapters.log(log, decisao, origem);
+            return new AuthorizationDecision(decisao.allowed());
+
         } catch (Exception e) {
             // Falha ao AVALIAR a permissão não é o mesmo que "não tem permissão", mas negar é a
             // opção segura. O que não pode é negar em silêncio: sem este log, um erro de consulta ou

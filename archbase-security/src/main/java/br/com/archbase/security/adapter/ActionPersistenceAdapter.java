@@ -1,4 +1,5 @@
 package br.com.archbase.security.adapter;
+import br.com.archbase.security.access.AccessLevel;
 import br.com.archbase.ddd.domain.contracts.FindDataWithFilterQuery;
 import br.com.archbase.query.rsql.jpa.SortUtils;
 import br.com.archbase.security.adapter.port.ActionPersistencePort;
@@ -85,6 +86,17 @@ public class ActionPersistenceAdapter implements ActionPersistencePort, FindData
                     entity.setActive(actionDto.getActive());
                     entity.setDescription(actionDto.getDescription());
                     entity.setName(actionDto.getName());
+
+                    // Nulo PRESERVA o valor atual; para tirar o piso, envie NONE explicitamente.
+                    // Diferente dos demais campos de propósito: um cliente antigo, que não conhece
+                    // minimumLevel, apagaria silenciosamente o piso de uma capacidade sensível ao
+                    // salvar qualquer edição — e isso é afrouxar segurança por omissão.
+                    if (actionDto.getMinimumLevel() != null) {
+                        entity.setMinimumLevel(
+                                AccessLevel.isUnset(actionDto.getMinimumLevel())
+                                        ? null : actionDto.getMinimumLevel());
+                    }
+
                     return repository.save(entity).toDto();
                 });
     }

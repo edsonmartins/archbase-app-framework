@@ -55,7 +55,7 @@ mvn versions:display-dependency-updates
 ## Architecture Overview
 
 ### Framework Structure
-Archbase is a multi-module Maven project built on Spring Boot 3.2.5 and Java 17. It provides a comprehensive framework for building enterprise applications using Domain-Driven Design (DDD) principles.
+Archbase is a multi-module Maven project built on Spring Boot 4.1.0 and Java 17. It provides a comprehensive framework for building enterprise applications using Domain-Driven Design (DDD) principles.
 
 ### Module Organization
 
@@ -171,13 +171,24 @@ public interface YourRepository extends Repository<YourEntity, UUID, Long> {
 ```
 
 3. **Security Annotations:**
+
+`@HasPermission` is `@Target(METHOD)` — it does **not** compile on a class:
 ```java
 @RestController
-@HasPermission(action = "VIEW", resource = "YOUR_RESOURCE")
 public class YourController {
-    // Method-level security also supported
+
+    @GetMapping
+    @HasPermission(action = "VIEW", resource = "YOUR_RESOURCE", description = "...")
+    public ResponseEntity<?> list() { ... }
 }
 ```
+
+`@RequireProfile`, `@RequireRole` and `@RequirePersona` do accept class level; when placed on the
+class they apply to every method, and a method-level annotation overrides the class one.
+
+`@RequireRole` only enforces anything if the application registers an `ArchbaseRoleResolver` bean —
+the roles it checks belong to the application domain, not to Archbase. Without that bean the
+behaviour is controlled by `archbase.security.require-role.no-resolver-policy`.
 
 4. **Event Handling:**
 ```java
@@ -248,6 +259,74 @@ archbase.security.method.enabled=true
 archbase.security.permission.cache.enabled=true
 # Validade da senha em dias (0 = sem expiração periódica)
 archbase.security.password.expiration-days=0
+
+# Esquema de segurança entregue pelo framework (ver deployment/esquema-de-seguranca.md)
+# Na subida, compara o mapeamento das entidades de segurança com o banco e cria o que falta.
+# Sem versão nem baseline: em banco que já tem tudo, não faz nada. Só comandos aditivos —
+# nunca drop, nunca alteração do que já existe — e nada fora das 15 entidades do módulo.
+archbase.security.schema.mode=apply                          # apply | report | off
+archbase.security.schema.fail-on-error=false                 # true = não sobe se o DDL falhar
+
+# Pre-validacao: nao sobe se uma protecao habilitada nao puder funcionar (fail|warn|off)
+archbase.security.hardening.validation=fail
+
+# Security hardening (auditoria 3.0.11)
+# Os defaults abaixo PRESERVAM o comportamento anterior à auditoria. Enquanto não forem
+# alterados, a proteção correspondente está inerte — ver deployment/security-hardening.md.
+archbase.security.admin-endpoints.policy=permit             # permit | admin-only | permission
+archbase.security.require-role.no-resolver-policy=permit    # permit | deny
+archbase.security.jwt.strict-token-use=false                # recusa token sem o claim token_use
+archbase.security.jwt.accept-token-query-param=true         # aceita credencial em ?token=
+archbase.security.prevent-user-enumeration=false            # resposta uniforme no reset de senha
+archbase.security.api-token.purge-plaintext=false           # IRREVERSÍVEL: apaga o token em claro
+archbase.security.api-token.hash-enabled=true                # false = grava o token em claro
+archbase.security.admin-guard.enabled=true                   # trava contra criacao/promocao de admin
+archbase.security.admin-guard.allow-unverifiable-principal=false
+archbase.security.password-change.revoke-sessions=false      # true = desloga ao trocar a senha
+archbase.security.logout.enabled=true
+archbase.security.logout.url=/api/v1/auth/logout
+archbase.security.public-paths.actuator=true
+archbase.security.public-paths.registration=true            # auto-cadastro anônimo
+archbase.security.public-paths.legacy-app-routes=true       # rotas de aplicação (deprecado)
+archbase.app.tenant.fail-on-missing=false                   # recusa acesso sem tenant no contexto
+archbase.app.tenant.accept-query-param=true                 # aceita X-TENANT-ID na query string
+
+# Core único de autorização (ver archbase-security/MODELO_CORE_AUTORIZACAO.md)
+# Cinco portões: IDENTITY, SCOPE, RESTRICTION, LEVEL, GRANT. Os quatro primeiros só NEGAM;
+# só o GRANT concede. Todos os defaults abaixo reproduzem o comportamento anterior ao core.
+archbase.security.access-level.enabled=false                # liga o portão LEVEL (piso por capacidade)
+archbase.security.access-level.default=READER               # nível de quem não tem perfil, ou perfil sem nível
+archbase.security.diagnostics.enabled=false                 # expõe /api/v1/security/diagnostics/*
+archbase.security.sync.mode=apply                           # apply | report — report não escreve nada
+# Os endpoints de diagnóstico exigem isAdministrator MESMO quando ligados — não dependem de
+# admin-endpoints.policy, cujo padrão permit deixaria qualquer autenticado entrar.
+
+# Rate limiting dos fluxos de credencial (ligado por padrão)
+archbase.security.rate-limit.enabled=true
+archbase.security.rate-limit.max-attempts=10
+archbase.security.rate-limit.window-seconds=900
+archbase.security.rate-limit.block-seconds=900
+
+# Descoberta de tenants (GET /auth/tenants) — limite PRÓPRIO e folgado.
+# A tela chama esse endpoint a cada digitação de e-mail, e a chave por origem é
+# compartilhada por todos atrás do mesmo proxy: reusar o limite do login o
+# transformava em negação de serviço.
+archbase.security.rate-limit.discovery.max-attempts=200
+archbase.security.rate-limit.discovery.block-seconds=300
+
+# Origem da requisição para efeito de contagem. Atrás de proxy, getRemoteAddr()
+# devolve o IP do proxy — igual para todos. Ligue SE houver proxy à frente que
+# sobrescreva o cabeçalho; sem ele, o atacante troca de identidade a cada
+# requisição e ainda bloqueia terceiros forjando o endereço deles.
+archbase.security.client-ip.trust-forwarded-for=false
+
+# Força de senha (inteiramente desligada por padrão)
+archbase.security.password.min-length=0
+archbase.security.password.require-digit=false
+archbase.security.password.require-uppercase=false
+archbase.security.password.require-lowercase=false
+archbase.security.password.require-special=false
+archbase.security.password.block-common=false
 
 # RSQL
 archbase.rsql.enabled=true

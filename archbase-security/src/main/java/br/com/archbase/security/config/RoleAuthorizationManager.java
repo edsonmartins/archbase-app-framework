@@ -1,7 +1,12 @@
 package br.com.archbase.security.config;
 
+import br.com.archbase.security.access.AccessDecision;
+import br.com.archbase.security.access.AccessRequirement;
+import br.com.archbase.security.access.Restriction;
 import br.com.archbase.security.annotations.RequireRole;
-import br.com.archbase.security.persistence.UserEntity;
+import br.com.archbase.security.service.ArchbaseSecurityService;
+import br.com.archbase.security.spi.ArchbaseRoleResolver;
+import br.com.archbase.security.util.AuthorizationAnnotationUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aopalliance.intercept.MethodInvocation;
@@ -10,98 +15,68 @@ import org.springframework.security.authorization.AuthorizationManager;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
-import java.lang.reflect.Method;
 import java.util.Arrays;
-import java.util.List;
 import java.util.function.Supplier;
 
 /**
- * AuthorizationManager para processar a anotação @RequireRole.
- * 
- * Esta implementação fornece validação básica e pode ser estendida
- * por enrichers específicos da aplicação para validações customizadas.
+ * Adaptador de {@code @RequireRole} para o core.
+ *
+ * <p>Não decide nada: lê a anotação, monta um {@link AccessRequirement} e delega. A regra — o SPI
+ * {@link ArchbaseRoleResolver}, a política para a ausência dele e o tratamento de {@code ownerOnly}
+ * — vive em {@code RoleRestrictionEvaluator}.
+ *
+ * <p>As roles de {@code @RequireRole} são do domínio da aplicação, não do Archbase. Sem um
+ * {@link ArchbaseRoleResolver} registrado o framework não tem o que comparar, e
+ * {@code archbase.security.require-role.no-resolver-policy} decide — com padrão {@code permit}, que
+ * <b>não é controle de acesso</b>.
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class RoleAuthorizationManager implements AuthorizationManager<MethodInvocation> {
-    
+
+    private final ArchbaseSecurityService securityService;
+
     @Override
     public AuthorizationDecision authorize(Supplier<? extends Authentication> authentication, MethodInvocation methodInvocation) {
-        Method method = methodInvocation.getMethod();
-        RequireRole requireRole = method.getAnnotation(RequireRole.class);
-        
+        RequireRole requireRole = AuthorizationAnnotationUtils.findAnnotation(methodInvocation, RequireRole.class);
+
         if (requireRole == null) {
-            return new AuthorizationDecision(true);
+            // Nega: o pointcut casou, então a anotação existe (possivelmente na classe) e a
+            // resolução é que falhou. Liberar aqui é o defeito, não o comportamento.
+            log.error("Interceptação de @RequireRole sem anotação resolvível em {}#{} — acesso negado",
+                    AuthorizationAdapters.declaringClass(methodInvocation),
+                    methodInvocation.getMethod().getName());
+            return new AuthorizationDecision(false);
         }
-        
+
+        // Falha ao AVALIAR não é o mesmo que "não tem permissão", mas negar é a opção
+        // segura. O que não pode é escapar: sem este catch, um ArchbaseRoleResolver da
+        // aplicação que lance, ou uma associação lazy tocada fora de sessão, viram HTTP 500
+        // em vez de 403 — e o 500 vaza stack trace onde deveria haver uma negação limpa.
         try {
             Authentication auth = authentication.get();
-            
             if (auth == null || !auth.isAuthenticated()) {
                 log.debug("Usuário não autenticado - acesso negado");
                 return new AuthorizationDecision(false);
             }
-            
-            UserEntity user = (UserEntity) auth.getPrincipal();
-            
-            // Permite bypass para administradores do sistema
-            if (requireRole.allowSystemAdmin() && user.getIsAdministrator() && user.isEnabled()) {
-                log.debug("Acesso permitido para administrador do sistema: {}", user.getEmail());
-                return new AuthorizationDecision(true);
-            }
-            
-            // Verificação de admin da plataforma
-            if (requireRole.requirePlatformAdmin() && (!user.getIsAdministrator() || !user.isEnabled())) {
-                log.debug("Acesso negado - usuário não é admin da plataforma: {}", user.getEmail());
-                return new AuthorizationDecision(false);
-            }
-            
-            boolean hasAccess = validateRoleAccess(user, requireRole);
-            
-            log.debug("Resultado da validação de role para usuário {}: {}", 
-                    user.getEmail(), hasAccess);
-            
-            return new AuthorizationDecision(hasAccess);
-            
+
+            Restriction restricao = Restriction.role(
+                    Arrays.asList(requireRole.value()),
+                    requireRole.requireAll(),
+                    requireRole.allowSystemAdmin(),
+                    requireRole.requirePlatformAdmin(),
+                    requireRole.ownerOnly(),
+                    requireRole.context(),
+                    requireRole.message());
+
+            String origem = AuthorizationAdapters.origin(methodInvocation);
+            AccessDecision decisao = securityService.decide(auth, AccessRequirement.ofRestrictions(origem, restricao));
+            AuthorizationAdapters.log(log, decisao, origem);
+            return new AuthorizationDecision(decisao.allowed());
         } catch (Exception e) {
-            log.error("Erro ao validar acesso por role", e);
+            log.error("Erro ao avaliar @RequireRole em {}", AuthorizationAdapters.origin(methodInvocation), e);
             return new AuthorizationDecision(false);
         }
-    }
-    
-    /**
-     * Valida acesso baseado em roles customizadas.
-     * 
-     * Esta implementação é básica e pode ser estendida por enrichers
-     * específicos da aplicação que implementem lógica de validação
-     * de roles customizadas.
-     */
-    private boolean validateRoleAccess(UserEntity user, RequireRole requireRole) {
-        List<String> requiredRoles = Arrays.asList(requireRole.value());
-        
-        log.debug("Validando roles customizadas: {} para usuário: {}", 
-                requiredRoles, user.getEmail());
-        
-        // Implementação básica - pode ser sobrescrita por enrichers
-        // Por padrão, administradores têm acesso a qualquer role
-        if (user.getIsAdministrator() && user.isEnabled()) {
-            log.debug("Acesso permitido - usuário é administrador");
-            return true;
-        }
-        
-        // Aqui poderia ser implementada lógica específica baseada em:
-        // - Dados de contexto (ex: store, tenant)
-        // - Roles customizadas armazenadas em outras tabelas
-        // - Integração com enrichers da aplicação
-        
-        // Por enquanto, permite acesso para usuários ativos
-        // Esta lógica deve ser customizada conforme necessário
-        boolean hasAccess = user.isEnabled();
-        
-        log.debug("Validação de roles customizadas - acesso: {} para usuário: {}", 
-                hasAccess, user.getEmail());
-        
-        return hasAccess;
     }
 }

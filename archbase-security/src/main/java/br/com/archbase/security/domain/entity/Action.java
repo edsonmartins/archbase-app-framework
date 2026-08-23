@@ -1,5 +1,7 @@
 package br.com.archbase.security.domain.entity;
 
+import br.com.archbase.security.access.AccessLevel;
+
 import br.com.archbase.ddd.domain.annotations.DomainEntity;
 import br.com.archbase.ddd.domain.base.DomainEntityBase;
 import br.com.archbase.validation.fluentvalidator.AbstractArchbaseValidator;
@@ -20,8 +22,11 @@ public class Action extends DomainEntityBase<Resource> {
     protected Boolean active;
     protected String actionVersion;
 
+    /** Piso da capacidade. Ver {@code AccessLevel}. */
+    protected AccessLevel minimumLevel;
+
     @Builder
-    public Action(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Resource resource, String category, Boolean active, String actionVersion) {
+    public Action(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Resource resource, String category, Boolean active, String actionVersion, AccessLevel minimumLevel) {
         super(id, code, version, updateEntityDate, createEntityDate, createdByUser, lastModifiedByUser);
         this.name = name;
         this.description = description;
@@ -29,6 +34,7 @@ public class Action extends DomainEntityBase<Resource> {
         this.category = category;
         this.active = active;
         this.actionVersion = actionVersion;
+        this.minimumLevel = minimumLevel;
     }
 
     static class Validator extends AbstractArchbaseValidator<Action> {

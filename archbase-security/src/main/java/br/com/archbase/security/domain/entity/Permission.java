@@ -1,5 +1,7 @@
 package br.com.archbase.security.domain.entity;
 
+import br.com.archbase.security.access.PermissionEffect;
+
 import br.com.archbase.ddd.domain.annotations.DomainEntity;
 import br.com.archbase.ddd.domain.base.DomainAggregatorBase;
 import br.com.archbase.validation.fluentvalidator.AbstractArchbaseValidator;
@@ -18,14 +20,18 @@ public class Permission extends DomainAggregatorBase<Resource> {
     private String companyId;
     private String projectId;
 
+    /** {@code GRANT} (padrão, inclusive quando nulo) ou {@code DENY}. */
+    private PermissionEffect effect;
+
     @Builder
-    public Permission(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, Security security, Action action, String tenantId, String companyId, String projectId) {
+    public Permission(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, Security security, Action action, String tenantId, String companyId, String projectId, PermissionEffect effect) {
         super(id, code, version, updateEntityDate, createEntityDate, createdByUser, lastModifiedByUser);
         this.security = security;
         this.action = action;
         this.tenantId = tenantId;
         this.companyId = companyId;
         this.projectId = projectId;
+        this.effect = effect;
     }
 
     static class Validator extends AbstractArchbaseValidator<Permission> {

@@ -10,6 +10,8 @@ import br.com.archbase.security.domain.dto.SimpleUserDto;
 import br.com.archbase.security.domain.dto.UserDto;
 import br.com.archbase.security.domain.dto.UserGroupDto;
 import br.com.archbase.security.domain.entity.User;
+import br.com.archbase.security.password.ArchbasePasswordStrengthPolicy;
+import br.com.archbase.security.persistence.UserEntity;
 import br.com.archbase.security.persistence.QGroupEntity;
 import br.com.archbase.security.persistence.QProfileEntity;
 import br.com.archbase.security.repository.GroupJpaRepository;
@@ -19,7 +21,11 @@ import br.com.archbase.validation.exception.ArchbaseValidationException;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,20 +38,57 @@ import java.util.stream.Collectors;
 @Component
 public class UserService implements UserUseCase, FindDataWithFilterQuery<String, UserDto> {
 
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(UserService.class);
+
     private final UserPersistenceAdapter persistenceAdapter;
     private final SecurityAdapter securityAdapter;
     private final PasswordEncoder passwordEncoder;
     private final UserServiceListener userServiceListener;
     private final GroupJpaRepository groupJpaRepository;
     private final ProfileJpaRepository profileJpaRepository;
+    private final ArchbasePasswordStrengthPolicy passwordStrengthPolicy;
 
-    public UserService(UserPersistenceAdapter persistenceAdapter, SecurityAdapter securityAdapter, PasswordEncoder passwordEncoder, UserServiceListener userServiceListener, GroupJpaRepository groupJpaRepository, ProfileJpaRepository profileJpaRepository) {
+    /**
+     * Volta a permitir gestão de administradores quando o principal autenticado não é um
+     * {@link UserEntity} e, portanto, o privilégio não pode ser verificado aqui.
+     *
+     * <p>{@code UserDetailsService} é ponto de extensão suportado
+     * ({@code @ConditionalOnMissingBean} em {@code ArchbaseSecurityApplicationConfig}). Numa
+     * aplicação que o substitui por um que devolve outro tipo de principal, <b>toda</b> requisição
+     * cai neste caso — inclusive a de um administrador legítimo — e sem esta chave não haveria como
+     * gerir usuários.
+     *
+     * <p>Ligar isto reabre a escalação que a trava fecha: o privilégio deixa de ser verificado e
+     * qualquer autenticado volta a poder criar administrador. Prefira fazer o
+     * {@code UserDetailsService} devolver {@link UserEntity} — é o que o resto do módulo assume
+     * ({@code SecurityAdapter.getLoggedUser} e {@code ArchbaseSecurityService.hasPermission}
+     * também fazem esse cast).
+     */
+    @Value("${archbase.security.admin-guard.allow-unverifiable-principal:false}")
+    private boolean allowUnverifiablePrincipal;
+
+    /**
+     * Trava que impede um não-administrador de criar/promover administrador e de editar a conta de
+     * um administrador.
+     *
+     * <p>Ligada por padrão: sem ela, qualquer autenticado que alcance {@code POST /api/v1/user}
+     * vira administrador enviando um campo. Desligue apenas se algum fluxo legítimo da aplicação
+     * provisiona administradores autenticado como conta de serviço não-administrativa — e prefira,
+     * nesse caso, marcar a conta de serviço como administradora.
+     *
+     * <pre>archbase.security.admin-guard.enabled=false</pre>
+     */
+    @Value("${archbase.security.admin-guard.enabled:true}")
+    private boolean adminGuardEnabled;
+
+    public UserService(UserPersistenceAdapter persistenceAdapter, SecurityAdapter securityAdapter, PasswordEncoder passwordEncoder, UserServiceListener userServiceListener, GroupJpaRepository groupJpaRepository, ProfileJpaRepository profileJpaRepository, ArchbasePasswordStrengthPolicy passwordStrengthPolicy) {
         this.persistenceAdapter =  persistenceAdapter;
         this.securityAdapter = securityAdapter;
         this.passwordEncoder = passwordEncoder;
         this.userServiceListener = userServiceListener;
         this.groupJpaRepository = groupJpaRepository;
         this.profileJpaRepository = profileJpaRepository;
+        this.passwordStrengthPolicy = passwordStrengthPolicy;
     }
 
     @Override
@@ -92,6 +135,93 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
         return Optional.empty();
     }
 
+    /**
+     * Impede que um usuário sem privilégio administrativo crie ou promova um administrador.
+     *
+     * <p>{@code isAdministrator} chega pelo corpo da requisição e vale como bypass total em
+     * {@link ArchbaseSecurityService#hasPermission}. Sem esta checagem, qualquer autenticado que
+     * alcançasse {@code POST /api/v1/user} virava administrador enviando um campo — a escalação
+     * mais curta do sistema.
+     *
+     * <p>Vale sempre, independente de
+     * {@code archbase.security.admin-endpoints.policy}: a política controla <i>quem chega</i> ao
+     * endpoint, esta trava controla <i>o que pode ser concedido</i>, e a segunda não deve depender
+     * da primeira estar ligada.
+     */
+    private void denyAdministratorPromotionByNonAdmin(UserDto userDto) {
+        if (!adminGuardEnabled || !Boolean.TRUE.equals(userDto.getIsAdministrator())) {
+            return;
+        }
+        if (isRequestFromUnverifiablePrincipal()) {
+            // Há alguém autenticado, mas o principal não é um UserEntity — típico de aplicação com
+            // UserDetailsService próprio. Não dá para afirmar que é administrador, e "não consegui
+            // verificar" não pode dar no mesmo resultado que "verifiquei e é admin": seria a
+            // escalação que esta trava existe para fechar, reaberta por configuração da aplicação.
+            throw new ArchbaseValidationException(
+                    "Não foi possível verificar o privilégio de administrador do solicitante.");
+        }
+
+        User loggedUser = securityAdapter.getLoggedUserOrNull();
+        if (loggedUser == null) {
+            // Ninguém autenticado: chamada interna (bootstrap, seed, importação), fora de requisição
+            // HTTP. Não há a quem negar — mas fica registrado, porque é o caminho pelo qual um admin
+            // nasce sem revisão.
+            logger.warn("Criação/alteração de usuário administrador sem usuário autenticado no contexto");
+            return;
+        }
+        if (!Boolean.TRUE.equals(loggedUser.getIsAdministrator())) {
+            throw new ArchbaseValidationException(
+                    "Apenas um administrador pode conceder privilégio de administrador.");
+        }
+    }
+
+    /**
+     * Verdadeiro quando existe autenticação no contexto mas o principal não é um {@link UserEntity},
+     * caso em que {@code getLoggedUserOrNull()} devolve {@code null} por não conseguir resolver — e
+     * não por ausência de usuário.
+     */
+    private boolean isRequestFromUnverifiablePrincipal() {
+        if (allowUnverifiablePrincipal) {
+            return false;
+        }
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null
+                && authentication.isAuthenticated()
+                && !(authentication instanceof AnonymousAuthenticationToken)
+                && !(authentication.getPrincipal() instanceof UserEntity);
+    }
+
+    /**
+     * Impede que um não-administrador altere a conta de um administrador — inclusive a senha, o que
+     * seria tomada de conta direta.
+     */
+    private void denyEditingAdministratorByNonAdmin(UserDto currentUserDto) {
+        if (!adminGuardEnabled || !Boolean.TRUE.equals(currentUserDto.getIsAdministrator())) {
+            return;
+        }
+        if (isRequestFromUnverifiablePrincipal()) {
+            throw new ArchbaseValidationException(
+                    "Não foi possível verificar o privilégio de administrador do solicitante.");
+        }
+        User loggedUser = securityAdapter.getLoggedUserOrNull();
+        if (loggedUser == null) {
+            return;
+        }
+        if (Boolean.TRUE.equals(loggedUser.getIsAdministrator())) {
+            return;
+        }
+        // O próprio administrador editando a si mesmo é permitido. getId() pode ser nulo em
+        // principal montado à mão, e comparar a partir dele estouraria NPE — então a igualdade
+        // parte do id atual, que veio do banco.
+        boolean editandoASiMesmo = loggedUser.getId() != null
+                && currentUserDto.getId() != null
+                && currentUserDto.getId().equals(loggedUser.getId().toString());
+        if (!editandoASiMesmo) {
+            throw new ArchbaseValidationException(
+                    "Apenas um administrador pode alterar a conta de outro administrador.");
+        }
+    }
+
     @Override
     @Transactional
     public UserDto createUser(UserDto userDto) {
@@ -101,8 +231,18 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
         if (usuarioOptional.isPresent()) {
             throw new ArchbaseValidationException(String.format("Usuário com email %s já cadastrado.",userDto.getEmail()));
         }
+        denyAdministratorPromotionByNonAdmin(userDto);
+        // Só valida quando há senha. Criação sem senha é legítima (convite, SSO, provisionamento
+        // automático de login social), e a política rejeita senha vazia já na configuração padrão —
+        // block-common vem ligado, o que basta para isEnabled() ser true. Sem esta guarda, esses
+        // fluxos quebram em qualquer instalação, não só nas que configuram regras de composição.
+        // O encode também precisa ficar dentro da guarda: BCryptPasswordEncoder.encode(null) lança
+        // IllegalArgumentException. Validar e cifrar são a mesma condição — há senha ou não há.
+        if (!StringUtils.isBlank(userDto.getPassword())) {
+            passwordStrengthPolicy.validate(userDto.getPassword());
+            userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
+        }
         userServiceListener.onBeforeCreate(originalUserDto);
-        userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
         UserDto user = persistenceAdapter.createUser(userDto);
         userServiceListener.onAfterCreate(originalUserDto,user);
         return user;
@@ -117,13 +257,16 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
         if (usuarioOptional.isPresent() && !usuarioOptional.get().getId().toString().equals(id)) {
             throw new ArchbaseValidationException(String.format("Usuário com email %s já cadastrado.",userDto.getEmail()));
         }
-        userServiceListener.onBeforeUpdate(originalUserDto);
-        if (!StringUtils.isBlank(userDto.getPassword())) {
-            userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
-        }
         UserDto currentUserDto = findById(id);
         if (currentUserDto==null){
             throw new ArchbaseValidationException("Usuário não encontrado.");
+        }
+        denyAdministratorPromotionByNonAdmin(userDto);
+        denyEditingAdministratorByNonAdmin(currentUserDto);
+        userServiceListener.onBeforeUpdate(originalUserDto);
+        if (!StringUtils.isBlank(userDto.getPassword())) {
+            passwordStrengthPolicy.validate(userDto.getPassword());
+            userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
         }
         Optional<UserDto> result = persistenceAdapter.updateUser(id, userDto);
         userServiceListener.onAfterUpdate(originalUserDto, currentUserDto, result.get());

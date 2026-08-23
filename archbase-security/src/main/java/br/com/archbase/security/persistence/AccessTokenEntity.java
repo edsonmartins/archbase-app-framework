@@ -7,6 +7,7 @@ import br.com.archbase.security.domain.entity.AccessToken;
 import br.com.archbase.security.domain.entity.User;
 import br.com.archbase.security.service.ArchbaseJwtService;
 import br.com.archbase.security.token.TokenType;
+import br.com.archbase.security.token.TokenUse;
 import br.com.archbase.shared.kernel.converters.BooleanToSNConverter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
@@ -36,6 +37,15 @@ public class AccessTokenEntity extends TenantPersistenceEntityBase {
   @Enumerated(EnumType.STRING)
   @Column(name="TP_TOKEN", length = 50)
   private TokenType tokenType = TokenType.BEARER;
+
+  /**
+   * Separa access de refresh dentro da mesma tabela. {@code null} em linhas anteriores a esta
+   * versão, quando só access token era persistido — {@link TokenUse#ACCESS} é a leitura correta
+   * desses casos.
+   */
+  @Enumerated(EnumType.STRING)
+  @Column(name="TP_USO_TOKEN", length = 20)
+  private TokenUse tokenUse = TokenUse.ACCESS;
 
   @Setter
   @Convert(converter = BooleanToSNConverter.class)
@@ -67,10 +77,11 @@ public class AccessTokenEntity extends TenantPersistenceEntityBase {
   }
 
   @Builder
-  public AccessTokenEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String token, TokenType tokenType, boolean revoked, boolean expired, Long expirationTime, LocalDateTime expirationDate, UserEntity user, ArchbaseJwtService jwtService) {
+  public AccessTokenEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String token, TokenType tokenType, TokenUse tokenUse, boolean revoked, boolean expired, Long expirationTime, LocalDateTime expirationDate, UserEntity user, ArchbaseJwtService jwtService) {
     super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId);
     this.token = token;
     this.tokenType = tokenType;
+    this.tokenUse = tokenUse != null ? tokenUse : TokenUse.ACCESS;
     this.revoked = revoked;
     this.expired = expired;
     this.expirationTime = expirationTime;

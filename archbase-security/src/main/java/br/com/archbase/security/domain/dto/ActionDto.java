@@ -1,5 +1,6 @@
 package br.com.archbase.security.domain.dto;
 
+import br.com.archbase.security.access.AccessLevel;
 import br.com.archbase.security.domain.entity.Action;
 import com.fasterxml.jackson.annotation.JsonIdentityInfo;
 import com.fasterxml.jackson.annotation.ObjectIdGenerators;
@@ -29,6 +30,12 @@ public class ActionDto {
 	protected Boolean active;
 	protected String actionVersion;
 
+	/**
+	 * Piso da capacidade. Semeado por {@code @HasPermission(minimumLevel = ...)} no primeiro
+	 * registro e editável aqui a partir daí — é o que torna o nível configurável sem deploy.
+	 */
+	protected AccessLevel minimumLevel;
+
 	public static ActionDto fromDomain(Action action) {
 		if (action == null) {
 			return null;
@@ -48,6 +55,7 @@ public class ActionDto {
 				.category(action.getCategory())
 				.active(action.getActive())
 				.actionVersion(action.getActionVersion())
+				.minimumLevel(action.getMinimumLevel())
 				.build();
 	}
 
@@ -66,6 +74,7 @@ public class ActionDto {
 				.category(this.category)
 				.active(this.active)
 				.actionVersion(this.actionVersion)
+				.minimumLevel(this.minimumLevel)
 				.build();
 	}
 }

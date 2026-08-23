@@ -32,6 +32,20 @@ public class ArchbaseJwtService {
      */
     public static final String TENANT_CLAIM = "tenantId";
 
+    /**
+     * Claim que declara para que serve o token. Sem ele, todo token emitido é apenas "um JWT
+     * assinado com o subject do usuário" — e qualquer endpoint que só confira assinatura + subject
+     * aceita qualquer um deles. Era assim que o desafio de MFA (senha certa, segundo fator ainda
+     * não apresentado) passava no {@code /auth/refresh-token} e voltava com os tokens reais.
+     *
+     * <p>Nome {@code token_use} em vez de {@code typ} de propósito: {@code typ} é um parâmetro
+     * registrado do <i>header</i> JOSE, e reaproveitá-lo como claim gera confusão na leitura.
+     */
+    public static final String TOKEN_USE_CLAIM = "token_use";
+    public static final String TOKEN_USE_ACCESS = "access";
+    public static final String TOKEN_USE_REFRESH = "refresh";
+    public static final String TOKEN_USE_MFA_CHALLENGE = "mfa_challenge";
+
     @Value("${archbase.security.jwt.secret-key}")
     private String secretKey;
 
@@ -40,6 +54,17 @@ public class ArchbaseJwtService {
 
     @Value("${archbase.security.jwt.refresh-expiration}")
     private long refreshExpiration;
+
+    /**
+     * Quando {@code true}, um token sem o claim {@value #TOKEN_USE_CLAIM} deixa de ser aceito.
+     *
+     * <p>Fica desligado por padrão porque os tokens emitidos antes desta versão não têm o claim:
+     * ligá-lo num deploy derrubaria toda sessão em curso. Ligue depois que o maior
+     * {@code refresh-expiration} configurado tiver passado desde a atualização — daí em diante
+     * nenhum token legado sobrevive e a checagem pode ser estrita.
+     */
+    @Value("${archbase.security.jwt.strict-token-use:false}")
+    private boolean strictTokenUse;
 
     @PostConstruct
     public void initialize() {
@@ -98,13 +123,15 @@ public class ArchbaseJwtService {
             Map<String, Object> extraClaims,
             UserDetails userDetails
     ) {
-        return buildToken(extraClaims, userDetails, jwtExpiration);
+        Map<String, Object> claims = new HashMap<>(extraClaims);
+        claims.put(TOKEN_USE_CLAIM, TOKEN_USE_ACCESS);
+        return buildToken(claims, userDetails, jwtExpiration);
     }
 
     public TokenResult generateRefreshToken(
             UserDetails userDetails
     ) {
-        return buildToken(new HashMap<>(), userDetails, refreshExpiration);
+        return buildToken(Map.of(TOKEN_USE_CLAIM, TOKEN_USE_REFRESH), userDetails, refreshExpiration);
     }
 
     /** Claim que marca um token de desafio de MFA (não serve como access token). */
@@ -119,7 +146,10 @@ public class ArchbaseJwtService {
      * aceita como credencial (findTokenByValue = null). Só o {@code /auth/mfa/verify} o consome.
      */
     public TokenResult generateMfaChallengeToken(UserDetails userDetails) {
-        return buildToken(Map.of(MFA_PURPOSE_CLAIM, MFA_CHALLENGE_VALUE), userDetails, MFA_CHALLENGE_EXPIRATION);
+        return buildToken(
+                Map.of(MFA_PURPOSE_CLAIM, MFA_CHALLENGE_VALUE, TOKEN_USE_CLAIM, TOKEN_USE_MFA_CHALLENGE),
+                userDetails,
+                MFA_CHALLENGE_EXPIRATION);
     }
 
     /** Verdadeiro se o token é um desafio de MFA válido (claim correto + não expirado). */
@@ -127,6 +157,71 @@ public class ArchbaseJwtService {
         try {
             Object purpose = extractClaim(token, claims -> claims.get(MFA_PURPOSE_CLAIM));
             return MFA_CHALLENGE_VALUE.equals(purpose) && !isTokenExpired(token);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Lê o claim {@value #TOKEN_USE_CLAIM}. {@code null} para token legado (emitido antes do claim
+     * existir) ou para entrada que não seja um JWT válido.
+     */
+    public String extractTokenUse(String token) {
+        try {
+            Object value = extractClaim(token, claims -> claims.get(TOKEN_USE_CLAIM));
+            return value != null ? value.toString() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Verdadeiro se o token pode ser apresentado como <b>credencial de acesso</b>.
+     *
+     * <p>Rejeita refresh token e desafio de MFA. Token legado (sem o claim) é aceito enquanto
+     * {@code archbase.security.jwt.strict-token-use} estiver desligado.
+     */
+    public boolean isAccessToken(String token) {
+        return isTokenUse(token, TOKEN_USE_ACCESS);
+    }
+
+    /**
+     * Verdadeiro se o token pode ser apresentado em {@code /auth/refresh-token}.
+     *
+     * <p>É esta checagem que fecha o bypass de MFA: o desafio carrega
+     * {@code token_use=mfa_challenge} e, mesmo se for um token legado sem o claim, ainda carrega
+     * {@code mfa=challenge} — os dois caminhos caem fora daqui.
+     */
+    public boolean isRefreshToken(String token) {
+        if (isMfaChallengeClaimPresent(token)) {
+            return false;
+        }
+        return isTokenUse(token, TOKEN_USE_REFRESH);
+    }
+
+    private boolean isTokenUse(String token, String expected) {
+        Claims claims;
+        try {
+            claims = extractAllClaims(token);
+        } catch (Exception e) {
+            // Não é um JWT válido para esta chave. A tolerância a token legado abaixo vale para
+            // token nosso e antigo — não para entrada arbitrária, que precisa cair aqui.
+            return false;
+        }
+
+        Object use = claims.get(TOKEN_USE_CLAIM);
+        if (use == null) {
+            // Token legado: sem o claim não há como distinguir o uso. Aceita para não invalidar
+            // sessões em curso na atualização; strict-token-use=true remove esta tolerância.
+            return !strictTokenUse;
+        }
+        return expected.equals(use.toString());
+    }
+
+    /** Presença do claim {@code mfa}, independente de expiração — usado para recusar o desafio. */
+    private boolean isMfaChallengeClaimPresent(String token) {
+        try {
+            return MFA_CHALLENGE_VALUE.equals(extractClaim(token, claims -> claims.get(MFA_PURPOSE_CLAIM)));
         } catch (Exception e) {
             return false;
         }

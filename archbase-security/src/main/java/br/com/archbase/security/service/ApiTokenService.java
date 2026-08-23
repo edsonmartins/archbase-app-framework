@@ -10,6 +10,8 @@
     import br.com.archbase.security.repository.ApiTokenRepository;
     import br.com.archbase.security.repository.UserJpaRepository;
     import br.com.archbase.security.usecase.ApiTokenUseCase;
+    import br.com.archbase.security.util.ApiTokenHasher;
+    import br.com.archbase.security.util.TokenMaskUtil;
     import org.springframework.beans.factory.annotation.Autowired;
     import org.springframework.data.domain.Page;
     import org.springframework.stereotype.Service;
@@ -43,26 +45,41 @@
         @Autowired
         private ArchbaseEmailService emailService;
 
+        /**
+         * Guarda apenas o hash do token de API. Ligado por padrão.
+         *
+         * <p>Desligue somente se alguma tela precisa exibir o valor do token depois da criação —
+         * e saiba que isso mantém a credencial em texto puro no banco, onde um dump (backup,
+         * réplica de homologação, SELECT de suporte) entrega acesso direto a toda integração.
+         *
+         * <pre>archbase.security.api-token.hash-enabled=false</pre>
+         */
+        @org.springframework.beans.factory.annotation.Value(
+                "${archbase.security.api-token.hash-enabled:true}")
+        private boolean hashEnabled;
+
         public boolean activateToken(String token, String tenantId) {
-            logger.info("Tentando ativar o token: {} para o tenantId: {}", token, tenantId);
+            // O token de API é a credencial em si: registrá-lo no log entrega acesso a quem lê o
+            // log (agregador, arquivo, ticket de suporte). Só o prefixo mascarado sai daqui.
+            logger.info("Tentando ativar o token: {} para o tenantId: {}", TokenMaskUtil.mask(token), tenantId);
 
             // Usa QueryDSL via ApiTokenPersistenceAdapter
             Optional<ApiTokenEntity> apiToken = apiTokenPersistenceAdapter.findByTokenAndTenantId(token, tenantId);
             if (apiToken.isPresent()) {
-                logger.info("Token encontrado: {}", token);
                 if (!apiToken.get().getActivated()) {
                     apiToken.get().setActivated(true);
                     apiTokenRepository.save(apiToken.get());
-                    logger.info("Token ativado com sucesso: {}", token);
+                    logger.info("Token ativado com sucesso: id={}", apiToken.get().getId());
                     return true;
                 } else {
-                    logger.warn("Token já está ativado: {}", token);
+                    logger.warn("Token já está ativado: id={}", apiToken.get().getId());
                 }
             } else {
-                logger.warn("Token não encontrado: {}", token);
+                logger.warn("Token não encontrado: {}", TokenMaskUtil.mask(token));
             }
             return false;
         }
+
 
         @Override
         public ApiTokenDto findById(String s) {
@@ -101,11 +118,17 @@
 
             String token = UUID.randomUUID().toString();
 
+            // Por padrão só o hash é persistido: a coluna em claro fica nula e o valor do token
+            // existe apenas nesta resposta e no e-mail de ativação — não há como recuperá-lo
+            // depois, que é justamente a propriedade que se quer. Com hash-enabled=false o valor
+            // continua gravado em claro, para aplicações cuja tela lista o token; o hash é gravado
+            // de qualquer forma, então a autenticação é a mesma nos dois modos.
             ApiTokenEntity apiToken = ApiTokenEntity.builder()
                     .id(UUID.randomUUID().toString())
                     .createdByUser(securityAdapter.getLoggedUser().getUserName())
                     .createEntityDate(LocalDateTime.now())
-                    .token(token)
+                    .token(hashEnabled ? null : token)
+                    .tokenHash(ApiTokenHasher.hash(token))
                     .name(name)
                     .description(description)
                     .user(user)
@@ -118,6 +141,9 @@
             // criado (500 na criação); e, mesmo com e-mail configurado, uma falha no save mandava
             // ao usuário um token que não existe.
             ApiTokenDto saved = apiTokenRepository.save(apiToken).toDto();
+            // A entidade salva não carrega mais o valor em claro; devolve-se aqui, uma única vez,
+            // para quem pediu a criação poder exibi-lo/copiá-lo.
+            saved.setToken(token);
             try {
                 emailService.sendActivationTokenApiEmail(email, token, user.getUsername(), name);
             } catch (RuntimeException e) {
@@ -135,9 +161,9 @@
             if (apiToken.isPresent()){
                 apiToken.get().setRevoked(true);
                 apiTokenRepository.save(apiToken.get());
-                logger.info("Token revogado com sucesso: {}", token);
+                logger.info("Token revogado com sucesso: id={}", apiToken.get().getId());
             } else {
-                logger.warn("Token não encontrado para revogação: {}", token);
+                logger.warn("Token não encontrado para revogação: {}", TokenMaskUtil.mask(token));
             }
         }
 

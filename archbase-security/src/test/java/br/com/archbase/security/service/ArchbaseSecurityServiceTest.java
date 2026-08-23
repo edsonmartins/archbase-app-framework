@@ -22,6 +22,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -52,7 +53,7 @@ class ArchbaseSecurityServiceTest {
     void permissaoDiretaDoUsuarioLiberaAcesso() {
         UserEntity user = userComId("user-1");
         PermissionEntity permission = permissionPara(securityComId("user-1"), null, null, null);
-        when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), eq(ACTION), eq(RESOURCE)))
+        when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), eq(ACTION), eq(RESOURCE), anyBoolean()))
                 .thenReturn(List.of(permission));
 
         assertTrue(securityService.hasPermission(authenticationPara(user), ACTION, RESOURCE, null, null, null));
@@ -65,7 +66,7 @@ class ArchbaseSecurityServiceTest {
         user.setProfile(profile);
 
         PermissionEntity permission = permissionPara(profile, null, null, null);
-        when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), eq(ACTION), eq(RESOURCE)))
+        when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), eq(ACTION), eq(RESOURCE), anyBoolean()))
                 .thenReturn(List.of(permission));
 
         assertTrue(securityService.hasPermission(authenticationPara(user), ACTION, RESOURCE, null, null, null));
@@ -78,7 +79,7 @@ class ArchbaseSecurityServiceTest {
         user.setGroups(Set.of(userGroupPara(user, group)));
 
         PermissionEntity permission = permissionPara(group, null, null, null);
-        when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), eq(ACTION), eq(RESOURCE)))
+        when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), eq(ACTION), eq(RESOURCE), anyBoolean()))
                 .thenReturn(List.of(permission));
 
         assertTrue(securityService.hasPermission(authenticationPara(user), ACTION, RESOURCE, null, null, null));
@@ -87,21 +88,26 @@ class ArchbaseSecurityServiceTest {
     @Test
     void usuarioSemPermissaoDiretaNemViaPerfilOuGrupoNaoTemAcesso() {
         UserEntity user = userComId("user-1");
-        when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), eq(ACTION), eq(RESOURCE)))
+        when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), eq(ACTION), eq(RESOURCE), anyBoolean()))
                 .thenReturn(Collections.emptyList());
 
         assertFalse(securityService.hasPermission(authenticationPara(user), ACTION, RESOURCE, null, null, null));
     }
 
     @Test
-    void administradorHabilitadoTemAcessoSemConsultarPermissoes() {
+    void administradorHabilitadoTemAcessoSemPrecisarDeConcessao() {
         UserEntity admin = userComId("admin-1");
         admin.setIsAdministrator(true);
         admin.setAccountDeactivated(false);
         admin.setAccountLocked(false);
 
+        // A consulta acontece — o administrador precisa ser alcançável por uma NEGAÇÃO explícita,
+        // e sem consultar ela seria gravada e ignorada. O que se afirma aqui é que nenhuma
+        // CONCESSÃO precisa existir: a flag basta.
+        when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), eq(ACTION), eq(RESOURCE), anyBoolean()))
+                .thenReturn(Collections.emptyList());
+
         assertTrue(securityService.hasPermission(authenticationPara(admin), ACTION, RESOURCE, null, null, null));
-        verify(permissionRepository, never()).findBySecurityIdsAndActionNameAndResourceName(anySet(), eq(ACTION), eq(RESOURCE));
     }
 
     @Test
@@ -112,13 +118,13 @@ class ArchbaseSecurityServiceTest {
         user.setProfile(profile);
         user.setGroups(Set.of(userGroupPara(user, group)));
 
-        when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), eq(ACTION), eq(RESOURCE)))
+        when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), eq(ACTION), eq(RESOURCE), anyBoolean()))
                 .thenReturn(Collections.emptyList());
 
         securityService.hasPermission(authenticationPara(user), ACTION, RESOURCE, null, null, null);
 
         ArgumentCaptor<Set<String>> captor = ArgumentCaptor.forClass(Set.class);
-        verify(permissionRepository).findBySecurityIdsAndActionNameAndResourceName(captor.capture(), eq(ACTION), eq(RESOURCE));
+        verify(permissionRepository).findBySecurityIdsAndActionNameAndResourceName(captor.capture(), eq(ACTION), eq(RESOURCE), anyBoolean());
         assertEquals(Set.of("user-1", "group-1", "profile-1"), captor.getValue());
     }
 
@@ -126,7 +132,7 @@ class ArchbaseSecurityServiceTest {
     void permissaoComAllowAllLiberaAcessoIndependenteDoTenant() {
         UserEntity user = userComId("user-1");
         PermissionEntity permission = permissionPara(securityComId("user-1"), null, null, null);
-        when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), eq(ACTION), eq(RESOURCE)))
+        when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), eq(ACTION), eq(RESOURCE), anyBoolean()))
                 .thenReturn(List.of(permission));
 
         assertTrue(securityService.hasPermission(authenticationPara(user), ACTION, RESOURCE, "tenant-x", "company-x", "project-x"));
@@ -136,7 +142,7 @@ class ArchbaseSecurityServiceTest {
     void permissaoComTenantEspecificoSoLiberaParaOTenantCorrespondente() {
         UserEntity user = userComId("user-1");
         PermissionEntity permission = permissionPara(securityComId("user-1"), "tenant-a", null, null);
-        when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), eq(ACTION), eq(RESOURCE)))
+        when(permissionRepository.findBySecurityIdsAndActionNameAndResourceName(anySet(), eq(ACTION), eq(RESOURCE), anyBoolean()))
                 .thenReturn(List.of(permission));
 
         assertFalse(securityService.hasPermission(authenticationPara(user), ACTION, RESOURCE, "tenant-b", null, null));
@@ -182,7 +188,7 @@ class ArchbaseSecurityServiceTest {
                 .id("permission-1")
                 .security(security)
                 .action(actionEntity)
-                .tenantId1(tenantId)
+                .tenantId(tenantId)
                 .companyId(companyId)
                 .projectId(projectId)
                 .build();

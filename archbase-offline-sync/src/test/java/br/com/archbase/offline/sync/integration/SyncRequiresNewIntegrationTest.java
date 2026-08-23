@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * commit das transações REQUIRES_NEW.
  */
 @SpringBootTest(
-        classes = SyncRequiresNewIntegrationTest.Config.class,
+        classes = OfflineSyncTestConfig.class,
         webEnvironment = SpringBootTest.WebEnvironment.NONE)
 class SyncRequiresNewIntegrationTest {
 
@@ -78,53 +78,5 @@ class SyncRequiresNewIntegrationTest {
         o.type = type;
         o.aggregateId = aggId;
         return o;
-    }
-
-    // --- Infra de teste ---
-
-    @SpringBootConfiguration
-    @EnableAutoConfiguration
-    @EntityScan(basePackageClasses = {ProcessedSyncOperation.class, SyncCounter.class})
-    @EnableJpaRepositories(basePackageClasses =
-            {ProcessedSyncOperationRepository.class, SyncCounterRepository.class})
-    static class Config {
-        @Bean
-        SyncOperationExecutor syncOperationExecutor(ProcessedSyncOperationRepository repo,
-                                                    SyncTenantProvider tenant,
-                                                    java.util.List<SyncOperationHandler> handlers) {
-            return new SyncOperationExecutor(repo, tenant, handlers);
-        }
-
-        @Bean
-        SyncOperationProcessor syncOperationProcessor(SyncOperationExecutor executor) {
-            return new SyncOperationProcessor(executor);
-        }
-
-        @Bean
-        SyncTenantProvider tenantProvider() {
-            return () -> "t1";
-        }
-
-        @Bean
-        SyncOperationHandler okHandler(SyncCounterRepository repo) {
-            return new SyncOperationHandler() {
-                public String type() { return "OK"; }
-                public SyncHandlerResult handle(SyncOperationDTO op) {
-                    repo.save(new SyncCounter(op.aggregateId));
-                    return SyncHandlerResult.version(1L);
-                }
-            };
-        }
-
-        @Bean
-        SyncOperationHandler boomHandler(SyncCounterRepository repo) {
-            return new SyncOperationHandler() {
-                public String type() { return "BOOM"; }
-                public SyncHandlerResult handle(SyncOperationDTO op) {
-                    repo.save(new SyncCounter(op.aggregateId)); // deve ser revertido
-                    throw new IllegalStateException("falha proposital");
-                }
-            };
-        }
     }
 }

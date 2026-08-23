@@ -2,14 +2,13 @@ package br.com.archbase.offline.sync.service;
 
 import br.com.archbase.offline.sync.dto.SyncAckDTO;
 import br.com.archbase.offline.sync.dto.SyncOperationDTO;
-import br.com.archbase.offline.sync.exception.SyncConflictException;
-import br.com.archbase.offline.sync.exception.SyncRejectedException;
-import br.com.archbase.offline.sync.exception.SyncSkippedException;
 import br.com.archbase.offline.sync.persistence.ProcessedSyncOperation;
 import br.com.archbase.offline.sync.persistence.ProcessedSyncOperationRepository;
 import br.com.archbase.offline.sync.spi.SyncHandlerResult;
 import br.com.archbase.offline.sync.spi.SyncOperationHandler;
 import br.com.archbase.offline.sync.spi.SyncTenantProvider;
+import br.com.archbase.offline.sync.spi.SyncUserProvider;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,15 +31,35 @@ public class SyncOperationExecutor implements SyncOperationExecutorPort {
 
     private final ProcessedSyncOperationRepository processedRepo;
     private final SyncTenantProvider tenantProvider;
+    private final ObjectProvider<SyncUserProvider> userProvider;
     private final Map<String, SyncOperationHandler> handlers = new HashMap<>();
 
     public SyncOperationExecutor(ProcessedSyncOperationRepository processedRepo,
                                  SyncTenantProvider tenantProvider,
+                                 ObjectProvider<SyncUserProvider> userProvider,
                                  List<SyncOperationHandler> handlerBeans) {
         this.processedRepo = processedRepo;
         this.tenantProvider = tenantProvider;
+        this.userProvider = userProvider;
         for (SyncOperationHandler h : handlerBeans) {
             this.handlers.put(h.type(), h);
+        }
+    }
+
+    /**
+     * Resolve o usuário corrente para auditoria. Opcional e à prova de falha:
+     * sem bean {@link SyncUserProvider}, ou se ele lançar, devolve {@code null}
+     * (a auditoria é best-effort — nunca derruba a operação de sync).
+     */
+    private String resolveUserId() {
+        final SyncUserProvider provider = userProvider.getIfAvailable();
+        if (provider == null) {
+            return null;
+        }
+        try {
+            return provider.currentUserId();
+        } catch (RuntimeException e) {
+            return null;
         }
     }
 
@@ -48,6 +67,7 @@ public class SyncOperationExecutor implements SyncOperationExecutorPort {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public SyncAckDTO execute(SyncOperationDTO op) {
         final String tenant = tenantProvider.currentTenantId();
+        final String userId = resolveUserId();
 
         // Idempotência durável: já processada antes → no-op.
         if (processedRepo.existsByTenantIdAndOperationId(tenant, op.id)) {
@@ -59,29 +79,34 @@ public class SyncOperationExecutor implements SyncOperationExecutorPort {
             return SyncAckDTO.rejected(op.id, "Tipo não suportado: " + op.type);
         }
 
-        try {
-            final SyncHandlerResult result = handler.handle(op);
+        // SYNC-004: efeito de domínio + gravação no ledger no MESMO commit desta
+        // REQUIRES_NEW. Se o insert do ledger falhar, o efeito de domínio reverte
+        // junto — nunca "domínio aplicado sem registro no ledger" (que fazia o
+        // reenvio duplicar). As exceções de negócio (skip/conflict/rejected) e as
+        // transitórias NÃO são capturadas aqui: propagam para o
+        // SyncOperationProcessor traduzir em ACK DEPOIS do rollback. Capturá-las
+        // aqui e retornar normalmente estouraria UnexpectedRollbackException
+        // quando o service de domínio tivesse marcado a transação rollback-only.
+        final SyncHandlerResult result = handler.handle(op);
+        processedRepo.save(new ProcessedSyncOperation(
+                tenant, op.id, "PROCESSED", op.type, op.aggregateId, userId,
+                result == null ? null : result.getServerVersion(), LocalDateTime.now()));
+        return SyncAckDTO.processed(op.id,
+                result == null ? null : result.getServerVersion());
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public SyncAckDTO recordSkipped(SyncOperationDTO op) {
+        // Skip não tem efeito de domínio a preservar; gravar o ledger numa tx
+        // própria, depois do rollback do execute, é seguro e mantém a idempotência
+        // durável (um reenvio do mesmo id volta como SKIPPED pelo dedup).
+        final String tenant = tenantProvider.currentTenantId();
+        if (!processedRepo.existsByTenantIdAndOperationId(tenant, op.id)) {
             processedRepo.save(new ProcessedSyncOperation(
-                    tenant, op.id, "PROCESSED", op.type, op.aggregateId,
-                    result == null ? null : result.getServerVersion(), LocalDateTime.now()));
-            return SyncAckDTO.processed(op.id,
-                    result == null ? null : result.getServerVersion());
-        } catch (SyncSkippedException e) {
-            processedRepo.save(new ProcessedSyncOperation(
-                    tenant, op.id, "SKIPPED", op.type, op.aggregateId, null,
-                    LocalDateTime.now()));
-            return SyncAckDTO.skipped(op.id);
-        } catch (SyncConflictException e) {
-            // Não persiste como processada: permite reenvio após resolução.
-            // Retorno normal = a transação (sem efeito) só faz commit vazio.
-            return SyncAckDTO.conflict(op.id, e.getDetail());
-        } catch (SyncRejectedException e) {
-            // Erro de negócio TERMINAL: não persiste (não foi processada) e não
-            // deve ser retentado às cegas. O cliente marca o registro em erro
-            // com este motivo. Diferente de FAILED (transitório) abaixo.
-            return SyncAckDTO.rejected(op.id, e.getMessage());
+                    tenant, op.id, "SKIPPED", op.type, op.aggregateId, resolveUserId(),
+                    null, LocalDateTime.now()));
         }
-        // Demais RuntimeException propagam → REQUIRES_NEW faz rollback só desta op;
-        // o processador mapeia para FAILED (transitório).
+        return SyncAckDTO.skipped(op.id);
     }
 }
