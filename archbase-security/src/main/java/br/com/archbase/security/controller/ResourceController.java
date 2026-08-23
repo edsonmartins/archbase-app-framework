@@ -57,6 +57,22 @@ public class ResourceController {
         return ResponseEntity.ok(resourceService.findLoggedUserResourcePermissions(resourceName));
     }
 
+    /**
+     * Tudo que o usuário logado pode, agrupado por recurso — em uma requisição.
+     *
+     * <p>Autoatendimento, como o irmão por recurso: a pessoa pergunta sobre si mesma, e não há
+     * parâmetro que permita perguntar sobre outra. Marcar como administrativo tornaria impossível a
+     * um usuário comum montar a própria navegação, que é justamente para o que o endpoint existe.
+     *
+     * <p>O caminho é literal e não colide com {@code /permissions/{resourceName}}: a rota mais
+     * específica vence, e nenhum recurso precisa se chamar assim.
+     */
+    @GetMapping("/my-permissions")
+    @ArchbaseSecurityAdminEndpoint(selfService = true)
+    public ResponseEntity<LoggedUserPermissionsDto> findLoggedUserPermissions() {
+        return ResponseEntity.ok(resourceService.findLoggedUserPermissions());
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ResourceDto> getResourceById(@PathVariable String id) {
         try {

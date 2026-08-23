@@ -131,6 +131,38 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
     }
 
     /**
+     * Todas as capacidades do usuário autenticado, agrupadas por recurso.
+     *
+     * <p>Uma consulta, não uma por recurso. Quem monta menu ou roteamento precisa da resposta para
+     * dezenas de recursos ao mesmo tempo, e o caminho por recurso transformava isso em dezenas de
+     * requisições — na prática, em desistir de perguntar.
+     *
+     * <p><b>O filtro é o mesmo</b> de {@link #findLoggedUserResourcePermissions(String)}: fora as
+     * negadas, fora as de ação inativa. Deliberadamente idêntico, e não "mais correto": se as duas
+     * listagens divergissem, o menu habilitaria um item cuja tela recusaria as ações — a mesma
+     * classe de divergência entre interface e decisão que o core existe para eliminar.
+     */
+    @Override
+    public LoggedUserPermissionsDto findLoggedUserPermissions() {
+        AccessSubject subject = subjectLoader.byId(loggedUserId())
+                .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado."));
+
+        Map<String, Set<String>> porRecurso = new LinkedHashMap<>();
+        for (EffectiveCapability capacidade : capabilityReader.grantedTo(subject)) {
+            if (capacidade.situation() == EffectiveCapability.Situation.DENIED || !capacidade.actionActive()) {
+                continue;
+            }
+            porRecurso.computeIfAbsent(capacidade.resource(), r -> new LinkedHashSet<>())
+                    .add(capacidade.action());
+        }
+
+        return LoggedUserPermissionsDto.builder()
+                .administrator(Boolean.TRUE.equals(subject.administrator()))
+                .permissions(porRecurso)
+                .build();
+    }
+
+    /**
      * O id do usuário autenticado, sem converter a entidade para domínio.
      *
      * <p>{@code SecurityAdapter.getLoggedUser()} faria uma ida ao banco e um {@code toDomain()} que
