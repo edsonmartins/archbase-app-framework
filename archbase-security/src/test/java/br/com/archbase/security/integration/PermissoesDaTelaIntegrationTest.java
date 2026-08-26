@@ -198,6 +198,77 @@ class PermissoesDaTelaIntegrationTest {
         assertThat(adapter.findLoggedUserResourcePermissions(RECURSO).getPermissions()).isEmpty();
     }
 
+    // ─── my-permissions: a mesma pergunta, para todos os recursos de uma vez ────────────────────
+
+    @Test
+    @DisplayName("my-permissions agrupa por recurso e soma as três origens")
+    void tudoDeUmaVezAgrupaPorRecurso() {
+        UserEntity user = usuario("user-1");
+        GroupEntity grupo = grupo("GESTORES-FROTA");
+        ProfileEntity perfil = perfil("SUPERVISOR");
+        user = configurar(user, grupo, perfil);
+
+        concessao(user, recurso, "cancelar", true);
+        concessao(grupo, recurso, "aprovar_custo", true);
+        concessao(perfil, outroRecurso, "view", true);
+
+        autenticar(user);
+
+        var permissoes = adapter.findLoggedUserPermissions().getPermissions();
+
+        assertThat(permissoes).containsOnlyKeys(RECURSO, OUTRO_RECURSO);
+        assertThat(permissoes.get(RECURSO)).containsExactlyInAnyOrder("cancelar", "aprovar_custo");
+        assertThat(permissoes.get(OUTRO_RECURSO)).containsExactly("view");
+    }
+
+    @Test
+    @DisplayName("my-permissions filtra ação inativa igual ao irmão por recurso")
+    void tudoDeUmaVezFiltraIgualAoIrmao() {
+        // O invariante que justifica o endpoint existir do jeito que existe. Se as duas listagens
+        // divergissem, o menu montado a partir desta habilitaria um item cuja tela — que pergunta
+        // pela outra — recusaria as ações. Um teste por listagem não pegaria isso: o que se afirma
+        // aqui é que as duas respostas coincidem.
+        UserEntity user = usuario("user-1");
+        concessao(user, recurso, "ativa", true);
+        concessao(user, recurso, "inativa", false);
+
+        autenticar(user);
+
+        assertThat(adapter.findLoggedUserPermissions().getPermissions().get(RECURSO))
+                .containsExactly("ativa")
+                .containsExactlyElementsOf(
+                        adapter.findLoggedUserResourcePermissions(RECURSO).getPermissions());
+    }
+
+    @Test
+    @DisplayName("my-permissions informa quem é administrador, sem inventar catálogo")
+    void tudoDeUmaVezMarcaAdministrador() {
+        // O flag vem junto porque ser administrador não depende do catálogo: sem ele, o cliente
+        // leria o mapa vazio de um admin como "não pode nada". E, como no irmão, ser administrador
+        // não preenche permissão nenhuma — a flag encerra decisões, não fabrica concessões.
+        UserEntity admin = usuario("admin-1");
+        admin.setIsAdministrator(true);
+        admin = userRepository.save(admin);
+
+        autenticar(admin);
+
+        var resposta = adapter.findLoggedUserPermissions();
+
+        assertThat(resposta.getAdministrator()).isTrue();
+        assertThat(resposta.getPermissions()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("quem não tem concessão nenhuma recebe mapa vazio, não erro")
+    void tudoDeUmaVezSemConcessao() {
+        autenticar(usuario("user-sem-nada"));
+
+        var resposta = adapter.findLoggedUserPermissions();
+
+        assertThat(resposta.getPermissions()).isEmpty();
+        assertThat(resposta.getAdministrator()).isFalse();
+    }
+
     // ------------------------------------------------------------------ apoio
 
     private void autenticar(UserEntity user) {
