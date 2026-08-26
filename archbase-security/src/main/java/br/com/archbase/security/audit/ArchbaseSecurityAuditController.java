@@ -1,8 +1,12 @@
 package br.com.archbase.security.audit;
 
+import br.com.archbase.ddd.context.ArchbaseTenantContext;
 import br.com.archbase.security.persistence.SecurityEventEntity;
 import br.com.archbase.security.persistence.UserEntity;
 import br.com.archbase.security.repository.SecurityEventJpaRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -32,13 +36,37 @@ import java.time.LocalDateTime;
 @ConditionalOnProperty(name = "archbase.security.audit.enabled", havingValue = "true")
 public class ArchbaseSecurityAuditController {
 
+    private static final Logger log = LoggerFactory.getLogger(ArchbaseSecurityAuditController.class);
+
     /** Teto por página: a trilha é grande e uma consulta sem limite derruba a memória do servidor. */
     private static final int TAMANHO_MAXIMO = 200;
 
     private final SecurityEventJpaRepository eventRepository;
 
-    public ArchbaseSecurityAuditController(SecurityEventJpaRepository eventRepository) {
+    /**
+     * Se a leitura fica restrita ao tenant de quem consulta.
+     *
+     * <p>Nasce desligada porque ligá-la muda o que um administrador enxerga, e há instalação que usa
+     * esta tela como console de suporte entre tenants. Em aplicação de tenant único não faz
+     * diferença alguma: todos os eventos carregam o mesmo tenant.
+     */
+    private final boolean escopoPorTenant;
+
+    public ArchbaseSecurityAuditController(SecurityEventJpaRepository eventRepository,
+                                           @Value("${archbase.security.audit.tenant-scoped:false}")
+                                           boolean escopoPorTenant) {
         this.eventRepository = eventRepository;
+        this.escopoPorTenant = escopoPorTenant;
+        if (!escopoPorTenant) {
+            // No mesmo espírito com que o validador de hardening registra as proteções inertes: o
+            // estado real precisa aparecer a cada deploy, senão o padrão compatível vira permanente
+            // por esquecimento.
+            log.warn("[segurança] A leitura da trilha NÃO está restrita ao tenant de quem consulta "
+                    + "(archbase.security.audit.tenant-scoped=false). Em aplicação multi-tenant, um "
+                    + "administrador de um tenant lê os eventos de todos os outros — usuário, origem, "
+                    + "recurso e ação. Ligue a chave depois de conferir que nenhuma tela sua depende "
+                    + "da visão entre tenants.");
+        }
     }
 
     /**
@@ -69,9 +97,21 @@ public class ArchbaseSecurityAuditController {
                 // faria o PostgreSQL inferir bytea para o parâmetro — o mesmo erro de
                 // "function lower(bytea) does not exist" que já apareceu na árvore.
                 usuario == null ? "" : usuario,
+                // Mesma convenção de string vazia = sem filtro. Sem tenant no contexto não há por
+                // que estreitar: não existe "outro tenant" de quem esconder.
+                tenantDoEscopo(),
                 PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), TAMANHO_MAXIMO)));
 
         return ResponseEntity.ok(pagina);
+    }
+
+    /** O tenant a que restringir a leitura, ou string vazia para não restringir. */
+    private String tenantDoEscopo() {
+        if (!escopoPorTenant) {
+            return "";
+        }
+        String tenant = ArchbaseTenantContext.getTenantId();
+        return tenant == null ? "" : tenant;
     }
 
     private boolean ehAdministrador() {
