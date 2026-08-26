@@ -234,6 +234,82 @@ archbase.security.api-token.purge-plaintext=true
 
 ---
 
+## Segunda auditoria — o que ela acrescentou
+
+A auditoria de agosto cobriu o framework como ele era na 3.1.1. O que entrou depois — a trilha de
+auditoria, a rotina de esquema, o diagnóstico e o módulo `archbase-analytics` inteiro — só foi
+revisado agora. As chaves abaixo saíram dessa segunda passada e seguem a mesma disciplina: **o
+padrão preserva o comportamento atual**, e o log diz, a cada subida, o que está inerte.
+
+### Trilha de auditoria restrita ao tenant
+
+```properties
+# A leitura de /api/v1/security/audit/events passa a mostrar só os eventos do tenant de quem
+# consulta. Em aplicação de tenant único não muda nada.
+archbase.security.audit.tenant-scoped=true
+```
+
+`SecurityEventEntity` é a única das quinze entidades do módulo que não estende
+`TenantPersistenceEntityBase`, e portanto a única sem o `@TenantId` que faz o Hibernate filtrar
+sozinho. O evento sempre gravou a coluna `TENANT_ID` — a intenção de isolar estava lá —, mas a
+consulta de leitura não a usava: **um administrador de um tenant lia os eventos de todos os
+outros**, com usuário, origem, recurso e ação.
+
+Nasce desligada porque ligar muda o que um administrador enxerga, e há instalação que usa essa tela
+como console de suporte entre tenants. Enquanto estiver desligada, a subida registra um WARN
+dizendo exatamente isso.
+
+> **Por que não é só anotar com `@TenantId`.** Seria a correção óbvia e quebraria a purga:
+> `ArchbaseAuditRetentionJob` é `@Scheduled` e roda fora de requisição, sem tenant no contexto — o
+> `DELETE` passaria a alcançar apenas o tenant padrão, e a tabela cresceria para sempre nos demais.
+> O filtro fica na consulta de leitura, que é onde o vazamento acontecia.
+
+### Segredo do analytics conferido na subida
+
+```properties
+# warn (padrão) | fail | off
+archbase.analytics.secret-validation=fail
+archbase.analytics.secret-min-bytes=32
+```
+
+`archbase.analytics.secret` nascia string vazia e nada o verificava: ligar
+`archbase.analytics.enabled=true` sem configurá-lo entregava um proxy que assina HS256 com chave
+vazia. Esse token carrega as claims de escopo que decidem quais dados o cliente enxerga — forjável
+o token, a projeção do `DataScopeProvider` deixa de valer.
+
+O padrão avisa em vez de recusar, porque recusar derrubaria aplicação que hoje sobe mal
+configurada. **Em ambiente onde o analytics vale alguma coisa, use `fail`.**
+
+### Consultas salvas em aplicação multi-tenant
+
+Sem chave: é um ponto de extensão. `SavedQueryStorePort` ganhou
+
+```java
+default Optional<SavedQuery> findVisibleTo(String id, String requesterId) { return find(id); }
+```
+
+O controlador busca por id e decide a visibilidade por dono e escopo — e escopo `team`/`org` não
+tem dimensão de tenant em lugar nenhum desse contrato. Com o `find(String)` puro, **quem souber o id
+de uma consulta compartilhada de outro tenant consegue lê-la**, e a persistência não tem como
+interceptar, porque recebe só o id.
+
+O padrão delega para o `find` de sempre, então nenhuma implementação existente muda ao atualizar.
+**Se a sua aplicação tem mais de um tenant, sobrescreva** para estreitar ao tenant corrente.
+
+### Ativas ao atualizar, sem configuração
+
+- **O analytics recusa requisição não autenticada** em vez de tratá-la como o usuário literal
+  `"desconhecido"` — que virava dono de consulta salva, critério de visibilidade e sujeito do token
+  de escopo, compartilhado por todos os anônimos. Nunca aconteceu, porque nada torna essas rotas
+  públicas; deixava de ser verdade no dia em que alguém as pusesse numa whitelist.
+- **`GET /api/analytics/saved-queries` sem o parâmetro `scope` voltou a funcionar.** `SCOPES` é um
+  `Set.of()`, e `Set.of().contains(null)` lança `NullPointerException` em vez de devolver `false`:
+  a chamada mais comum da tela — listar tudo — respondia 500.
+- **O mapa de semáforos do proxy deixou de crescer para sempre.** Cada usuário que passasse uma vez
+  deixava uma entrada permanente, pela vida do processo.
+- **`GET /api/analytics/v1/load` monta o envelope com o serializador**, e não concatenando texto.
+  Query malformada agora responde 400 `INVALID_QUERY` em vez de 502 acusando o Cube.
+
 ## Core único de autorização
 
 Estas chaves chegaram com o core de autorização (`archbase-security/MODELO_CORE_AUTORIZACAO.md`) e
