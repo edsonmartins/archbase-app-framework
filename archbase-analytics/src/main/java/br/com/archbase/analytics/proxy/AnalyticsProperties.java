@@ -21,6 +21,21 @@ public class AnalyticsProperties {
      */
     private String secret = "";
 
+    /**
+     * O que fazer quando o segredo não serve para assinar: {@code warn} (padrão),
+     * {@code fail} ou {@code off}.
+     *
+     * <p>O padrão avisa e deixa subir, porque recusar a subida quebraria aplicação
+     * que hoje roda com o segredo mal configurado. Mas o aviso não é decorativo: é
+     * o token de escopo que impede o cliente de escolher os próprios dados, e um
+     * segredo vazio ou curto torna esse token forjável. Em ambiente onde o
+     * analytics vale alguma coisa, {@code fail} é a postura correta.
+     */
+    private String secretValidation = "warn";
+
+    /** Tamanho mínimo aceito para o segredo HS256, em bytes. */
+    private int secretMinBytes = 32;
+
     /** TTL do token cunhado, em segundos. Curto por decisão de segurança. */
     private int tokenTtlSeconds = 120;
 
@@ -39,6 +54,10 @@ public class AnalyticsProperties {
     public void setCubeUrl(String cubeUrl) { this.cubeUrl = cubeUrl; }
     public String getSecret() { return secret; }
     public void setSecret(String secret) { this.secret = secret; }
+    public String getSecretValidation() { return secretValidation; }
+    public void setSecretValidation(String v) { this.secretValidation = v; }
+    public int getSecretMinBytes() { return secretMinBytes; }
+    public void setSecretMinBytes(int v) { this.secretMinBytes = v; }
     public int getTokenTtlSeconds() { return tokenTtlSeconds; }
     public void setTokenTtlSeconds(int v) { this.tokenTtlSeconds = v; }
     public int getTimeoutSeconds() { return timeoutSeconds; }

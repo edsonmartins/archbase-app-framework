@@ -6,6 +6,7 @@ import br.com.archbase.analytics.port.SavedQueryStorePort;
 import br.com.archbase.analytics.proxy.AnalyticsProperties;
 import br.com.archbase.analytics.proxy.AnalyticsProxyController;
 import br.com.archbase.analytics.savedquery.SavedQueryController;
+import br.com.archbase.analytics.token.CubeSecretValidator;
 import br.com.archbase.analytics.token.CubeTokenMinter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -34,9 +35,15 @@ import org.springframework.context.annotation.Configuration;
 @EnableConfigurationProperties(AnalyticsProperties.class)
 public class ArchbaseAnalyticsAutoConfiguration {
 
+    /**
+     * O segredo é conferido aqui, e não dentro do minter, porque este é o ponto em que
+     * ele deixa de ser configuração e vira chave de assinatura. Ver
+     * {@link CubeSecretValidator} para o motivo de o padrão avisar em vez de recusar.
+     */
     @Bean
     @ConditionalOnMissingBean
     public CubeTokenMinter cubeTokenMinter(ObjectMapper objectMapper, AnalyticsProperties props) {
+        CubeSecretValidator.validar(props);
         return new CubeTokenMinter(objectMapper, props.getSecret(), props.getTokenTtlSeconds());
     }
 

@@ -301,6 +301,16 @@ archbase.security.sync.mode=apply                           # apply | report —
 # Os endpoints de diagnóstico exigem isAdministrator MESMO quando ligados — não dependem de
 # admin-endpoints.policy, cujo padrão permit deixaria qualquer autenticado entrar.
 
+# Segunda auditoria (delta 3.1.1 -> 3.3.0). Mesmos defaults compatíveis, mesmo WARN de inerte.
+# Leitura da trilha restrita ao tenant de quem consulta. SecurityEventEntity é a única entidade
+# do módulo sem @TenantId: gravava TENANT_ID e não filtrava na leitura, então admin de um tenant
+# lia os eventos de todos. Não vira @TenantId porque a purga é @Scheduled e roda sem tenant.
+archbase.security.audit.tenant-scoped=false
+# Segredo HS256 do analytics conferido na subida (warn | fail | off). Nascia "" e ninguém checava:
+# token de escopo assinado com chave vazia é forjável e anula o DataScopeProvider.
+archbase.analytics.secret-validation=warn
+archbase.analytics.secret-min-bytes=32
+
 # Rate limiting dos fluxos de credencial (ligado por padrão)
 archbase.security.rate-limit.enabled=true
 archbase.security.rate-limit.max-attempts=10
