@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -95,8 +96,7 @@ public class AnalyticsProxyController {
     }
 
     /** Token cunhado a partir da sessão, com o escopo projetado pelo produto. */
-    private String cubeToken() {
-        String user = currentUser();
+    private String cubeToken(String user) {
         Map<String, Object> claims = scopeProvider.claimsForUser(user);
         return "Bearer " + minter.mint(user, claims, Instant.now());
     }
@@ -105,9 +105,13 @@ public class AnalyticsProxyController {
 
     @GetMapping("/meta")
     public ResponseEntity<byte[]> meta() {
+        String user = currentUser();
+        if (user == null) {
+            return envelope(HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED", false);
+        }
         try {
             HttpResponse<byte[]> resp = http.send(
-                    request("/v1/meta", cubeToken(), null, props.getTimeoutSeconds()),
+                    request("/v1/meta", cubeToken(user), null, props.getTimeoutSeconds()),
                     HttpResponse.BodyHandlers.ofByteArray());
             return resp.statusCode() == 200 ? json(HttpStatus.OK, resp.body()) : error(resp.statusCode());
         } catch (java.net.http.HttpTimeoutException e) {
@@ -128,17 +132,35 @@ public class AnalyticsProxyController {
         return runLoad(body, authorization, validOrigin(origin));
     }
 
+    /**
+     * A forma GET, para cliente que precisa de URL compartilhável.
+     *
+     * <p>O envelope é montado com o serializador, e não por concatenação de texto. Grudar
+     * {@code "{\"query\":" + query + "}"} entregava ao parâmetro da URL o poder de fechar o objeto e
+     * acrescentar campos irmãos de {@code query} — o corpo que seguia ao Cube deixava de ser o que
+     * esta classe pensava estar mandando. O POST já aceita envelope completo por contrato, então o
+     * ganho não é impedir campos: é o corpo repassado ser sempre o que o código construiu.
+     */
     @GetMapping("/load")
     public ResponseEntity<byte[]> loadGet(
             @RequestParam("query") String query,
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestHeader(value = "X-Analytics-Origin", required = false) String origin) {
-        return runLoad("{\"query\":" + query + "}", authorization, validOrigin(origin));
+        ObjectNode envelope = objectMapper.createObjectNode();
+        try {
+            envelope.set("query", objectMapper.readTree(query));
+        } catch (Exception e) {
+            return envelope(HttpStatus.BAD_REQUEST, "INVALID_QUERY", false);
+        }
+        return runLoad(envelope.toString(), authorization, validOrigin(origin));
     }
 
     private ResponseEntity<byte[]> runLoad(String body, String authorization, String origin) {
         Instant start = Instant.now();
         String user = currentUser();
+        if (user == null) {
+            return envelope(HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED", false);
+        }
         String ctxHash = securityContextHash(authorization);
 
         ObjectNode envelope;
@@ -170,9 +192,28 @@ public class AnalyticsProxyController {
             return envelope(HttpStatus.TOO_MANY_REQUESTS, "CONCURRENCY_LIMIT", true);
         }
         try {
-            return queryCube(envelope, cubeToken(), user, ctxHash, queryJson, origin, start, effective);
+            return queryCube(envelope, cubeToken(user), user, ctxHash, queryJson, origin, start, effective);
         } finally {
             sem.release();
+            descartarSeOcioso(user, sem);
+        }
+    }
+
+    /**
+     * Devolve ao mapa o espaço do semáforo de quem não tem mais consulta em curso.
+     *
+     * <p>Sem isto, cada usuário que passou uma vez pelo proxy deixava uma entrada permanente: o mapa
+     * só crescia, pela vida inteira do processo. Em aplicação com rotatividade de gente — ou com
+     * usuários efêmeros de integração — isso é um vazamento lento, do tipo que aparece semanas
+     * depois como memória que não volta.
+     *
+     * <p>A remoção é condicional para não jogar fora semáforo em uso: {@code availablePermits} de
+     * volta ao total significa que ninguém o segura neste instante. Uma corrida aqui é inofensiva —
+     * o pior caso é recriar um semáforo cheio na próxima requisição, que é o mesmo estado.
+     */
+    private void descartarSeOcioso(String user, Semaphore sem) {
+        if (sem.availablePermits() >= props.getConcurrencyPerUser()) {
+            semaphores.remove(user, sem);
         }
     }
 
@@ -246,9 +287,21 @@ public class AnalyticsProxyController {
         return payload.path("data").size();
     }
 
+    /**
+     * O usuário autenticado, ou {@code null}.
+     *
+     * <p>Antes devolvia a string {@code "desconhecido"} quando não havia autenticação, e esse nome
+     * seguia adiante como sujeito do token de escopo: o {@code DataScopeProvider} recebia um
+     * usuário que não existe e projetava o escopo que decidisse para ele. Nunca aconteceu porque
+     * nada torna estas rotas públicas — mas a proteção dependia disso continuar verdade.
+     */
     private static String currentUser() {
         Authentication a = SecurityContextHolder.getContext().getAuthentication();
-        return a != null && a.getName() != null ? a.getName() : "desconhecido";
+        if (a == null || !a.isAuthenticated() || a.getName() == null
+                || a instanceof AnonymousAuthenticationToken) {
+            return null;
+        }
+        return a.getName();
     }
 
     private static String securityContextHash(String authorization) {

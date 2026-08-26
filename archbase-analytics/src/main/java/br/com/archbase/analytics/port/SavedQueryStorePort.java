@@ -35,6 +35,23 @@ public interface SavedQueryStorePort {
 
     Optional<SavedQuery> find(String id);
 
+    /**
+     * A consulta de {@code id}, quando ela pode ser mostrada a {@code requesterId}.
+     *
+     * <p><b>Implemente isto se a sua aplicação tem mais de um tenant.</b> O controlador busca por id
+     * e decide a visibilidade por dono e escopo — e escopo {@code team}/{@code org} não tem
+     * dimensão de tenant em lugar nenhum deste contrato. Com o {@code find(String)} puro, quem
+     * souber o id de uma consulta compartilhada de outro tenant consegue lê-la, e a persistência
+     * não tem como interceptar, porque recebe só o id.
+     *
+     * <p>O padrão delega para {@link #find(String)}, preservando o comportamento de sempre: nenhuma
+     * implementação existente muda ao atualizar. Sobrescreva para estreitar ao tenant corrente —
+     * a sua implementação tem acesso ao contexto que este módulo, de propósito, não tem.
+     */
+    default Optional<SavedQuery> findVisibleTo(String id, String requesterId) {
+        return find(id);
+    }
+
     /** Insere quando {@code id} é nulo; atualiza quando existe e o dono confere. */
     SavedQuery save(String id, String name, String ownerId, String scope,
                     int schemaVersion, String queryJson, String vizJson);

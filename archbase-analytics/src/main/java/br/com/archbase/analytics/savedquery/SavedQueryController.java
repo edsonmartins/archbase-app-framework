@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -52,15 +53,30 @@ public class SavedQueryController {
     }
 
     @GetMapping
-    public List<ObjectNode> list(@RequestParam(value = "scope", required = false) String scope) {
-        String filter = SCOPES.contains(scope) ? scope : null;
-        return store.listVisible(currentUser(), filter).stream().map(this::toRecord).toList();
+    public ResponseEntity<List<ObjectNode>> list(
+            @RequestParam(value = "scope", required = false) String scope) {
+        String user = currentUser();
+        if (user == null) {
+            return ResponseEntity.status(401).build();
+        }
+        // O teste de nulo vem antes de propósito: SCOPES é um Set.of(), e Set.of().contains(null)
+        // lança NullPointerException em vez de responder false. Como o parâmetro é opcional, a
+        // chamada sem escopo — a mais comum da tela — virava 500.
+        String filter = scope != null && SCOPES.contains(scope) ? scope : null;
+        return ResponseEntity.ok(
+                store.listVisible(user, filter).stream().map(this::toRecord).toList());
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<ObjectNode> get(@PathVariable String id) {
-        return store.find(id)
-                .filter(q -> visibleTo(q, currentUser()))
+        String user = currentUser();
+        if (user == null) {
+            return ResponseEntity.status(401).build();
+        }
+        // findVisibleTo em vez de find: é o gancho por onde uma implementação multi-tenant estreita
+        // a busca ao tenant de quem pergunta. O padrão do port delega ao find de sempre.
+        return store.findVisibleTo(id, user)
+                .filter(q -> visibleTo(q, user))
                 .map(q -> ResponseEntity.ok(toRecord(q)))
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
@@ -68,6 +84,9 @@ public class SavedQueryController {
     @PostMapping
     public ResponseEntity<ObjectNode> save(@RequestBody JsonNode body) {
         String user = currentUser();
+        if (user == null) {
+            return ResponseEntity.status(401).build();
+        }
         String id = body.hasNonNull("id") ? body.get("id").asText() : null;
         JsonNode meta = body.path("meta");
         String name = meta.path("name").asText("Consulta sem nome");
@@ -76,6 +95,10 @@ public class SavedQueryController {
             scope = "private";
         }
         if (id != null) {
+            // Id que não existe segue criando o registro com a chave escolhida pelo cliente. Não é
+            // descuido: recusar seria o mais seguro, mas quebraria cliente que gera o id do próprio
+            // lado — o que é a norma em fluxo offline-first, e este framework tem um. Quem persiste
+            // é que precisa tratar o id recebido como dado de entrada, não como chave confiável.
             SavedQuery existing = store.find(id).orElse(null);
             if (existing != null && !existing.ownerId().equals(user)) {
                 return ResponseEntity.status(403).build();
@@ -88,9 +111,20 @@ public class SavedQueryController {
         return ResponseEntity.ok(toRecord(saved));
     }
 
+    /**
+     * Remove a consulta, se ela for de quem pediu.
+     *
+     * <p>Responde 204 tanto para removida quanto para inexistente ou de outro dono: o port já
+     * recusa o que não é do solicitante, e distinguir os casos na resposta contaria a um estranho
+     * que aquele id existe.
+     */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> remove(@PathVariable String id) {
-        store.remove(id, currentUser());
+        String user = currentUser();
+        if (user == null) {
+            return ResponseEntity.status(401).build();
+        }
+        store.remove(id, user);
         return ResponseEntity.noContent().build();
     }
 
@@ -124,8 +158,21 @@ public class SavedQueryController {
         return q.ownerId().equals(user) || !"private".equals(q.scope());
     }
 
+    /**
+     * O usuário autenticado, ou {@code null}.
+     *
+     * <p>Antes, sem autenticação isto devolvia a string {@code "desconhecido"}, que então virava
+     * dono e critério de visibilidade como qualquer outro nome: todos os anônimos compartilhavam
+     * uma identidade, viam as consultas uns dos outros e podiam removê-las. Nunca aconteceu porque
+     * nada torna estas rotas públicas — mas era o tipo de proteção que depende de configuração
+     * alheia continuar como está.
+     */
     private static String currentUser() {
         Authentication a = SecurityContextHolder.getContext().getAuthentication();
-        return a != null && a.getName() != null ? a.getName() : "desconhecido";
+        if (a == null || !a.isAuthenticated() || a.getName() == null
+                || a instanceof AnonymousAuthenticationToken) {
+            return null;
+        }
+        return a.getName();
     }
 }
