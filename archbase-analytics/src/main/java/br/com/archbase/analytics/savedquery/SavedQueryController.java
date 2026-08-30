@@ -11,6 +11,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -31,13 +33,16 @@ import java.util.Set;
  * corpo é ignorado na escrita). Visibilidade: as próprias + escopo team/org.
  * Remoção: só o dono.
  *
- * <p><b>Quem registra é a autoconfiguração, não o component scan</b> —
- * {@code @ResponseBody} em vez de {@code @RestController} pela mesma razão
- * descrita em {@code AnalyticsProxyController}: como estereótipo, um host que
- * escaneasse {@code br.com.archbase} registrava a classe mesmo com o analytics
- * desligado, e ela subia sem as dependências que a autoconfig publicaria.
+ * <p><b>Estereótipo condicionado</b>, pela mesma razão descrita em
+ * {@code AnalyticsProxyController}: {@code @Controller} é o que faz o Spring
+ * reconhecer a classe como handler (sem ele, nenhuma rota é mapeada e tudo
+ * responde 404), e o {@code @ConditionalOnProperty} impede que um host que
+ * escaneie {@code br.com.archbase} a registre com o analytics desligado, sem as
+ * dependências que a autoconfig publicaria.
  */
+@Controller
 @ResponseBody
+@ConditionalOnProperty(prefix = "archbase.analytics", name = "enabled", havingValue = "true")
 @RequestMapping("${archbase.analytics.base-path:/api/analytics}/saved-queries")
 public class SavedQueryController {
 
