@@ -10,7 +10,7 @@
     </parent>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-app-framework</artifactId>
-    <version>3.3.1</version>
+    <version>3.3.2</version>
     <name>archbase-app-framework</name>
     <description>Archbase Application Framework</description>
 
@@ -172,7 +172,7 @@
             <dependency>
                 <groupId>org.apache.tika</groupId>
                 <artifactId>tika-core</artifactId>
-                <version>3.3.1</version>
+                <version>3.3.2</version>
             </dependency>
             <dependency>
                 <groupId>javax.money</groupId>

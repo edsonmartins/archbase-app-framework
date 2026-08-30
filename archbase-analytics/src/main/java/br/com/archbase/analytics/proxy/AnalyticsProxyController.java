@@ -16,6 +16,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -65,11 +67,23 @@ import java.util.concurrent.Semaphore;
  *   required a bean of type 'CubeTokenMinter' that could not be found
  * </pre>
  *
- * <p>{@code @ResponseBody} preserva o comportamento REST — serialização direta
- * do retorno, sem resolução de view — sem tornar a classe candidata a scan. O
- * mapeamento das rotas continua idêntico.
+ * <p>Tirar o estereótipo resolvia o scan e quebrava o mapeamento: desde o
+ * Spring Framework 6.2 {@code RequestMappingHandlerMapping.isHandler()} é
+ * apenas {@code hasAnnotation(beanType, Controller.class)} — sem
+ * {@code @Controller} a classe vira um bean comum, nenhuma rota é registrada e
+ * todo endpoint responde 404, mesmo com o analytics ligado. O
+ * {@code @ResponseBody} sozinho não mapeia nada.
+ *
+ * <p>A saída é manter o estereótipo (para as rotas existirem) e condicionar a
+ * própria classe à mesma propriedade da autoconfiguração: o host que escaneia
+ * {@code br.com.archbase} só a registra com o analytics ligado — quando as
+ * dependências que a autoconfig publica existem —, e a autoconfig cede o bean
+ * por {@code @ConditionalOnMissingBean}. Com o analytics desligado ninguém a
+ * registra e a aplicação sobe.
  */
+@Controller
 @ResponseBody
+@ConditionalOnProperty(prefix = "archbase.analytics", name = "enabled", havingValue = "true")
 @RequestMapping("${archbase.analytics.base-path:/api/analytics}/v1")
 public class AnalyticsProxyController {
 
