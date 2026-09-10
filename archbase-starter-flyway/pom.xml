@@ -7,7 +7,7 @@
     <parent>
         <groupId>br.com.archbase</groupId>
         <artifactId>archbase-app-framework</artifactId>
-        <version>3.3.2</version>
+        <version>3.4.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>archbase-starter-flyway</artifactId>
