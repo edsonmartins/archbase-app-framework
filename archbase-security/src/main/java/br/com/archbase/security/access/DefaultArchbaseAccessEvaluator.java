@@ -218,9 +218,11 @@ public class DefaultArchbaseAccessEvaluator implements ArchbaseAccessEvaluator {
                         subject.securityIds(), requirement.action(), requirement.resource(), requireActive);
 
         if (permissoes == null || permissoes.isEmpty()) {
+            // Por NOME, não por identificador: a mensagem é lida por quem administra acesso, e
+            // uma lista de UUIDs obriga a ir ao banco para saber de quem se está falando.
             chain.add(GateOutcome.denied(Gate.GRANT, AccessReasonCodes.NO_GRANT,
                     "Nenhuma permissão para " + requirement.capability()
-                            + " entre as origens " + subject.securityIds()));
+                            + " entre as origens: " + subject.origensLegiveis()));
             return AccessDecision.denied(Gate.GRANT, AccessReasonCodes.NO_GRANT,
                     "Nenhuma permissão concedida para " + requirement.capability()
                             + " — nem direta, nem por grupo, nem por perfil.", chain);

@@ -474,7 +474,7 @@ public class ArchbaseAccessDiagnosticsService {
         return switch (branch) {
             case USERS -> userRepository.findForTree(f, pageable).map(this::toNode);
             case PROFILES -> profileRepository.findForTree(f, pageable)
-                    .map(p -> new TreeNode(p.getId(), TreeNode.TreeNodeKind.PROFILE, p.getName(), null, false, null));
+                    .map(p -> new TreeNode(p.getId(), TreeNode.TreeNodeKind.PROFILE, p.getName(), null, null, false, null));
             case GROUPS -> comMembros(groupRepository.findForTree(f, pageable));
             case RESOURCES -> comAcoes(resourceRepository.findForTree(f, pageable));
             case ACTIONS_OF_RESOURCE -> {
@@ -490,7 +490,9 @@ public class ArchbaseAccessDiagnosticsService {
         // Administrador é marcado na árvore: passa direto pelo portão final, e quem audita precisa
         // enxergar isso sem abrir a pessoa.
         boolean admin = Boolean.TRUE.equals(u.getIsAdministrator());
-        return new TreeNode(u.getId(), TreeNode.TreeNodeKind.USER, u.getName(), null, false,
+        // O e-mail como texto secundário: numa base com homônimos — e há três "Marcos" neste
+        // tenant — escolher pelo nome é escolher no escuro.
+        return new TreeNode(u.getId(), TreeNode.TreeNodeKind.USER, u.getName(), u.getEmail(), null, false,
                 admin ? "warning" : null);
     }
 
@@ -498,7 +500,7 @@ public class ArchbaseAccessDiagnosticsService {
         Map<String, Long> membros = emLote(
                 groupRepository.countMembersOf(pagina.getContent().stream().map(g -> g.getId()).toList()),
                 pagina.isEmpty());
-        return pagina.map(g -> new TreeNode(g.getId(), TreeNode.TreeNodeKind.GROUP, g.getName(),
+        return pagina.map(g -> new TreeNode(g.getId(), TreeNode.TreeNodeKind.GROUP, g.getName(), null,
                 rotulo(membros.get(g.getId())), true, null));
     }
 
@@ -515,7 +517,7 @@ public class ArchbaseAccessDiagnosticsService {
             // abrir ramo por ramo procurando.
             String severidade = c[1] > 0 ? "critical" : (Boolean.FALSE.equals(r.getActive()) ? "critical" : null);
             return new TreeNode(r.getId(), TreeNode.TreeNodeKind.RESOURCE, r.getName(),
-                    rotulo(c[0]), c[0] > 0, severidade);
+                    r.getDescription(), rotulo(c[0]), c[0] > 0, severidade);
         });
     }
 
@@ -525,7 +527,7 @@ public class ArchbaseAccessDiagnosticsService {
                         : actionRepository.countPermissionsOf(pagina.getContent().stream().map(ActionEntity::getId).toList()),
                 pagina.isEmpty());
         return pagina.map(a -> new TreeNode(a.getId(), TreeNode.TreeNodeKind.ACTION, a.getName(),
-                rotulo(concessoes.get(a.getId())), false,
+                a.getDescription(), rotulo(concessoes.get(a.getId())), false,
                 Boolean.FALSE.equals(a.getActive()) ? "critical" : null));
     }
 

@@ -2,7 +2,9 @@ package br.com.archbase.security.access;
 
 import br.com.archbase.security.persistence.UserEntity;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
@@ -110,6 +112,39 @@ public record AccessSubject(
     /** {@code true} apenas quando a flag está explicitamente marcada. Nulo não é administrador. */
     public boolean isAdministrator() {
         return Boolean.TRUE.equals(administrator);
+    }
+
+    /**
+     * As origens de permissão deste sujeito, <b>por nome</b> — a forma legível de
+     * {@link #securityIds()}.
+     *
+     * <p>Existe porque a mensagem de negação listava os identificadores crus: quatro UUIDs de 36
+     * caracteres, que só dizem alguma coisa a quem tem acesso ao banco. Quem lê um diagnóstico
+     * precisa saber que as origens eram "o próprio usuário, o perfil VENDAS_INTERNO e os grupos
+     * COMERCIAL e TIME-SAC" — é o mesmo princípio que já vale para {@code groupNames} e para o
+     * relatório de efetivo, onde exibir identificador no lugar do nome devolveria o problema a quem
+     * lê.
+     *
+     * <p>Grupo ou perfil sem nome cadastrado entra como {@code (sem nome)} em vez de sumir: a
+     * contagem de origens tem de bater com o que a decisão de fato consultou.
+     */
+    public String origensLegiveis() {
+        List<String> partes = new ArrayList<>();
+        partes.add(label());
+        if (profileId != null) {
+            partes.add("perfil " + (profileName == null || profileName.isBlank()
+                    ? "(sem nome)" : profileName));
+        }
+        if (!groupIds.isEmpty()) {
+            List<String> nomes = new ArrayList<>(groupNames);
+            // Um grupo sem nome não pode desaparecer da lista: o leitor contaria origens a menos
+            // do que a decisão consultou.
+            while (nomes.size() < groupIds.size()) {
+                nomes.add("(sem nome)");
+            }
+            partes.add((nomes.size() == 1 ? "grupo " : "grupos ") + String.join(", ", nomes));
+        }
+        return String.join("; ", partes);
     }
 
     /** Como identificar este sujeito em log e em mensagem de diagnóstico. */

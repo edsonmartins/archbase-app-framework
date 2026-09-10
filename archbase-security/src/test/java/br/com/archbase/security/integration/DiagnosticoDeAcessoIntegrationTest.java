@@ -444,6 +444,50 @@ class DiagnosticoDeAcessoIntegrationTest {
     }
 
     @Test
+    @DisplayName("o nó leva a DESCRIÇÃO junto do identificador — recurso e ação")
+    void noLevaDescricao() {
+        // A árvore mostrava só o `label`, que para recurso e ação é o identificador técnico: quem
+        // administra lia "ArchbaseAdvancedSidebar" onde deveria ler "Navegação", e ação nenhuma
+        // tinha descrição. Os dois campos servem, cada um a uma pergunta — o cliente exibe a
+        // descrição e mantém o identificador ao lado.
+        ResourceEntity comDescricao = resourceRepository.save(ResourceEntity.builder()
+                .id("res-desc").name("ArchbaseAdvancedSidebar").description("Navegação")
+                .active(true).createEntityDate(LocalDateTime.now()).createdByUser("teste").build());
+        actionRepository.save(ActionEntity.builder()
+                .id("act-desc").name("abrir").description("Abrir o menu lateral")
+                .resource(comDescricao).active(true)
+                .createEntityDate(LocalDateTime.now()).createdByUser("teste").build());
+
+        TreeNode noDoRecurso = diagnostics
+                .browse(TreeBranch.RESOURCES, null, "ArchbaseAdvancedSidebar", PageRequest.of(0, 10))
+                .getContent().get(0);
+
+        assertThat(noDoRecurso.label()).isEqualTo("ArchbaseAdvancedSidebar");
+        assertThat(noDoRecurso.description()).isEqualTo("Navegação");
+
+        TreeNode noDaAcao = diagnostics
+                .browse(TreeBranch.ACTIONS_OF_RESOURCE, comDescricao.getId(), "", PageRequest.of(0, 10))
+                .getContent().get(0);
+
+        assertThat(noDaAcao.label()).isEqualTo("abrir");
+        assertThat(noDaAcao.description()).isEqualTo("Abrir o menu lateral");
+    }
+
+    @Test
+    @DisplayName("a pessoa leva o E-MAIL como texto secundário — homônimo não se escolhe pelo nome")
+    void pessoaLevaEmail() {
+        // Três "Marcos" neste tenant. O seletor mostrava só o nome, e escolher entre dois idênticos
+        // era chute — enquanto o e-mail estava ali, exibido depois no portão Identidade.
+        usuario("user-desc", false);
+
+        TreeNode no = diagnostics.browse(TreeBranch.USERS, null, "user-desc", PageRequest.of(0, 10))
+                .getContent().get(0);
+
+        assertThat(no.label()).isEqualTo("Usuário user-desc");
+        assertThat(no.description()).isEqualTo("user-desc@exemplo.test");
+    }
+
+    @Test
     @DisplayName("o recurso marca no nó que tem ação desativada, sem precisar abrir o ramo")
     void recursoMarcaProblemaSemAbrir() {
         UserEntity user = usuario("alguem", false);

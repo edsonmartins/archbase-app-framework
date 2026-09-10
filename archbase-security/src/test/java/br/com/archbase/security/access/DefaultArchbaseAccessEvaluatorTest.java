@@ -307,6 +307,50 @@ class DefaultArchbaseAccessEvaluatorTest {
         }
 
         @Test
+        @DisplayName("as origens têm forma legível — nome, não identificador")
+        void origensLegiveis() {
+            // A mensagem de negação lista as origens consultadas, e listava UUID cru: quatro
+            // identificadores de 36 caracteres que só dizem algo a quem tem acesso ao banco.
+            UserEntity user = usuario("user-1", false);
+            user.setEmail("marcos@exemplo.test");
+            user.setProfile(br.com.archbase.security.persistence.ProfileEntity.builder()
+                    .id("profile-1").name("VENDAS_INTERNO").description("Perfil").build());
+            vincular(user, grupo("COMERCIAL"));
+
+            String legivel = AccessSubject.of(user).origensLegiveis();
+
+            assertThat(legivel).contains("marcos@exemplo.test", "perfil VENDAS_INTERNO", "grupo COMERCIAL");
+            assertThat(legivel).doesNotContain("user-1", "profile-1", "group-COMERCIAL");
+        }
+
+        @Test
+        @DisplayName("sujeito sem perfil e sem grupo lista só a si mesmo")
+        void origensSoOUsuario() {
+            UserEntity user = usuario("user-1", false);
+            user.setEmail("sozinho@exemplo.test");
+
+            String legivel = AccessSubject.of(user).origensLegiveis();
+
+            assertThat(legivel).isEqualTo("sozinho@exemplo.test");
+            assertThat(legivel).doesNotContain("perfil", "grupo");
+        }
+
+        @Test
+        @DisplayName("grupo sem nome vira '(sem nome)' — a contagem tem de bater com o consultado")
+        void grupoSemNomeNaoSome() {
+            // Se o grupo sumisse da lista, quem lê contaria menos origens do que a decisão de fato
+            // consultou — e concluiria que a busca foi mais estreita do que foi.
+            UserEntity user = usuario("user-1", false);
+            user.setEmail("marcos@exemplo.test");
+            br.com.archbase.security.persistence.GroupEntity semNome =
+                    br.com.archbase.security.persistence.GroupEntity.builder()
+                            .id("group-x").description("Grupo sem nome").build();
+            vincular(user, semNome);
+
+            assertThat(AccessSubject.of(user).origensLegiveis()).contains("grupo (sem nome)");
+        }
+
+        @Test
         @DisplayName("isAdministrator nulo não é administrador, e é distinguível de false")
         void nuloNaoEAdministrador() {
             AccessSubject nulo = AccessSubject.of(usuario("user-1", null));
