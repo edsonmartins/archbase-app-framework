@@ -14,6 +14,11 @@ package br.com.archbase.security.access;
  *                      consegue explicar por que uma concessão existente não vale: "concedida e
  *                      bloqueada" fica indistinguível de "concedida e valendo"
  * @param situation     se a concessão vale hoje, e quando não, por quê
+ * @param unmetDependencies as capacidades que esta aqui declara precisar e que o sujeito
+ *                      <b>não</b> alcança. Vem <b>vazia</b> de {@code ArchbaseCapabilityReader}:
+ *                      calculá-la ali custaria uma consulta a mais em todo carregamento de tela,
+ *                      e a tela não usa o campo. Quem preenche é o diagnóstico, que é onde a
+ *                      pergunta é feita
  */
 public record EffectiveCapability(
         String resource,
@@ -24,7 +29,27 @@ public record EffectiveCapability(
         boolean actionActive,
         boolean resourceActive,
         AccessLevel minimumLevel,
-        Situation situation) {
+        Situation situation,
+        java.util.List<String> unmetDependencies) {
+
+    public EffectiveCapability {
+        unmetDependencies = unmetDependencies == null
+                ? java.util.List.of() : java.util.List.copyOf(unmetDependencies);
+    }
+
+    /**
+     * A mesma capacidade, com as dependências não atendidas preenchidas.
+     *
+     * <p><b>A situação NÃO muda.</b> Uma capacidade com dependência faltando continua
+     * {@code EFFECTIVE}, porque é isso que a decisão faz com ela: deixa passar. Introduzir um
+     * quarto valor de {@link Situation} faria o diagnóstico afirmar algo que o avaliador não
+     * sustenta — a divergência entre tela e decisão que o core existe para eliminar. Daí a
+     * informação viver em campo separado.
+     */
+    public EffectiveCapability withUnmetDependencies(java.util.List<String> naoAtendidas) {
+        return new EffectiveCapability(resource, action, grantedBy, grantedByName, grantedByType,
+                actionActive, resourceActive, minimumLevel, situation, naoAtendidas);
+    }
 
     public String capability() {
         return resource + ":" + action;

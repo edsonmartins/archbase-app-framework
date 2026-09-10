@@ -13,6 +13,7 @@ O módulo `archbase-security` fornece funcionalidades robustas de segurança par
 | Autenticação, login social, MFA, customizar a configuração | [readme-security.md](readme-security.md) |
 | Ligar uma proteção sem quebrar produção | [../deployment/security-hardening.md](../deployment/security-hardening.md) |
 | O desenho do core e por que ele é assim | [MODELO_CORE_AUTORIZACAO.md](MODELO_CORE_AUTORIZACAO.md) |
+| Dependências entre capacidades — o contrato, ainda não implementado | [CONTRATO_DEPENDENCIAS_DE_CAPACIDADE.md](CONTRATO_DEPENDENCIAS_DE_CAPACIDADE.md) |
 
 ### O modelo em quatro linhas
 

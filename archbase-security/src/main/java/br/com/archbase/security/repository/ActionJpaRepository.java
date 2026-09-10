@@ -24,6 +24,16 @@ public interface ActionJpaRepository extends ArchbaseCommonJpaRepository<ActionE
             @Param("actionName") String actionName,
             @Param("resourceName") String resourceName);
 
+    /**
+     * Todo o catálogo com o recurso junto — a tabela de resolução das dependências.
+     *
+     * <p>Uma consulta, e não uma por aresta: a resolução precisa traduzir {@code recurso:acao} em
+     * capacidade para cada aresta declarada, e navegar {@code a.resource} depois seria um N+1 do
+     * tamanho do catálogo, dentro da subida da aplicação.
+     */
+    @Query("SELECT a FROM ActionEntity a JOIN FETCH a.resource")
+    List<ActionEntity> findAllWithResource();
+
     /** Contagem de ações por situação, para o painel de diagnóstico. */
     @Query("SELECT COUNT(a) FROM ActionEntity a WHERE a.active = :active")
     long countByActive(@Param("active") boolean active);

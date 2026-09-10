@@ -124,3 +124,82 @@ alter table seguranca
 
 comment on column seguranca.employee_id is
     'Matricula do funcionario na empresa. Elo com RH, ponto e folha. Diferente de external_id, que identifica a conta no provedor de identidade.';
+
+-- ── 3.4: dependências entre capacidades (ActionDependencyEntity) ──────────────────────────────
+-- Uma aresta dirigida "a origem não serve para nada sem o alvo". Cobre tanto a dependência entre
+-- dois endpoints quanto o botão de uma tela que chama um endpoint — são a mesma aresta.
+-- Ver archbase-security/CONTRATO_DEPENDENCIAS_DE_CAPACIDADE.md.
+--
+-- INFORMATIVA, NUNCA PORTÃO. A decisão de acesso não lê esta tabela, e não há flag que a faça ler.
+-- Base existente sobe idêntica: sem @HasPermission(requires=...) e sem 'requires' no payload das
+-- telas, a tabela nasce e permanece vazia.
+--
+-- POR QUE O ALVO É TEXTO. A varredura não tem ordem garantida entre recursos — quando a aresta é
+-- gravada, a ação alvo pode ainda não existir — e o alvo pode nunca existir (erro de digitação,
+-- módulo não implantado). A aresta precisa ficar visível como não resolvida em vez de sumir.
+-- id_acao_requerida é um espelho, reapontado a cada sincronização.
+--
+-- Este CREATE existe para quem roda ddl-auto=validate: o inicializador de schema do framework é um
+-- SmartInitializingSingleton e roda DEPOIS da validação do Hibernate, então não chega a tempo.
+-- O Flyway roda antes.
+create table if not exists seguranca_acao_dependencia (
+    id_dependencia         varchar(40)  not null,
+    cd_dependencia         varchar(40),
+    tenant_id              varchar(40),
+    id_acao                varchar(40)  not null,
+    capacidade_requerida   varchar(200) not null,
+    id_acao_requerida      varchar(40),
+    declarada_por          varchar(20)  not null,
+    versao                 bigint,
+    dh_criacao             timestamp(6),
+    usuario_criou          varchar(255),
+    dh_atualizacao         timestamp(6),
+    ultimo_usuario_alterou varchar(255),
+    constraint pk_seguranca_acao_dependencia primary key (id_dependencia),
+    constraint fk_seguranca_acao_dependencia_acao
+        foreign key (id_acao) references seguranca_acao (id_acao),
+    constraint fk_seguranca_acao_dependencia_requerida
+        foreign key (id_acao_requerida) references seguranca_acao (id_acao)
+);
+
+-- Uma aresta por par (origem, alvo). O tenant entra na chave como nas demais entidades do módulo.
+create unique index if not exists uk_seguranca_acao_dependencia
+    on seguranca_acao_dependencia (tenant_id, id_acao, capacidade_requerida);
+
+-- Consulta quente: a tela pede as dependências de um conjunto de capacidades a cada abertura.
+create index if not exists idx_seguranca_acao_dependencia_acao
+    on seguranca_acao_dependencia (id_acao);
+
+comment on table seguranca_acao_dependencia is
+    'Arestas "a capacidade X precisa da capacidade Y". Informativas: a decisao de acesso nao as le.';
+comment on column seguranca_acao_dependencia.capacidade_requerida is
+    'O alvo em texto, no formato recurso:acao. E a chave — id_acao_requerida e apenas o espelho resolvido.';
+comment on column seguranca_acao_dependencia.id_acao_requerida is
+    'O alvo resolvido, ou nulo enquanto a capacidade alvo nao existir no catalogo.';
+comment on column seguranca_acao_dependencia.declarada_por is
+    'SCAN (@HasPermission, reconciliacao integral) ou REGISTER (tela, poda escopada a acao).';
+
+-- ── 3.4: rótulo da capacidade, separado da descrição (ActionEntity) ───────────────────────────
+-- DESCRICAO vinha fazendo três trabalhos: identificar a linha na tela de permissões, explicar o que
+-- a ação faz e — via '->' embutido, que o cliente quebra na exibição — agrupar. O resultado é um
+-- catálogo em que centenas de linhas se chamam "Criar X", "Editar X", "Listar X", geradas em massa
+-- pelo frontend, e quem administra não consegue distinguir uma da outra.
+--
+-- A coluna entra NULA e continua nula em toda capacidade existente. Nulo significa "use a
+-- descrição", então a tela mostra exatamente o que mostra hoje. NÃO há reescrita em massa: as
+-- descrições atuais funcionam como rótulo, e trocá-las por conta própria substituiria um texto que
+-- alguém conhece por outro que ninguém pediu.
+--
+-- CATEGORIA já existia e nunca foi preenchida por nenhum coletor — passa a ser, quando o código ou
+-- a tela a declararem.
+--
+-- Para reescrever os textos de um catálogo já existente a partir do código, existe
+-- archbase.security.sync.mode=refresh: usado UMA vez, de propósito, e depois desligado. Ele
+-- descarta ajuste feito pelo admin nesses três campos, e por isso não é o padrão.
+alter table seguranca_acao
+    add column if not exists rotulo varchar(120);
+
+comment on column seguranca_acao.rotulo is
+    'Rotulo curto da capacidade ("Aprovar custo"). Nulo = use a descricao. Distinto de DESCRICAO, que explica o que a acao faz, e de CATEGORIA, que agrupa.';
+comment on column seguranca_acao.categoria is
+    'Agrupamento das capacidades dentro do recurso ("Custos"). Substitui o "->" que era embutido na descricao.';

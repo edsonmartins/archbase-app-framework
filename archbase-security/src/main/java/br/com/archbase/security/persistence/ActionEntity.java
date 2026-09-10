@@ -59,6 +59,27 @@ public class ActionEntity extends TenantPersistenceEntityBase {
     @JoinColumn(name = "ID_RECURSO", nullable = false)
     private ResourceEntity resource;
 
+    /**
+     * O rótulo curto — "Aprovar custo" —, distinto da descrição, que explica <b>o que a ação faz</b>.
+     *
+     * <p>Nulo é o estado de toda ação existente, e significa "use a descrição". Não há backfill: as
+     * descrições atuais funcionam como rótulo hoje, e reescrevê-las em massa trocaria um texto que
+     * alguém conhece por outro que ninguém pediu. A separação passa a valer para quem declarar
+     * {@code @HasPermission(label = ...)}, e o resto segue exatamente como está.
+     *
+     * <p>Semeado no primeiro registro, como a descrição e o nível mínimo — a partir daí quem manda é
+     * o admin. {@code archbase.security.sync.mode=refresh} é o que ressemeia a partir do código.
+     */
+    @Column(name = "ROTULO", nullable = true, length = 120)
+    private String label;
+
+    /**
+     * O eixo de agrupamento das capacidades dentro do recurso — "Custos", "Faturamento".
+     *
+     * <p>A coluna existe desde sempre e <b>nunca foi preenchida</b> por nenhum coletor. Enquanto
+     * isso, o agrupamento era improvisado dentro da descrição, com um {@code ->} que o cliente
+     * quebra na exibição — de modo que o mesmo campo identificava, explicava e agrupava.
+     */
     @Column(name = "CATEGORIA", nullable = true)
     private String category;
 
@@ -86,11 +107,12 @@ public class ActionEntity extends TenantPersistenceEntityBase {
     }
 
     @Builder
-    public ActionEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, ResourceEntity resource, String category, Boolean active, String actionVersion, AccessLevel minimumLevel) {
+    public ActionEntity(String id, String code, Long version, LocalDateTime createEntityDate, String createdByUser, LocalDateTime updateEntityDate, String lastModifiedByUser, String tenantId, String name, String description, ResourceEntity resource, String label, String category, Boolean active, String actionVersion, AccessLevel minimumLevel) {
         super(id, code, version, createEntityDate, createdByUser, updateEntityDate, lastModifiedByUser, tenantId);
         this.name = name;
         this.description = description;
         this.resource = resource;
+        this.label = label;
         this.category = category;
         this.active = active;
         this.actionVersion = actionVersion;
@@ -109,6 +131,7 @@ public class ActionEntity extends TenantPersistenceEntityBase {
         actionEntity.setName(action.getName());
         actionEntity.setDescription(action.getDescription());
         actionEntity.setResource(ResourceEntity.fromDomain(action.getResource()));
+        actionEntity.setLabel(action.getLabel());
         actionEntity.setCategory(action.getCategory());
         actionEntity.setMinimumLevel(action.getMinimumLevel());
         actionEntity.setActive(action.getActive());
@@ -130,6 +153,7 @@ public class ActionEntity extends TenantPersistenceEntityBase {
                 .name(this.getName())
                 .description(this.getDescription())
                 .resource(resourceDomain)
+                .label(this.getLabel())
                 .category(this.getCategory())
                 .active(this.getActive())
                 .actionVersion(this.getActionVersion())
@@ -151,6 +175,7 @@ public class ActionEntity extends TenantPersistenceEntityBase {
                 .name(this.getName())
                 .description(this.getDescription())
                 .resource(resourceDto)
+                .label(this.getLabel())
                 .category(this.getCategory())
                 .active(this.getActive())
                 .actionVersion(this.getActionVersion())

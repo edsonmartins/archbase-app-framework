@@ -113,7 +113,10 @@ public class ArchbaseCapabilityReader {
                     acaoAtiva,
                     recursoAtivo,
                     acao.getMinimumLevel(),
-                    situacao));
+                    situacao,
+                    // Vazia de propósito: esta leitura roda a cada renderização de tela, e a tela
+                    // não usa o campo. Quem o preenche é o diagnóstico.
+                    List.of()));
         }
 
         capacidades.sort(Comparator.comparing(EffectiveCapability::capability));

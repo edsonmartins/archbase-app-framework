@@ -314,7 +314,7 @@ liga uma flag — mesma disciplina das flags de endurecimento, com pré-validaç
 archbase.security.permission.require-active=false      # alinha o backend ao frontend
 archbase.security.access-level.enabled=false            # liga o portão 4
 archbase.security.access-level.default=READER           # nível de quem não tem perfil
-archbase.security.sync.mode=apply                       # apply | report
+archbase.security.sync.mode=apply                       # apply | report | refresh
 archbase.security.diagnostics.enabled=false             # expõe overview/effective/simulate
 ```
 

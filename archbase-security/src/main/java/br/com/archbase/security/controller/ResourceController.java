@@ -96,6 +96,28 @@ public class ResourceController {
         }
     }
 
+    /**
+     * "Do que esta permissão depende?" — direta e indiretamente.
+     *
+     * <p>Endpoint próprio, e não um campo do catálogo, porque o fecho de centenas de capacidades
+     * numa resposta só custaria mais do que a informação vale. As dependências <b>diretas</b> já vêm
+     * no catálogo; este responde quando alguém abre o detalhe de uma linha.
+     *
+     * <p>O caminho tem dois segmentos depois de {@code /permissions} e não colide com
+     * {@code /permissions/{resourceName}}, que tem um — a mesma forma de
+     * {@code /permissions/security/{id}}.
+     *
+     * <p>Administrativo por herança do {@code @ArchbaseSecurityAdminEndpoint} da classe: saber a
+     * malha de dependências do sistema é conhecimento de quem administra o acesso.
+     */
+    @GetMapping("/permissions/dependencies/{actionId}")
+    public ResponseEntity<CapabilityDependencyTreeDto> findCapabilityDependencies(
+            @PathVariable String actionId) {
+        return resourceService.findCapabilityDependencies(actionId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
     @GetMapping("/permissions")
     public ResponseEntity<List<ResoucePermissionsWithTypeDto>> findAllResourcesPermissions() {
         try {

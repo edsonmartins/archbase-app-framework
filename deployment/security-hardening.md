@@ -249,7 +249,7 @@ padrão preserva o comportamento atual**, e o log diz, a cada subida, o que est�
 archbase.security.audit.tenant-scoped=true
 ```
 
-`SecurityEventEntity` é a única das quinze entidades do módulo que não estende
+`SecurityEventEntity` é a única das dezesseis entidades do módulo que não estende
 `TenantPersistenceEntityBase`, e portanto a única sem o `@TenantId` que faz o Hibernate filtrar
 sozinho. O evento sempre gravou a coluna `TENANT_ID` — a intenção de isolar estava lá —, mas a
 consulta de leitura não a usava: **um administrador de um tenant lia os eventos de todos os

@@ -363,6 +363,51 @@ timedatectl
 
 ---
 
+### 1.5 A tela de permissões não mostra a capacidade que eu quero conceder
+
+Três causas distintas, e a diferença entre elas importa.
+
+**A tela nunca foi aberta por um administrador.** O catálogo de um recurso de tela é criado pelo
+`POST /api/v1/resource/register`, que **escreve** o catálogo e por isso é endpoint administrativo.
+Desde a correção do 403 em toda tela, usuário comum apenas lê — quem registra é o administrador. Na
+prática: **a capacidade de uma tela só existe depois que um administrador abriu aquela tela ao menos
+uma vez.**
+
+É o comportamento correto, e tem um efeito colateral que ninguém conta: a lista de disponíveis
+*parece* completa quando não é. Não há como o servidor distinguir uma tela que ninguém abriu de uma
+tela que não existe.
+
+> Se o produto esconde telas do administrador por papel, ele está escondendo também o registro
+> delas. Abra cada tela uma vez com uma conta administrativa antes de sair concedendo.
+
+**A ação foi desativada.** A varredura de `@HasPermission` desativa capacidades de tipo `API` que o
+código não declara mais, e a tela filtra `action.active`. Rode com
+`archbase.security.sync.mode=report` e leia o log: ele lista o que seria desativado antes de
+escrever qualquer coisa.
+
+**O `@HasPermission` não pôde ser catalogado.** Método anotado cujo recurso não resolve — sem
+`resource` na anotação e sem `@ArchbaseResource` na classe que **declara** o método — não vira linha
+de catálogo. A varredura registra `ERROR` apontando a classe e o método na subida. A capacidade é
+exigida em runtime e não existe para ser concedida, então todo não-administrador leva 403 permanente.
+
+### 1.6 A permissão está concedida e o usuário continua sem conseguir
+
+**Recurso desativado.** Uma concessão sobre ação ativa de recurso **inativo** funciona hoje — o
+`@HasPermission` não consulta `active` — e deixa de funcionar no dia em que
+`archbase.security.permission.require-active` for ligado. A tela de permissões mostra essas linhas
+marcadas como *recurso desativado* em vez de escondê-las, justamente para dar a chance de arrumar
+antes. O panorama do diagnóstico conta quantas são.
+
+**Falta uma dependência.** Conceder `aprovar_custo` sem `view` produz alguém que passa na autorização
+do endpoint e não chega até ele pela interface — e nada aparece errado em lugar nenhum. Se o código
+declara `@HasPermission(requires = ...)`, o relatório de efetivo
+(`/api/v1/security/diagnostics/users/{id}/effective`) traz `unmetDependencies` por capacidade, e a
+tela de concessão oferece as dependências junto.
+
+**Uma negação explícita.** Uma linha `DENY` em qualquer origem — usuário, grupo ou perfil — vence a
+concessão dentro do escopo em que foi declarada. O relatório de efetivo lista a capacidade com
+situação `DENIED`, e a simulação (`POST /diagnostics/simulate`) diz em que portão parou.
+
 ## 2. Dicas de Debug
 
 ### 2.1 Habilitar Logging Detalhado

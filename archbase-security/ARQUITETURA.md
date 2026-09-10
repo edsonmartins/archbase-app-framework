@@ -952,7 +952,7 @@ Não impede a subida — desliga silenciosamente todo o catálogo de endpoint.
 archbase.security.access-level.enabled=false     # liga o portão LEVEL
 archbase.security.access-level.default=READER    # nível de quem não tem perfil
 archbase.security.permission.require-active=false # alinha o backend ao frontend
-archbase.security.sync.mode=apply                # apply | report
+archbase.security.sync.mode=apply                # apply | report | refresh
 archbase.security.diagnostics.enabled=false      # expõe /security/diagnostics/*
 ```
 

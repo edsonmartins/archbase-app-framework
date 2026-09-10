@@ -57,6 +57,8 @@ public class ArchbaseAccessDiagnosticsService {
     @Autowired(required = false)
     private List<ArchbaseRoleResolver> roleResolvers = List.of();
 
+    private final br.com.archbase.security.repository.ActionDependencyJpaRepository dependencyRepository;
+
     @Value("${archbase.security.permission.require-active:false}")
     private boolean requireActive;
 
@@ -77,7 +79,8 @@ public class ArchbaseAccessDiagnosticsService {
                                             ResourceJpaRepository resourceRepository,
                                             UserJpaRepository userRepository,
                                             GroupJpaRepository groupRepository,
-                                            ProfileJpaRepository profileRepository) {
+                                            ProfileJpaRepository profileRepository,
+                                            br.com.archbase.security.repository.ActionDependencyJpaRepository dependencyRepository) {
         this.evaluator = evaluator;
         this.subjectLoader = subjectLoader;
         this.capabilityReader = capabilityReader;
@@ -87,6 +90,7 @@ public class ArchbaseAccessDiagnosticsService {
         this.userRepository = userRepository;
         this.groupRepository = groupRepository;
         this.profileRepository = profileRepository;
+        this.dependencyRepository = dependencyRepository;
     }
 
     // ------------------------------------------------------------------ simulação
@@ -112,7 +116,8 @@ public class ArchbaseAccessDiagnosticsService {
     }
 
     private EffectiveAccessReport effectiveOf(AccessSubject subject) {
-        List<EffectiveCapability> capacidades = capabilityReader.grantedTo(subject);
+        List<EffectiveCapability> capacidades =
+                comDependenciasNaoAtendidas(capabilityReader.grantedTo(subject));
         int inertes = (int) capacidades.stream()
                 .filter(c -> c.situation() == EffectiveCapability.Situation.INERT).count();
         int negadas = (int) capacidades.stream()
@@ -135,6 +140,63 @@ public class ArchbaseAccessDiagnosticsService {
                 capacidades);
     }
 
+
+    /**
+     * Marca, em cada capacidade, o que ela declara precisar e o sujeito não alcança.
+     *
+     * <p><b>Dependências DIRETAS.</b> O fecho transitivo é outra pergunta, e tem endpoint próprio:
+     * expandi-lo aqui faria um relatório de centenas de linhas carregar centenas de fechos, e
+     * responderia mais do que foi perguntado.
+     *
+     * <p><b>A situação não muda.</b> Capacidade com dependência faltando continua {@code EFFECTIVE},
+     * porque é o que a decisão faz com ela. O contrário faria o diagnóstico contradizer o avaliador
+     * que ele existe para explicar.
+     *
+     * <p>Só as {@code EFFECTIVE} contam como alcançadas: uma dependência que o sujeito tem apenas
+     * como concessão negada ou inerte não o ajuda a chegar a lugar nenhum.
+     */
+    private List<EffectiveCapability> comDependenciasNaoAtendidas(List<EffectiveCapability> capacidades) {
+        if (capacidades.isEmpty()) {
+            return capacidades;
+        }
+
+        Map<String, List<String>> arestas = new LinkedHashMap<>();
+        for (var aresta : dependencyRepository.findAllWithOrigin()) {
+            var origem = aresta.getAction();
+            if (origem == null || origem.getResource() == null) {
+                continue;
+            }
+            arestas.computeIfAbsent(
+                            br.com.archbase.security.util.CapabilityRef.de(
+                                    origem.getResource().getName(), origem.getName()),
+                            c -> new java.util.ArrayList<>())
+                    .add(aresta.getRequiredCapability());
+        }
+
+        if (arestas.isEmpty()) {
+            return capacidades;
+        }
+
+        java.util.Set<String> alcancadas = capacidades.stream()
+                .filter(c -> c.situation() == EffectiveCapability.Situation.EFFECTIVE)
+                .map(EffectiveCapability::capability)
+                .collect(java.util.stream.Collectors.toSet());
+
+        return capacidades.stream()
+                .map(capacidade -> {
+                    List<String> exigidas = arestas.get(capacidade.capability());
+                    if (exigidas == null) {
+                        return capacidade;
+                    }
+                    List<String> naoAtendidas = exigidas.stream()
+                            .filter(exigida -> !alcancadas.contains(exigida))
+                            .sorted()
+                            .toList();
+                    return naoAtendidas.isEmpty()
+                            ? capacidade : capacidade.withUnmetDependencies(naoAtendidas);
+                })
+                .toList();
+    }
 
     // ------------------------------------------------------------------ panorama
 

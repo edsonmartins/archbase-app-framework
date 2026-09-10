@@ -35,6 +35,29 @@ public @interface HasPermission {
     String resource() default "";
 
     /**
+     * O rótulo curto que aparece na lista do admin — "Aprovar custo".
+     *
+     * <p>Existe porque {@code description} vinha fazendo três trabalhos ao mesmo tempo: identificar
+     * a linha, explicar a ação e — via {@code ->} embutido — agrupar. O resultado é um catálogo em
+     * que centenas de linhas se chamam "Criar X", "Editar X", "Listar X", geradas em massa, e quem
+     * administra não consegue distinguir uma da outra.
+     *
+     * <p>Vazio significa <b>use a descrição</b>, que é como todo catálogo existente continua se
+     * comportando. Não há reescrita em massa: as descrições atuais funcionam como rótulo hoje, e
+     * trocá-las por conta própria substituiria um texto que alguém conhece por outro que ninguém
+     * pediu.
+     */
+    String label() default "";
+
+    /**
+     * O agrupamento das capacidades dentro do recurso — "Custos", "Faturamento".
+     *
+     * <p>Substitui o {@code ->} embutido na descrição, que o cliente quebra na exibição para
+     * simular hierarquia. Vazio não agrupa, e a lista fica como está.
+     */
+    String category() default "";
+
+    /**
      * O nível mínimo que esta capacidade exige.
      *
      * <p>É apenas a <b>semente</b>: o valor é gravado em {@code SEGURANCA_ACAO.MINIMUM_LEVEL} no
@@ -49,6 +72,25 @@ public @interface HasPermission {
      * permissão concedida no catálogo. Ele apenas impede que uma concessão indevida valha.
      */
     AccessLevel minimumLevel() default AccessLevel.NONE;
+
+    /**
+     * As capacidades sem as quais esta aqui não serve para nada na prática.
+     *
+     * <p>Duas formas: {@code "view"} é a ação do <b>mesmo recurso</b>; {@code "tms.cliente:view"} é
+     * qualificada. Nome de recurso que contenha {@code :} torna a forma qualificada ambígua — a
+     * aresta não é catalogada e a varredura registra o método no log, sem derrubar a subida.
+     *
+     * <p><b>Informativo. Nunca é portão.</b> A decisão de acesso <b>não</b> lê estas arestas, e não
+     * há flag que a faça ler. Se declarar {@code requires} passasse a exigir a dependência na
+     * autorização, toda instalação existente perderia acesso na primeira subida após a atualização —
+     * em silêncio, porque ninguém declarou pensando em autorização. O que elas alimentam é a tela de
+     * concessão (que passa a oferecer as dependências junto, e a avisar ao revogar) e o relatório de
+     * efetivo.
+     *
+     * <p>Ao contrário de {@code description} e {@code minimumLevel}, que são <b>semente</b> e depois
+     * pertencem ao administrador, a aresta é propriedade do código: ela é refeita a cada subida.
+     */
+    String[] requires() default {};
 
     String tenantId() default "";
 

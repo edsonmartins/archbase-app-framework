@@ -18,6 +18,7 @@ public class Action extends DomainEntityBase<Resource> {
     protected String name;
     protected String description;
     protected Resource resource;
+    protected String label;
     protected String category;
     protected Boolean active;
     protected String actionVersion;
@@ -26,11 +27,12 @@ public class Action extends DomainEntityBase<Resource> {
     protected AccessLevel minimumLevel;
 
     @Builder
-    public Action(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Resource resource, String category, Boolean active, String actionVersion, AccessLevel minimumLevel) {
+    public Action(String id, String code, Long version, LocalDateTime updateEntityDate, LocalDateTime createEntityDate, String createdByUser, String lastModifiedByUser, String name, String description, Resource resource, String label, String category, Boolean active, String actionVersion, AccessLevel minimumLevel) {
         super(id, code, version, updateEntityDate, createEntityDate, createdByUser, lastModifiedByUser);
         this.name = name;
         this.description = description;
         this.resource = resource;
+        this.label = label;
         this.category = category;
         this.active = active;
         this.actionVersion = actionVersion;

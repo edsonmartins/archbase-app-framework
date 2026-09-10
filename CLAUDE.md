@@ -263,7 +263,7 @@ archbase.security.password.expiration-days=0
 # Esquema de segurança entregue pelo framework (ver deployment/esquema-de-seguranca.md)
 # Na subida, compara o mapeamento das entidades de segurança com o banco e cria o que falta.
 # Sem versão nem baseline: em banco que já tem tudo, não faz nada. Só comandos aditivos —
-# nunca drop, nunca alteração do que já existe — e nada fora das 15 entidades do módulo.
+# nunca drop, nunca alteração do que já existe — e nada fora das 16 entidades do módulo.
 archbase.security.schema.mode=apply                          # apply | report | off
 archbase.security.schema.fail-on-error=false                 # true = não sobe se o DDL falhar
 
@@ -297,7 +297,10 @@ archbase.app.tenant.accept-query-param=true                 # aceita X-TENANT-ID
 archbase.security.access-level.enabled=false                # liga o portão LEVEL (piso por capacidade)
 archbase.security.access-level.default=READER               # nível de quem não tem perfil, ou perfil sem nível
 archbase.security.diagnostics.enabled=false                 # expõe /api/v1/security/diagnostics/*
-archbase.security.sync.mode=apply                           # apply | report — report não escreve nada
+archbase.security.sync.mode=apply                           # apply | report | refresh
+# report não escreve nada. refresh REESCREVE descrição, rótulo e categoria das capacidades
+# existentes a partir do código, descartando ajuste do admin — use uma vez e volte para apply.
+# O nível mínimo NUNCA é reescrito: é o único dos quatro que muda uma decisão de acesso.
 # Os endpoints de diagnóstico exigem isAdministrator MESMO quando ligados — não dependem de
 # admin-endpoints.policy, cujo padrão permit deixaria qualquer autenticado entrar.
 

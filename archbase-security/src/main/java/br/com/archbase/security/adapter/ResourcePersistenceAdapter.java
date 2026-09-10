@@ -11,13 +11,13 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import br.com.archbase.security.adapter.port.ResourcePersistencePort;
 import br.com.archbase.security.domain.dto.*;
+import br.com.archbase.security.domain.entity.TipoRecurso;
 import br.com.archbase.security.domain.entity.User;
 import br.com.archbase.security.persistence.*;
 import br.com.archbase.security.repository.PermissionJpaRepository;
 import br.com.archbase.security.domain.dto.ResourcePermissionsDto;
 import br.com.archbase.security.repository.ResourceJpaRepository;
 import com.querydsl.core.Tuple;
-import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.EntityManager;
 import com.querydsl.core.types.dsl.BooleanExpression;
@@ -36,6 +36,7 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
     private final PermissionJpaRepository permissionRepository;
     private final ArchbaseAccessSubjectLoader subjectLoader;
     private final ArchbaseCapabilityReader capabilityReader;
+    private final br.com.archbase.security.repository.ActionDependencyJpaRepository dependencyRepository;
     private final JPAQueryFactory queryFactory;
 
     @Autowired
@@ -43,12 +44,14 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                                       PermissionJpaRepository permissionRepository,
                                       ArchbaseAccessSubjectLoader subjectLoader,
                                       ArchbaseCapabilityReader capabilityReader,
+                                      br.com.archbase.security.repository.ActionDependencyJpaRepository dependencyRepository,
                                       EntityManager entityManager) {
         this.repository = repository;
         this.securityAdapter = securityAdapter;
         this.permissionRepository = permissionRepository;
         this.subjectLoader = subjectLoader;
         this.capabilityReader = capabilityReader;
+        this.dependencyRepository = dependencyRepository;
         this.queryFactory = new JPAQueryFactory(entityManager);
     }
 
@@ -78,6 +81,31 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                     existingEntity.setName(resourceDto.getName());
                     return repository.save(existingEntity).toDto();
                 });
+    }
+
+    /**
+     * Classifica um recurso que esteja <b>sem tipo</b>, e nada mais.
+     *
+     * <p>Existe porque {@link #updateResource(String, ResourceDto)} não copia o tipo — e não deve
+     * passar a copiar. Aquele método atende o {@code PUT /api/v1/resource/{id}}, que todo cliente
+     * atual chama sem o campo; copiar o que chega <b>apagaria</b> a classificação a cada edição de
+     * descrição feita pelo admin.
+     *
+     * <p>Grava só quando o tipo está nulo. Recurso já classificado é devolvido intacto, para que a
+     * classificação não oscile entre a subida da aplicação (que marca {@code API}) e a abertura da
+     * tela (que marca {@code VIEW}) — um recurso que troca de tipo troca de seção na interface a
+     * cada deploy.
+     */
+    public Optional<ResourceDto> classificarSeSemTipo(String id, TipoRecurso tipo) {
+        return repository.findById(id).map(entidade -> {
+            if (entidade.getType() != null) {
+                return entidade.toDto();
+            }
+            entidade.setType(tipo);
+            entidade.setUpdateEntityDate(java.time.LocalDateTime.now());
+            entidade.setLastModifiedByUser("archbase");
+            return repository.save(entidade).toDto();
+        });
     }
 
     @Override
@@ -192,6 +220,81 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
         return user.getId();
     }
 
+    /**
+     * Uma linha crua do catálogo, já com a origem resolvida.
+     *
+     * <p>Substitui o par de gambiarras que sustentava este trecho: a origem era lida do
+     * {@code Tuple} por <b>posição</b> ({@code t.get(4, SecurityType.class)}), o que amarrava o
+     * agrupamento à ordem das colunas do {@code select} — acrescentar uma coluna quebrava a leitura
+     * sem erro de compilação —, e a identidade do recurso era transportada concatenando
+     * {@code id + ":" + descrição} para depois ser desfeita com {@code split(":")}. A segunda era
+     * pior que feia: descrição contendo {@code :} voltava truncada, e descrição <b>vazia</b> fazia
+     * {@code "id:".split(":")} devolver um único elemento, de modo que o {@code get(1)} estourava
+     * {@code IndexOutOfBounds} e a tela inteira respondia 500. Recurso de tela nasce com a descrição
+     * que o cliente mandar, e o registro aceita string vazia.
+     */
+    private record LinhaDePermissao(
+            String resourceId,
+            String resourceName,
+            String resourceDescription,
+            TipoRecurso resourceType,
+            Boolean resourceActive,
+            String actionId,
+            String actionName,
+            String actionLabel,
+            String actionDescription,
+            String actionCategory,
+            SecurityType origem,
+            String permissionId) {
+    }
+
+    /**
+     * As colunas que as três consultas selecionam, na mesma ordem — o que permite uma única
+     * conversão para {@link LinhaDePermissao}.
+     */
+    private static com.querydsl.core.types.Expression<?>[] colunasDaPermissao(QPermissionEntity permission) {
+        return new com.querydsl.core.types.Expression<?>[]{
+                permission.action.resource.id,
+                permission.action.resource.name,
+                permission.action.resource.description,
+                permission.action.resource.type,
+                permission.action.resource.active,
+                permission.action.id,
+                permission.action.name,
+                permission.action.label,
+                permission.action.description,
+                permission.action.category,
+                permission.id
+        };
+    }
+
+    /**
+     * Converte a tupla numa linha, com a origem e a concessão declaradas por quem chamou.
+     *
+     * @param comConcessao {@code false} para as vias <b>herdadas</b>. Ao editar um usuário, a
+     *                     concessão que vem do grupo ou do perfil não é dele: devolver o
+     *                     {@code permissionId} daquela linha faria o botão de remover apagar a
+     *                     permissão <b>do grupo inteiro</b> a partir da tela de uma pessoa. O nulo
+     *                     é o que sinaliza "isto você não tira daqui" — e é responsabilidade da
+     *                     interface dizer isso, em vez de apenas desabilitar o botão.
+     */
+    private static LinhaDePermissao linhaDe(Tuple tupla, QPermissionEntity permission,
+                                            SecurityType origem, boolean comConcessao) {
+        return new LinhaDePermissao(
+                tupla.get(permission.action.resource.id),
+                tupla.get(permission.action.resource.name),
+                tupla.get(permission.action.resource.description),
+                tupla.get(permission.action.resource.type),
+                tupla.get(permission.action.resource.active),
+                tupla.get(permission.action.id),
+                tupla.get(permission.action.name),
+                tupla.get(permission.action.label),
+                tupla.get(permission.action.description),
+                tupla.get(permission.action.category),
+                origem,
+                comConcessao ? tupla.get(permission.id) : null);
+    }
+
     @Override
     public List<ResoucePermissionsWithTypeDto> findUserResourcesPermissions(String userId) {
 
@@ -202,13 +305,13 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
         QProfileEntity profile = QProfileEntity.profileEntity;
 
         List<Tuple> userPermissions = queryFactory
-                .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.USER), permission.id)
+                .select(colunasDaPermissao(permission))
                 .from(permission)
                 .where(permission.security.id.eq(userId).and(permission.action.active.isTrue()).and(naoENegacao(permission)))
                 .fetch();
 
         List<Tuple> profilePermissions = queryFactory
-                .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.PROFILE))
+                .select(colunasDaPermissao(permission))
                 .from(permission)
                 .join(permission.security, profile._super)
                 .join(user).on(user.profile.eq(profile))
@@ -216,19 +319,19 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
                 .fetch();
 
         List<Tuple> groupPermissions = queryFactory
-                .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.GROUP))
+                .select(colunasDaPermissao(permission))
                 .from(permission)
                 .join(permission.security, group._super)
                 .join(userGroup).on(userGroup.group.eq(group))
                 .where(userGroup.user.id.eq(userId).and(permission.action.active.isTrue()).and(naoENegacao(permission)))
                 .fetch();
 
-        List<Tuple> permissionsTuple = new ArrayList<>();
-        permissionsTuple.addAll(userPermissions);
-        permissionsTuple.addAll(profilePermissions);
-        permissionsTuple.addAll(groupPermissions);
+        List<LinhaDePermissao> linhas = new ArrayList<>();
+        userPermissions.forEach(t -> linhas.add(linhaDe(t, permission, SecurityType.USER, true)));
+        profilePermissions.forEach(t -> linhas.add(linhaDe(t, permission, SecurityType.PROFILE, false)));
+        groupPermissions.forEach(t -> linhas.add(linhaDe(t, permission, SecurityType.GROUP, false)));
 
-        return groupTuplesToResourcePermissions(permissionsTuple, permission);
+        return comDependencias(agruparPorRecurso(linhas));
     }
 
     @Override
@@ -237,14 +340,17 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
         QPermissionEntity permission = QPermissionEntity.permissionEntity;
         QProfileEntity profile = QProfileEntity.profileEntity;
 
-        List<Tuple> profilePermissions = queryFactory
-                .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.PROFILE), permission.id)
+        List<LinhaDePermissao> linhas = queryFactory
+                .select(colunasDaPermissao(permission))
                 .from(permission)
                 .join(permission.security, profile._super)
                 .where(profile.id.eq(profileId).and(permission.action.active.isTrue()).and(naoENegacao(permission)))
-                .fetch();
+                .fetch()
+                .stream()
+                .map(t -> linhaDe(t, permission, SecurityType.PROFILE, true))
+                .toList();
 
-        return groupTuplesToResourcePermissions(profilePermissions, permission);
+        return comDependencias(agruparPorRecurso(linhas));
     }
 
     @Override
@@ -253,89 +359,167 @@ public class ResourcePersistenceAdapter implements ResourcePersistencePort, Find
         QPermissionEntity permission = QPermissionEntity.permissionEntity;
         QGroupEntity group = QGroupEntity.groupEntity;
 
-        List<Tuple> groupPermissions = queryFactory
-                .select(permission.action.resource.id, permission.action.resource.description, permission.action.id, permission.action.description, Expressions.constant(SecurityType.GROUP), permission.id)
+        List<LinhaDePermissao> linhas = queryFactory
+                .select(colunasDaPermissao(permission))
                 .from(permission)
                 .join(permission.security, group._super)
                 .where(group.id.eq(groupId).and(permission.action.active.isTrue()).and(naoENegacao(permission)))
-                .fetch();
+                .fetch()
+                .stream()
+                .map(t -> linhaDe(t, permission, SecurityType.GROUP, true))
+                .toList();
 
-
-        return groupTuplesToResourcePermissions(groupPermissions, permission);
+        return comDependencias(agruparPorRecurso(linhas));
     }
 
+    /**
+     * O catálogo inteiro — a lista "disponíveis" da tela de concessão.
+     *
+     * <p>Parte de {@code ActionEntity}, e não de {@code PermissionEntity}: a pergunta aqui é o que
+     * <b>existe para ser concedido</b>, não o que já foi. Recurso sem nenhuma ação ativa não aparece,
+     * o que é correto — não há o que conceder nele.
+     *
+     * <p>O filtro continua sendo apenas {@code action.active}. Recurso inativo com ação ativa segue
+     * listado, como sempre esteve: apertar isso é mudança de comportamento e pertence à flag
+     * {@code archbase.security.permission.require-active}, não a este passo.
+     */
     @Override
     public List<ResoucePermissionsWithTypeDto> findAllResourcesPermissions() {
         QActionEntity action = QActionEntity.actionEntity;
 
-        List<Tuple> permissionsTuple = queryFactory
-                .select(action.resource.id, action.resource.description, action.id, action.description)
+        List<LinhaDePermissao> linhas = queryFactory
+                .select(action.resource.id, action.resource.name, action.resource.description,
+                        action.resource.type, action.resource.active, action.id, action.name,
+                        action.label, action.description, action.category)
                 .from(action)
                 .where(action.active.isTrue())
-                .fetch();
+                .fetch()
+                .stream()
+                .map(t -> new LinhaDePermissao(
+                        t.get(action.resource.id),
+                        t.get(action.resource.name),
+                        t.get(action.resource.description),
+                        t.get(action.resource.type),
+                        t.get(action.resource.active),
+                        t.get(action.id),
+                        t.get(action.name),
+                        t.get(action.label),
+                        t.get(action.description),
+                        t.get(action.category),
+                        // Sem origem: esta lista diz o que EXISTE, não o que foi concedido a
+                        // alguém. Inventar um SecurityType aqui faria a tela marcar como concedido
+                        // o catálogo inteiro.
+                        null,
+                        null))
+                .toList();
 
-        Map<String, Map<String, List<Tuple>>> groupedByResource = permissionsTuple.stream()
-                .collect(Collectors.groupingBy(t -> t.get(action.resource.id) + ":" + t.get(action.resource.description),
-                        Collectors.groupingBy(t -> t.get(action.id))));
-
-        return groupedByResource.entrySet().stream()
-                .map(entry -> {
-                    List<String> resourceIdName = Arrays.stream(entry.getKey().split(":")).toList();
-                    List<PermissionWithTypesDto> permissions = entry.getValue().entrySet().stream()
-                            .map(actionEntry -> {
-                                String actionId = actionEntry.getKey();
-                                String actionName = actionEntry.getValue().get(0).get(action.description);
-                                return PermissionWithTypesDto.builder()
-                                        .actionDescription(actionName)
-                                        .actionId(actionId)
-                                        .build();
-                            })
-                            .collect(Collectors.toList());
-                    return ResoucePermissionsWithTypeDto.builder()
-                            .resourceId(resourceIdName.get(0))
-                            .resourceDescription(resourceIdName.get(1))
-                            .permissions(permissions)
-                            .build();
-                })
-                .collect(Collectors.toList());
+        return comDependencias(agruparPorRecurso(linhas));
     }
 
-    private static List<ResoucePermissionsWithTypeDto> groupTuplesToResourcePermissions(List<Tuple> permissionsTuple, QPermissionEntity permission) {
-        Map<String, Map<String, List<Tuple>>> groupedByResource = permissionsTuple.stream()
-                .collect(Collectors.groupingBy(t -> t.get(permission.action.resource.id) + ":" + t.get(permission.action.resource.description),
-                        Collectors.groupingBy(t -> t.get(permission.action.id))));
+    /**
+     * Preenche as dependências diretas de cada capacidade da resposta.
+     *
+     * <p>Uma consulta para a listagem inteira, e não uma por linha: a tela de concessão baixa o
+     * catálogo completo a cada abertura, e uma consulta por capacidade transformaria isso em
+     * centenas de idas ao banco.
+     *
+     * <p>Nulo quando não há nenhuma — o DTO omite o campo, e o cliente que não o conhece continua
+     * recebendo exatamente a resposta de antes.
+     */
+    private List<ResoucePermissionsWithTypeDto> comDependencias(List<ResoucePermissionsWithTypeDto> recursos) {
+        List<String> capacidades = recursos.stream()
+                .flatMap(r -> r.getPermissions().stream())
+                .map(PermissionWithTypesDto::getActionId)
+                .filter(Objects::nonNull)
+                .toList();
 
-        return groupedByResource.entrySet().stream()
-                .map(entry -> {
-                    List<String> resourceIdDescription = Arrays.stream(entry.getKey().split(":")).toList();
-                    List<PermissionWithTypesDto> permissions = entry.getValue().entrySet().stream()
-                            .map(actionEntry -> {
-                                String actionId = actionEntry.getKey();
-                                Set<SecurityType> types = actionEntry.getValue().stream()
-                                        .map(t -> t.get(4, SecurityType.class))
-                                        .collect(Collectors.toSet());
-                                String actionDescription = actionEntry.getValue().get(0).get(permission.action.description);
-                                String permissionId = actionEntry.getValue().get(0).get(permission.id);
-                                PermissionWithTypesDto permissionWithTypesDto = PermissionWithTypesDto.builder()
-                                        .actionDescription(actionDescription)
-                                        .actionId(actionId)
-                                        .types(types)
-                                        .build();
+        if (capacidades.isEmpty()) {
+            return recursos;
+        }
 
-                                if (permissionId != null) {
-                                    permissionWithTypesDto.setPermissionId(permissionId);
-                                }
+        Map<String, List<String>> porCapacidade = new LinkedHashMap<>();
+        dependencyRepository.findCapabilitiesRequiredBy(capacidades).forEach(linha ->
+                porCapacidade.computeIfAbsent((String) linha[0], a -> new ArrayList<>())
+                        .add((String) linha[1]));
 
-                                return permissionWithTypesDto;
-                            })
-                            .collect(Collectors.toList());
-                    return ResoucePermissionsWithTypeDto.builder()
-                            .resourceId(resourceIdDescription.get(0))
-                            .resourceDescription(resourceIdDescription.get(1))
-                            .permissions(permissions)
-                            .build();
-                })
-                .collect(Collectors.toList());
+        if (porCapacidade.isEmpty()) {
+            return recursos;
+        }
+
+        recursos.forEach(recurso -> recurso.getPermissions().forEach(permissao -> {
+            List<String> exigidas = porCapacidade.get(permissao.getActionId());
+            if (exigidas != null && !exigidas.isEmpty()) {
+                permissao.setRequires(exigidas.stream().sorted().toList());
+            }
+        }));
+
+        return recursos;
+    }
+
+    /**
+     * Agrupa as linhas por recurso e, dentro dele, por capacidade.
+     *
+     * <p>Uma capacidade aparece <b>uma vez</b>, com o conjunto das origens que a concederam — é o
+     * que produz as etiquetas "usuário / grupo / perfil" na tela. O {@code permissionId} é o
+     * primeiro não nulo entre as linhas daquela capacidade: só as vias que pertencem à entidade em
+     * edição o trazem, então o resultado é a concessão removível, quando existe alguma.
+     *
+     * <p>A ordem de iteração é preservada ({@code LinkedHashMap}) para que a lista não mude de
+     * ordem entre duas chamadas idênticas — o agrupamento anterior usava {@code HashMap} e a árvore
+     * embaralhava sozinha a cada abertura do modal.
+     */
+    private static List<ResoucePermissionsWithTypeDto> agruparPorRecurso(List<LinhaDePermissao> linhas) {
+        Map<String, List<LinhaDePermissao>> porRecurso = linhas.stream()
+                .collect(Collectors.groupingBy(LinhaDePermissao::resourceId,
+                        LinkedHashMap::new, Collectors.toList()));
+
+        List<ResoucePermissionsWithTypeDto> recursos = new ArrayList<>(porRecurso.size());
+
+        porRecurso.forEach((resourceId, doRecurso) -> {
+            LinhaDePermissao primeira = doRecurso.get(0);
+
+            Map<String, List<LinhaDePermissao>> porAcao = doRecurso.stream()
+                    .collect(Collectors.groupingBy(LinhaDePermissao::actionId,
+                            LinkedHashMap::new, Collectors.toList()));
+
+            List<PermissionWithTypesDto> capacidades = new ArrayList<>(porAcao.size());
+
+            porAcao.forEach((actionId, daAcao) -> {
+                Set<SecurityType> origens = daAcao.stream()
+                        .map(LinhaDePermissao::origem)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toCollection(LinkedHashSet::new));
+
+                String permissionId = daAcao.stream()
+                        .map(LinhaDePermissao::permissionId)
+                        .filter(Objects::nonNull)
+                        .findFirst()
+                        .orElse(null);
+
+                capacidades.add(PermissionWithTypesDto.builder()
+                        .permissionId(permissionId)
+                        .actionId(actionId)
+                        .actionName(daAcao.get(0).actionName())
+                        .actionLabel(daAcao.get(0).actionLabel())
+                        .actionDescription(daAcao.get(0).actionDescription())
+                        .actionCategory(daAcao.get(0).actionCategory())
+                        // Vazio vira nulo para preservar a resposta anterior: a lista de
+                        // disponíveis nunca teve o campo, e o DTO o omite quando nulo.
+                        .types(origens.isEmpty() ? null : origens)
+                        .build());
+            });
+
+            recursos.add(ResoucePermissionsWithTypeDto.builder()
+                    .resourceId(resourceId)
+                    .resourceName(primeira.resourceName())
+                    .resourceDescription(primeira.resourceDescription())
+                    .resourceType(primeira.resourceType())
+                    .resourceActive(primeira.resourceActive())
+                    .permissions(capacidades)
+                    .build());
+        });
+
+        return recursos;
     }
 
     @Override

@@ -24,15 +24,22 @@ import java.util.Optional;
 @Service
 public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery<String, ResourceDto> {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(ResourceService.class);
+
     private final ResourcePersistenceAdapter adapter;
     private final SecurityAdapter securityAdapter;
     private final ActionPersistenceAdapter actionPersistenceAdapter;
+    private final ArchbaseCapabilityDependencyService dependencyService;
 
     @Autowired
-    public ResourceService(ResourcePersistenceAdapter adapter, SecurityAdapter securityAdapter, ActionPersistenceAdapter actionPersistenceAdapter) {
+    public ResourceService(ResourcePersistenceAdapter adapter, SecurityAdapter securityAdapter,
+                           ActionPersistenceAdapter actionPersistenceAdapter,
+                           ArchbaseCapabilityDependencyService dependencyService) {
         this.adapter = adapter;
         this.securityAdapter = securityAdapter;
         this.actionPersistenceAdapter = actionPersistenceAdapter;
+        this.dependencyService = dependencyService;
     }
 
     @Override
@@ -78,6 +85,18 @@ public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery
                     .build();
 
             resourceDto = adapter.createResource(resourceDto);
+        } else if (resourceDto.getType() == null) {
+            // CLASSIFICACAO RETROATIVA, e so isso — o espelho do que a varredura faz com API.
+            //
+            // TIPO_RECURSO e nulavel e chegou depois de muita gente ja ter catalogo. A tela de
+            // permissoes passa a separar recurso de tela de recurso de endpoint por este campo, e
+            // sem preencher o que ja existe a separacao nasceria vazia justamente nas bases que
+            // mais precisam dela.
+            //
+            // So preenche o NULO: recurso que ja tem tipo nao e tocado, para que a classificacao
+            // nao oscile entre a subida da aplicacao e a abertura da tela.
+            resourceDto = adapter.classificarSeSemTipo(resourceDto.getId(), TipoRecurso.VIEW)
+                    .orElse(resourceDto);
         }
         final var finalResourceDto = resourceDto;
         // O REGISTRO DE TELA É ADITIVO: cria o que falta, reativa o que voltou, e NUNCA desativa.
@@ -111,10 +130,13 @@ public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery
         resourceRegister.getActions().forEach(simpleActionDto -> {
             Optional<ActionDto> actionOptional = actionPersistenceAdapter
                     .findActionByName(simpleActionDto.getActionName(), finalResourceDto.getId());
+            ActionDto capacidade;
             if (actionOptional.isEmpty()) {
                 ActionDto action = ActionDto.builder()
                         .name(simpleActionDto.getActionName())
                         .description(simpleActionDto.getActionDescription())
+                        .label(simpleActionDto.getActionLabel())
+                        .category(simpleActionDto.getActionCategory())
                         .resource(finalResourceDto)
                         .createEntityDate(LocalDateTime.now())
                         .updateEntityDate(LocalDateTime.now())
@@ -122,16 +144,68 @@ public class ResourceService implements ResourceUseCase, FindDataWithFilterQuery
                         .version(0L)
                         .active(true)
                         .build();
-                actionPersistenceAdapter.createAction(action);
+                capacidade = actionPersistenceAdapter.createAction(action);
             } else {
                 ActionDto foundAction = actionOptional.get();
                 if (!foundAction.getActive()) {
                     foundAction.setActive(true);
                     actionPersistenceAdapter.updateAction(foundAction.getId(), foundAction);
                 }
+                capacidade = foundAction;
+                // Semeia o que nunca foi semeado. Rótulo e categoria são campos novos, e nulo numa
+                // capacidade existente é ausência do campo na versão em que a linha nasceu — não
+                // decisão de quem administra.
+                actionPersistenceAdapter.semearTextosSeAusentes(foundAction.getId(),
+                        simpleActionDto.getActionLabel(), simpleActionDto.getActionCategory());
             }
+            sincronizarDependencias(simpleActionDto, capacidade, finalResourceDto);
         });
         return adapter.findLoggedUserResourcePermissions(finalResourceDto.getName());
+    }
+
+    /**
+     * Grava as dependências que a tela declarou para esta capacidade.
+     *
+     * <p><b>Escopada à ação, e só às ações do payload.</b> Um recurso pode ser declarado por mais de
+     * uma tela, e cada uma envia só as ações que usa — a mesma razão que tornou o registro aditivo.
+     * Ação ausente do payload não chega aqui, e portanto não é tocada.
+     *
+     * <p>{@code requires} nulo — o que todo cliente anterior envia — significa "não declarei" e sai
+     * sem fazer nada. Lista vazia significa "não há nenhuma" e remove as que existirem.
+     */
+    private void sincronizarDependencias(SimpleActionDto declarada, ActionDto capacidade,
+                                         ResourceDto recurso) {
+        if (declarada.getRequires() == null || capacidade == null || capacidade.getId() == null) {
+            return;
+        }
+
+        ArchbaseCapabilityDependencyService.Qualificadas qualificadas =
+                ArchbaseCapabilityDependencyService.qualificar(
+                        declarada.getRequires(), recurso.getName(), capacidade.getName());
+
+        // Aviso, e não erro: isto é entrada de cliente, e o resto do registro segue valendo.
+        qualificadas.invalidas().forEach(invalida -> log.warn(
+                "Registro da tela '{}' declara requires=\"{}\" na ação '{}', que não é uma capacidade "
+                        + "válida. Use \"acao\" para o mesmo recurso ou \"recurso:acao\" para outro. "
+                        + "Ignorada.",
+                recurso.getName(), invalida, capacidade.getName()));
+
+        qualificadas.autoReferencias().forEach(auto -> log.warn(
+                "Registro da tela '{}' declara dependência de si mesma ('{}'). Ignorada.",
+                recurso.getName(), auto));
+
+        dependencyService.reconcileRegisterById(capacidade.getId(), qualificadas.validas());
+    }
+
+    /**
+     * Tudo de que uma capacidade depende, direta e indiretamente.
+     *
+     * <p>Vive aqui, e não em {@code ResourceUseCase}, porque acrescentar método a uma interface
+     * pública do framework quebra quem a implementa fora deste repositório. O controller já depende
+     * da classe concreta.
+     */
+    public Optional<CapabilityDependencyTreeDto> findCapabilityDependencies(String actionId) {
+        return dependencyService.closureOf(actionId);
     }
 
     @Override

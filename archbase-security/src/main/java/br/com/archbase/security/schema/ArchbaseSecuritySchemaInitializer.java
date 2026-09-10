@@ -93,6 +93,7 @@ public class ArchbaseSecuritySchemaInitializer implements SmartInitializingSingl
             AccessIntervalEntity.class,
             AccessScheduleEntity.class,
             AccessTokenEntity.class,
+            ActionDependencyEntity.class,
             ActionEntity.class,
             ApiTokenEntity.class,
             ArchbaseSecurityRevision.class,

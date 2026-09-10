@@ -44,6 +44,7 @@ class VarreduraDeCapacidadesTest {
 
     private ActionJpaRepository actionRepository;
     private ResourceJpaRepository resourceRepository;
+    private ArchbaseCapabilityDependencyService dependencyService;
     private ArchbaseActionSynchronizationService service;
 
     @ArchbaseResource(value = "tms.ordemservico", description = "Ordem de serviço")
@@ -90,7 +91,9 @@ class VarreduraDeCapacidadesTest {
     void setUp() {
         actionRepository = mock(ActionJpaRepository.class);
         resourceRepository = mock(ResourceJpaRepository.class);
-        service = new ArchbaseActionSynchronizationService(actionRepository, resourceRepository);
+        dependencyService = mock(ArchbaseCapabilityDependencyService.class);
+        service = new ArchbaseActionSynchronizationService(actionRepository, resourceRepository,
+                dependencyService);
         ReflectionTestUtils.setField(service, "syncMode", "apply");
         when(actionRepository.findAll(any(com.querydsl.core.types.Predicate.class))).thenReturn(List.of());
         when(resourceRepository.findAll(any(com.querydsl.core.types.Predicate.class))).thenReturn(List.of());
@@ -169,7 +172,7 @@ class VarreduraDeCapacidadesTest {
                     .thenReturn(Optional.empty());
 
             ReflectionTestUtils.invokeMethod(service, "synchronizeAction",
-                    "aprovar_custo", "Aprovar custo", recurso, AccessLevel.SUPERVISOR);
+                    "aprovar_custo", recurso, metadados("Aprovar custo", AccessLevel.SUPERVISOR));
 
             ArgumentCaptor<ActionEntity> captor = ArgumentCaptor.forClass(ActionEntity.class);
             verify(actionRepository).save(captor.capture());
@@ -200,9 +203,137 @@ class VarreduraDeCapacidadesTest {
                     .thenReturn(Optional.of(existente));
 
             ReflectionTestUtils.invokeMethod(service, "synchronizeAction",
-                    "aprovar_custo", "Aprovar custo", recurso, AccessLevel.TENANT_ADMIN);
+                    "aprovar_custo", recurso, metadados("Aprovar custo", AccessLevel.TENANT_ADMIN));
 
             assertThat(existente.getMinimumLevel()).isEqualTo(AccessLevel.OPERATOR);
+            verify(actionRepository, never()).save(any(ActionEntity.class));
+        }
+    }
+
+    @Nested
+    @DisplayName("rótulo e categoria")
+    class RotuloECategoria {
+
+        @Test
+        @DisplayName("rótulo e categoria da anotação nascem com a capacidade")
+        void semeiaNaCriacao() {
+            ResourceEntity recurso = recurso("tms.ordemservico");
+            when(actionRepository.findByActionNameAndResourceName(anyString(), anyString()))
+                    .thenReturn(Optional.empty());
+            when(actionRepository.save(any(ActionEntity.class)))
+                    .thenAnswer(chamada -> chamada.getArgument(0));
+
+            ReflectionTestUtils.invokeMethod(service, "synchronizeAction", "aprovar_custo", recurso,
+                    new ArchbaseActionSynchronizationService.MetadadosDaCapacidade(
+                            "Aprovar o custo da OS", "Aprovar custo", "Custos", null));
+
+            ArgumentCaptor<ActionEntity> captor = ArgumentCaptor.forClass(ActionEntity.class);
+            verify(actionRepository).save(captor.capture());
+            assertThat(captor.getValue().getLabel()).isEqualTo("Aprovar custo");
+            assertThat(captor.getValue().getCategory()).isEqualTo("Custos");
+        }
+
+        @Test
+        @DisplayName("capacidade existente SEM rótulo recebe o que o código declara")
+        void semeiaOQueNuncaFoiSemeado() {
+            // Campo novo: nulo numa capacidade existente é ausência do campo na versão em que a
+            // linha nasceu, não escolha de quem administra.
+            ResourceEntity recurso = recurso("tms.ordemservico");
+            ActionEntity existente = existente(recurso, null, null);
+
+            ReflectionTestUtils.invokeMethod(service, "synchronizeAction", "aprovar_custo", recurso,
+                    new ArchbaseActionSynchronizationService.MetadadosDaCapacidade(
+                            "Aprovar o custo da OS", "Aprovar custo", "Custos", null));
+
+            assertThat(existente.getLabel()).isEqualTo("Aprovar custo");
+            assertThat(existente.getCategory()).isEqualTo("Custos");
+        }
+
+        @Test
+        @DisplayName("rótulo já gravado NÃO é sobrescrito — quem manda é o admin")
+        void naoSobrescreveOAdmin() {
+            ResourceEntity recurso = recurso("tms.ordemservico");
+            ActionEntity existente = existente(recurso, "Rótulo do admin", "Categoria do admin");
+
+            ReflectionTestUtils.invokeMethod(service, "synchronizeAction", "aprovar_custo", recurso,
+                    new ArchbaseActionSynchronizationService.MetadadosDaCapacidade(
+                            "Aprovar o custo da OS", "Aprovar custo", "Custos", null));
+
+            assertThat(existente.getLabel()).isEqualTo("Rótulo do admin");
+            assertThat(existente.getCategory()).isEqualTo("Categoria do admin");
+            verify(actionRepository, never()).save(any(ActionEntity.class));
+        }
+    }
+
+    @Nested
+    @DisplayName("modo refresh")
+    class ModoRefresh {
+
+        @BeforeEach
+        void ligarRefresh() {
+            ReflectionTestUtils.setField(service, "syncMode", "refresh");
+        }
+
+        @Test
+        @DisplayName("reescreve descrição, rótulo e categoria a partir do código")
+        void reescreveOsTextos() {
+            // A saída do beco sem saída: um catálogo que nasceu com centenas de "Criar X" geradas em
+            // massa nunca melhora enquanto a semente só semear uma vez.
+            ResourceEntity recurso = recurso("tms.ordemservico");
+            ActionEntity existente = existente(recurso, "Rótulo antigo", "Categoria antiga");
+            existente.setDescription("Criar Ordem de serviço");
+
+            ReflectionTestUtils.invokeMethod(service, "synchronizeAction", "aprovar_custo", recurso,
+                    new ArchbaseActionSynchronizationService.MetadadosDaCapacidade(
+                            "Aprovar o custo da OS", "Aprovar custo", "Custos", null));
+
+            assertThat(existente.getDescription()).isEqualTo("Aprovar o custo da OS");
+            assertThat(existente.getLabel()).isEqualTo("Aprovar custo");
+            assertThat(existente.getCategory()).isEqualTo("Custos");
+        }
+
+        @Test
+        @DisplayName("atributo removido do código LIMPA o valor — o modo não mente sobre o que faz")
+        void removerDoCodigoLimpa() {
+            ResourceEntity recurso = recurso("tms.ordemservico");
+            ActionEntity existente = existente(recurso, "Rótulo antigo", "Categoria antiga");
+
+            ReflectionTestUtils.invokeMethod(service, "synchronizeAction", "aprovar_custo", recurso,
+                    new ArchbaseActionSynchronizationService.MetadadosDaCapacidade(
+                            "Aprovar custo", null, null, null));
+
+            assertThat(existente.getLabel()).isNull();
+            assertThat(existente.getCategory()).isNull();
+        }
+
+        @Test
+        @DisplayName("o NÍVEL MÍNIMO não é tocado — é o único que muda uma decisão")
+        void naoTocaNoPiso() {
+            // Dos quatro campos semeados, minimumLevel é o único que altera autorização.
+            // Reescrevê-lo junto com um rótulo seria mudança de segurança disfarçada de ajuste de
+            // texto.
+            ResourceEntity recurso = recurso("tms.ordemservico");
+            ActionEntity existente = existente(recurso, null, null);
+            existente.setMinimumLevel(AccessLevel.OPERATOR);
+
+            ReflectionTestUtils.invokeMethod(service, "synchronizeAction", "aprovar_custo", recurso,
+                    new ArchbaseActionSynchronizationService.MetadadosDaCapacidade(
+                            "Aprovar custo", "Aprovar", null, AccessLevel.TENANT_ADMIN));
+
+            assertThat(existente.getMinimumLevel()).isEqualTo(AccessLevel.OPERATOR);
+        }
+
+        @Test
+        @DisplayName("sem nada a trocar, não grava — subida em refresh não vira escrita em massa")
+        void semMudancaNaoGrava() {
+            ResourceEntity recurso = recurso("tms.ordemservico");
+            ActionEntity existente = existente(recurso, "Aprovar custo", "Custos");
+            existente.setDescription("Aprovar o custo da OS");
+
+            ReflectionTestUtils.invokeMethod(service, "synchronizeAction", "aprovar_custo", recurso,
+                    new ArchbaseActionSynchronizationService.MetadadosDaCapacidade(
+                            "Aprovar o custo da OS", "Aprovar custo", "Custos", null));
+
             verify(actionRepository, never()).save(any(ActionEntity.class));
         }
     }
@@ -234,7 +365,8 @@ class VarreduraDeCapacidadesTest {
                     .thenReturn(Optional.empty());
 
             ReflectionTestUtils.invokeMethod(service, "synchronizeAction",
-                    "aprovar_custo", "Aprovar custo", recurso("tms.ordemservico"), AccessLevel.SUPERVISOR);
+                    "aprovar_custo", recurso("tms.ordemservico"),
+                    metadados("Aprovar custo", AccessLevel.SUPERVISOR));
 
             verify(actionRepository, never()).save(any(ActionEntity.class));
         }
@@ -305,5 +437,23 @@ class VarreduraDeCapacidadesTest {
         org.reflections.Reflections reflections = mock(org.reflections.Reflections.class);
         when(reflections.getMethodsAnnotatedWith(HasPermission.class)).thenReturn(java.util.Set.of());
         return reflections;
+    }
+
+    private ArchbaseActionSynchronizationService.MetadadosDaCapacidade metadados(
+            String description, AccessLevel minimumLevel) {
+        return new ArchbaseActionSynchronizationService.MetadadosDaCapacidade(
+                description, null, null, minimumLevel);
+    }
+
+    private ActionEntity existente(ResourceEntity recurso, String label, String category) {
+        ActionEntity existente = ActionEntity.builder()
+                .id("action-1").name("aprovar_custo").description("Aprovar custo")
+                .label(label).category(category)
+                .resource(recurso).active(true).build();
+        when(actionRepository.findByActionNameAndResourceName(anyString(), anyString()))
+                .thenReturn(Optional.of(existente));
+        when(actionRepository.save(any(ActionEntity.class)))
+                .thenAnswer(chamada -> chamada.getArgument(0));
+        return existente;
     }
 }

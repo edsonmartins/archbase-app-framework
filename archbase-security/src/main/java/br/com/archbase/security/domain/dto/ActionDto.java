@@ -26,6 +26,7 @@ public class ActionDto {
 	protected String name;
 	protected String description;
 	protected ResourceDto resource;
+	protected String label;
 	protected String category;
 	protected Boolean active;
 	protected String actionVersion;
@@ -52,6 +53,7 @@ public class ActionDto {
 				.name(action.getName())
 				.description(action.getDescription())
 				.resource(ResourceDto.fromDomain(action.getResource()))
+				.label(action.getLabel())
 				.category(action.getCategory())
 				.active(action.getActive())
 				.actionVersion(action.getActionVersion())
@@ -71,6 +73,7 @@ public class ActionDto {
 				.name(this.name)
 				.description(this.description)
 				.resource(this.resource != null ? this.resource.toDomain() : null)
+				.label(this.label)
 				.category(this.category)
 				.active(this.active)
 				.actionVersion(this.actionVersion)

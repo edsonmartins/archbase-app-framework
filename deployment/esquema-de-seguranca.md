@@ -93,11 +93,19 @@ antes:
 alter table seguranca add column if not exists employee_id varchar(60);
 ```
 
-Duas tabelas do módulo também precisam existir **antes** da subida, mesmo com a trilha de auditoria
-desligada: `seguranca_evento` e `seguranca_revisao`. Elas são entidades JPA comuns, encontradas pelo
-`@EntityScan` da própria aplicação, então o Hibernate as exige na validação — e a rotina descrita
-acima não ajuda aqui, porque ela roda **depois** que o `EntityManagerFactory` sobe. Com `validate`,
-o boot falha antes.
+Algumas tabelas do módulo também precisam existir **antes** da subida, mesmo com a trilha de
+auditoria desligada: `seguranca_evento`, `seguranca_revisao` e, a partir da 3.4,
+`seguranca_acao_dependencia`. Elas são entidades JPA comuns, encontradas pelo `@EntityScan` da
+própria aplicação, então o Hibernate as exige na validação — e a rotina descrita acima não ajuda
+aqui, porque ela roda **depois** que o `EntityManagerFactory` sobe. Com `validate`, o boot falha
+antes.
+
+O DDL de `seguranca_acao_dependencia` está no `R__archbase_security_schema.sql`, então quem usa
+Flyway não precisa fazer nada — o Flyway roda antes da validação. A tabela nasce e permanece vazia
+enquanto ninguém declarar `@HasPermission(requires = ...)` nem enviar `requires` no registro das
+telas; ela guarda as arestas de dependência entre capacidades, que são **informativas** e não
+participam de nenhuma decisão de acesso (ver
+[`../archbase-security/CONTRATO_DEPENDENCIAS_DE_CAPACIDADE.md`](../archbase-security/CONTRATO_DEPENDENCIAS_DE_CAPACIDADE.md)).
 
 O sintoma é este, e ele impede a aplicação de subir por inteiro:
 

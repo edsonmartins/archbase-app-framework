@@ -73,6 +73,36 @@ public class ActionPersistenceAdapter implements ActionPersistencePort, FindData
         return actionEntities.stream().map(ActionEntity::toDto).toList();
     }
 
+    /**
+     * Preenche rótulo e categoria que estejam <b>ausentes</b>, e nada mais.
+     *
+     * <p>O espelho de {@code classificarSeSemTipo}: os dois campos são novos, e nulo numa capacidade
+     * existente não é escolha do admin — é ausência do campo na versão em que a linha nasceu. Quem
+     * já tem valor não é tocado, para que o rótulo não oscile entre o que o código diz e o que a
+     * tela registra.
+     */
+    public void semearTextosSeAusentes(String actionId, String label, String category) {
+        if (actionId == null || (label == null && category == null)) {
+            return;
+        }
+        repository.findById(actionId).ifPresent(entity -> {
+            boolean mudou = false;
+            if (entity.getLabel() == null && label != null) {
+                entity.setLabel(label);
+                mudou = true;
+            }
+            if (entity.getCategory() == null && category != null) {
+                entity.setCategory(category);
+                mudou = true;
+            }
+            if (mudou) {
+                entity.setUpdateEntityDate(java.time.LocalDateTime.now());
+                entity.setLastModifiedByUser("archbase");
+                repository.save(entity);
+            }
+        });
+    }
+
     @Override
     public ActionDto createAction(ActionDto actionDto) {
         return repository.save(ActionEntity.fromDomain(actionDto.toDomain())).toDto();
@@ -95,6 +125,17 @@ public class ActionPersistenceAdapter implements ActionPersistencePort, FindData
                         entity.setMinimumLevel(
                                 AccessLevel.isUnset(actionDto.getMinimumLevel())
                                         ? null : actionDto.getMinimumLevel());
+                    }
+
+                    // Rótulo e categoria seguem a MESMA regra do nível mínimo, e pelo mesmo motivo:
+                    // são campos novos, e todo cliente anterior salva sem eles. Copiar o nulo que
+                    // chega apagaria em silêncio o agrupamento e o rótulo de uma capacidade a cada
+                    // edição de descrição. Vazio, sim, limpa — é a forma de tirar de propósito.
+                    if (actionDto.getLabel() != null) {
+                        entity.setLabel(actionDto.getLabel().isBlank() ? null : actionDto.getLabel());
+                    }
+                    if (actionDto.getCategory() != null) {
+                        entity.setCategory(actionDto.getCategory().isBlank() ? null : actionDto.getCategory());
                     }
 
                     return repository.save(entity).toDto();
