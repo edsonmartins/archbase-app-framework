@@ -196,8 +196,13 @@ comment on column seguranca_acao_dependencia.declarada_por is
 -- Para reescrever os textos de um catálogo já existente a partir do código, existe
 -- archbase.security.sync.mode=refresh: usado UMA vez, de propósito, e depois desligado. Ele
 -- descarta ajuste feito pelo admin nesses três campos, e por isso não é o padrão.
+-- CATEGORIA entra junto, e não por simetria: ela é mapeada em ActionEntity desde sempre e nunca
+-- esteve nesta migration. Passou despercebido enquanto nenhum coletor a preenchia e nenhuma tela a
+-- lia — agora as duas coisas mudaram. Em projeto com ddl-auto=validate ou none, onde este arquivo é
+-- a única fonte do schema, a coluna simplesmente não existia.
 alter table seguranca_acao
-    add column if not exists rotulo varchar(120);
+    add column if not exists rotulo varchar(120),
+    add column if not exists categoria varchar(255);
 
 comment on column seguranca_acao.rotulo is
     'Rotulo curto da capacidade ("Aprovar custo"). Nulo = use a descricao. Distinto de DESCRICAO, que explica o que a acao faz, e de CATEGORIA, que agrupa.';
