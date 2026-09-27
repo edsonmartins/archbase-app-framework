@@ -3,6 +3,7 @@ package br.com.archbase.security.auth;
 
 import br.com.archbase.security.domain.entity.User;
 import br.com.archbase.security.token.TokenType;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -25,7 +26,12 @@ public class AuthenticationResponse {
   private String id;
   @JsonProperty("token_type")
   private TokenType tokenType;
+  /**
+   * Usuário autenticado. O {@code password} (hash bcrypt) fica fora do JSON: a entidade de domínio
+   * carrega o hash, e ele saía na resposta de todo login e refresh.
+   */
   @JsonProperty("user")
+  @JsonIgnoreProperties(value = {"password"}, allowSetters = true)
   private User user;
   @JsonProperty("context")
   private Object context;
