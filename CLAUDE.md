@@ -55,7 +55,7 @@ mvn versions:display-dependency-updates
 ## Architecture Overview
 
 ### Framework Structure
-Archbase is a multi-module Maven project built on Spring Boot 4.1.0 and Java 17. It provides a comprehensive framework for building enterprise applications using Domain-Driven Design (DDD) principles.
+Archbase is a multi-module Maven project built on Spring Boot 4.1.1 and Java 17. It provides a comprehensive framework for building enterprise applications using Domain-Driven Design (DDD) principles.
 
 ### Module Organization
 
