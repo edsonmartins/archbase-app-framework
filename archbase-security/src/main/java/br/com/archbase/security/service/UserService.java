@@ -91,41 +91,60 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
         this.passwordStrengthPolicy = passwordStrengthPolicy;
     }
 
+    /*
+     * AS LEITURAS ABREM TRANSAÇÃO — e é isso que as mantém funcionando sem open-in-view.
+     *
+     * O adaptador busca a entidade e a converte ({@code toDto}/{@code toDomain}) em seguida, e a
+     * conversão lê associações lazy ({@code groups}, {@code profile}, {@code accessSchedule}). Sem
+     * transação aqui, a sessão do Hibernate fecha quando a chamada ao repositório volta, e a
+     * conversão estoura LazyInitializationException. Com {@code spring.jpa.open-in-view=true} (o
+     * padrão do Spring Boot) a sessão da requisição escondia o defeito; com {@code false},
+     * GET /user/byEmail respondia 500 para todo usuário e ninguém entrava no admin.
+     */
     @Override
+    @Transactional(readOnly = true)
     public UserDto findById(String id) {
         return persistenceAdapter.findById(id);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<UserDto> findAll(int page, int size) {
         return persistenceAdapter.findAll(page, size);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<UserDto> findAll(int page, int size, String[] sort) {
         return persistenceAdapter.findAll(page, size, sort);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Optional<User> getUserByEmail(String email)  {
         return persistenceAdapter.getUserByEmail(email);
     }
+
     @Override
+    @Transactional(readOnly = true)
     public List<UserDto> findAll(List<String> ids) {
         return persistenceAdapter.findAll(ids);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<UserDto> findWithFilter(String filter, int page, int size) {
         return persistenceAdapter.findWithFilter(filter, page, size);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<UserDto> findWithFilter(String filter, int page, int size, String[] sort) {
         return persistenceAdapter.findWithFilter(filter, page, size, sort);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<UserDto> getAllUsersByGroup(String groupId) {
         return persistenceAdapter.getAllUsersByGroup(groupId);
     }
@@ -396,6 +415,7 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Optional<User> getLoggedUser() {
         return Optional.ofNullable(securityAdapter.getLoggedUser());
     }

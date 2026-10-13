@@ -233,7 +233,7 @@ public class ArchbaseAuthenticationService {
             AccessTokenEntity accessToken = accessTokenPersistenceAdapter.findValidTokenByUser(user);
 
             // Verificar se o token existe e não está expirado
-            if (accessToken != null && !jwtService.isTokenExpired(accessToken.getToken())) {
+            if (accessToken != null && tokenGuardadoAindaVale(accessToken.getToken())) {
                 // QUEM NÃO PODE TER VÁRIAS SESSÕES: a anterior morre INTEIRA, agora.
                 //
                 // Revogar só os refresh e reusar o access deixava a sessão anterior num estado
@@ -523,6 +523,29 @@ public class ArchbaseAuthenticationService {
      * preenchido aqui uma vez só. A resposta de desafio MFA é montada à parte e de propósito não
      * traz tenant: ali o login ainda não se completou.
      */
+    /**
+     * Diz se o access token guardado ainda pode ser reaproveitado no login.
+     *
+     * <p>Token que não valida — assinado com outra chave, malformado — é tratado como inexistente,
+     * e o login segue para "revoga tudo e emite um novo". {@code isTokenExpired} decodifica o JWT
+     * com a chave atual e só converte em "expirado" a {@code ExpiredJwtException}; um token
+     * assinado com a chave anterior lançava erro de assinatura, e o login de todo usuário que
+     * tivesse token guardado respondia 500 depois de uma rotação de
+     * {@code archbase.security.jwt.secret-key}. Rotação de chave não pode exigir limpeza manual de
+     * tabela.
+     *
+     * <p>A tolerância fica só aqui. Na autenticação das requisições, token com assinatura inválida
+     * continua sendo erro — por isso {@code isTokenExpired} não muda.
+     */
+    private boolean tokenGuardadoAindaVale(String token) {
+        try {
+            return !jwtService.isTokenExpired(token);
+        } catch (JwtException | IllegalArgumentException e) {
+            log.warn("Token guardado inválido para reutilização ({}); emitindo novo", e.getClass().getSimpleName());
+            return false;
+        }
+    }
+
     private AuthenticationResponse buildAuthenticationResponse(AccessTokenEntity accessToken, String refreshToken, UserEntity user) {
         return AuthenticationResponse.builder()
                 .id(accessToken.getId())

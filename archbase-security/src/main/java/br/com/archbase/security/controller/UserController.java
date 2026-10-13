@@ -25,6 +25,8 @@ import java.util.Optional;
 @ArchbaseSecurityAdminEndpoint(resource = "USER")
 public class UserController {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(UserController.class);
+
     private final ArchbaseUserService service;
 
     // Trocar a própria senha (exige a senha atual) é autoatendimento, não administração.
@@ -72,6 +74,8 @@ public class UserController {
             UserDto user = userService.findById(id);
             return ResponseEntity.ok(user);
         } catch (Exception e) {
+            // Sem o log, o 500 saía vazio e a causa sumia: nem corpo, nem rastro no servidor.
+            log.error("Falha ao buscar usuário por id {}", id, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
@@ -83,6 +87,7 @@ public class UserController {
             Optional<User> userOptional = userService.getUserByEmail(email);
             return userOptional.map(user -> ResponseEntity.ok(UserDto.fromDomain(user))).orElseGet(() -> ResponseEntity.notFound().build());
         } catch (Exception e) {
+            log.error("Falha ao buscar usuário por e-mail", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
