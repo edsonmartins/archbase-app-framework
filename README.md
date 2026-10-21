@@ -2,11 +2,11 @@
 
 [![Maven Central](https://img.shields.io/maven-central/v/br.com.archbase/archbase-starter.svg?style=flat-square)](https://central.sonatype.com/search?q=g:br.com.archbase)
 [![Java](https://img.shields.io/badge/Java-25-orange.svg?style=flat-square)](https://openjdk.org/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.0-brightgreen.svg?style=flat-square)](https://spring.io/projects/spring-boot)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1-brightgreen.svg?style=flat-square)](https://spring.io/projects/spring-boot)
 
-**Archbase** é um framework Java para aplicações empresariais construído sobre Spring Boot 4.1.0 e Java 25. Implementa Domain-Driven Design (DDD) com Onion Architecture, oferecendo uma base sólida e modular para aplicações complexas.
+**Archbase** é um framework Java para aplicações empresariais construído sobre Spring Boot 4.1 e Java 25. Implementa Domain-Driven Design (DDD) com Onion Architecture, oferecendo uma base sólida e modular para aplicações complexas.
 
-> **Versão 3.0.0** - Veja as [notas de release](CHANGELOG.md) para informações sobre atualizações.
+> **Versão 3.4.4** - Veja as [notas de release](CHANGELOG.md) para informações sobre atualizações. A versão mais recente publicada aparece no badge do Maven Central acima.
 
 ## Características
 
@@ -27,7 +27,7 @@
 <dependency>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-starter</artifactId>
-    <version>3.0.0</version>
+    <version>3.4.4</version>
 </dependency>
 ```
 
@@ -38,21 +38,21 @@ Ou use módulos específicos:
 <dependency>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-starter-core</artifactId>
-    <version>3.0.0</version>
+    <version>3.4.4</version>
 </dependency>
 
 <!-- Para segurança -->
 <dependency>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-starter-security</artifactId>
-    <version>3.0.0</version>
+    <version>3.4.4</version>
 </dependency>
 
 <!-- Para multi-tenancy -->
 <dependency>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-starter-multitenancy</artifactId>
-    <version>3.0.0</version>
+    <version>3.4.4</version>
 </dependency>
 ```
 
@@ -239,14 +239,13 @@ executor.execute(context);
 
 Para documentação completa e detalhada, visite:
 
-- [Guia do Usuário](https://docs.archbase.com.br)
+- [Guia do Usuário](https://archbase.dev/pt/)
 - [API Reference](https://javadoc.io/doc/br.com.archbase/archbase-starter)
-- [Exemplos](https://github.com/edsonmartins/archbase-examples)
 
 ## Requisitos
 
-- Java 17 ou superior
-- Spring Boot 3.5.6
+- Java 25
+- Spring Boot 4.1
 - Maven 3.6+
 
 ## Licença
@@ -255,8 +254,7 @@ Copyright © 2024 Relevant Solutions
 
 ## Links Úteis
 
-- [Site Oficial](https://www.archbase.com.br)
-- [Documentação](https://docs.archbase.com.br)
+- [Site Oficial e documentação](https://archbase.dev/pt/)
 - [Maven Central](https://central.sonatype.com/search?q=g:br.com.archbase)
 - [GitHub](https://github.com/edsonmartins/archbase-app-framework)
 
