@@ -255,6 +255,15 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
                 } else {
                     log.warn("Token JWT inválido para usuário: {}, JWT válido: {}, Token válido: {}",
                             userEmail, isJwtValid, isTokenValid);
+                    // Assinatura boa, mas a sessão foi revogada no banco: logout, ou outro login do
+                    // mesmo usuário de sessão única. Sem marcar o motivo, o 401 sai igual a uma
+                    // credencial errada e o cliente mostra "usuário/senha não encontrados".
+                    // O findTokenByValue só devolve token vigente; o revogado é buscado à parte.
+                    if (isJwtValid && tokenEntity == null && tokenRepository.findByToken(token)
+                            .map(AccessTokenEntity::isRevoked).orElse(false)) {
+                        request.setAttribute(CustomAuthenticationEntryPoint.ATRIBUTO_MOTIVO,
+                                CustomAuthenticationEntryPoint.SESSAO_ENCERRADA);
+                    }
                 }
             }
         } catch (Exception e) {
