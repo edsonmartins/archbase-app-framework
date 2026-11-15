@@ -1,0 +1,185 @@
+{
+  "groups": {
+    "archbase.ddd": {
+      "displayName": "Domain-Driven Design (Archbase)",
+      "type": "design"
+    },
+    "archbase.events": {
+      "displayName": "Eventos e CQRS (Archbase)",
+      "type": "design",
+      "priority": 20
+    }
+  },
+  "stereotypes": {
+    "archbase.ddd.AggregateRoot": {
+      "displayName": "Aggregate Root",
+      "assignments": [
+        "@br.com.archbase.ddd.domain.annotations.DomainAggregateRoot",
+        "br.com.archbase.ddd.domain.contracts.AggregateRoot"
+      ],
+      "groups": [
+        "archbase.ddd"
+      ],
+      "priority": 0
+    },
+    "archbase.ddd.Entity": {
+      "displayName": "Entity",
+      "assignments": [
+        "@br.com.archbase.ddd.domain.annotations.DomainEntity",
+        "br.com.archbase.ddd.domain.contracts.Entity"
+      ],
+      "groups": [
+        "archbase.ddd"
+      ],
+      "priority": 10
+    },
+    "archbase.ddd.ValueObject": {
+      "displayName": "Value Object",
+      "assignments": [
+        "@br.com.archbase.ddd.domain.annotations.DomainValueObject",
+        "br.com.archbase.ddd.domain.contracts.ValueObject"
+      ],
+      "groups": [
+        "archbase.ddd"
+      ],
+      "priority": 30
+    },
+    "archbase.ddd.Identifier": {
+      "displayName": "Identifier",
+      "assignments": [
+        "@br.com.archbase.ddd.domain.annotations.DomainIdentifier",
+        "br.com.archbase.ddd.domain.contracts.Identifier"
+      ],
+      "groups": [
+        "archbase.ddd"
+      ],
+      "priority": 0
+    },
+    "archbase.ddd.Identifiable": {
+      "displayName": "Identifiable",
+      "assignments": [
+        "br.com.archbase.ddd.domain.contracts.Identifiable"
+      ],
+      "groups": [
+        "archbase.ddd"
+      ],
+      "priority": 20
+    },
+    "archbase.ddd.Association": {
+      "displayName": "Association",
+      "assignments": [
+        "@br.com.archbase.ddd.domain.annotations.DomainAssociation",
+        "br.com.archbase.ddd.domain.contracts.InsideAssociation",
+        "br.com.archbase.ddd.domain.contracts.OutsideAssociation"
+      ],
+      "groups": [
+        "archbase.ddd"
+      ],
+      "priority": 0
+    },
+    "archbase.ddd.Repository": {
+      "displayName": "Repository",
+      "assignments": [
+        "@br.com.archbase.ddd.domain.annotations.DomainRepository",
+        "br.com.archbase.ddd.domain.contracts.Repository"
+      ],
+      "groups": [
+        "archbase.ddd"
+      ],
+      "priority": 0
+    },
+    "archbase.ddd.Service": {
+      "displayName": "Service",
+      "assignments": [
+        "@br.com.archbase.ddd.domain.annotations.DomainService",
+        "br.com.archbase.ddd.domain.contracts.Service"
+      ],
+      "groups": [
+        "archbase.ddd"
+      ],
+      "priority": 0
+    },
+    "archbase.ddd.Factory": {
+      "displayName": "Factory",
+      "assignments": [
+        "@br.com.archbase.ddd.domain.annotations.DomainFactory"
+      ],
+      "groups": [
+        "archbase.ddd"
+      ],
+      "priority": 10
+    },
+    "archbase.ddd.Policy": {
+      "displayName": "Policy",
+      "assignments": [
+        "@br.com.archbase.ddd.domain.annotations.DomainPolicy"
+      ],
+      "groups": [
+        "archbase.ddd"
+      ],
+      "priority": 10
+    },
+    "archbase.ddd.Module": {
+      "displayName": "Module",
+      "assignments": [
+        "@br.com.archbase.ddd.domain.annotations.DomainModule"
+      ],
+      "groups": [
+        "archbase.ddd"
+      ],
+      "priority": 0
+    },
+    "archbase.ddd.BoundedContext": {
+      "displayName": "Bounded Context",
+      "assignments": [
+        "@br.com.archbase.ddd.domain.annotations.DomainBoundedContext"
+      ],
+      "groups": [
+        "archbase.ddd"
+      ],
+      "priority": 0
+    },
+    "archbase.events.DomainEvent": {
+      "displayName": "Domain Event",
+      "assignments": [
+        "@br.com.archbase.ddd.domain.annotations.DomainEvent",
+        "br.com.archbase.ddd.domain.contracts.Event"
+      ],
+      "groups": [
+        "archbase.events"
+      ],
+      "priority": 0
+    },
+    "archbase.events.DomainEventHandler": {
+      "displayName": "Domain Event Handler",
+      "assignments": [
+        "@br.com.archbase.ddd.domain.annotations.DomainEventListener",
+        "br.com.archbase.ddd.domain.contracts.EventHandler"
+      ],
+      "groups": [
+        "archbase.events"
+      ],
+      "priority": 0
+    },
+    "archbase.events.Command": {
+      "displayName": "Command",
+      "assignments": [
+        "@br.com.archbase.ddd.domain.annotations.DomainCommand"
+      ],
+      "groups": [
+        "archbase.events"
+      ],
+      "priority": 0
+    },
+    "archbase.events.Query": {
+      "displayName": "Query",
+      "assignments": [
+        "@br.com.archbase.ddd.domain.annotations.DomainQuery"
+      ],
+      "groups": [
+        "archbase.events"
+      ],
+      "priority": 0
+    }
+  }
+}

@@ -30,7 +30,7 @@ import java.lang.annotation.Target;
  * @see Port
  * @see Adapter
  */
-@Retention(RetentionPolicy.CLASS)
+@Retention(RetentionPolicy.RUNTIME)
 @Target({ ElementType.PACKAGE, ElementType.TYPE })
 @Documented
 public @interface Application {}

@@ -27,6 +27,12 @@ import static com.tngtech.archunit.base.DescribedPredicate.not;
  * </ul>
  * Essas regras são principalmente pelo que foi apresentado por John Sullivan em sua postagem no blog
  * <a href="http://scabl.blogspot.com/2015/04/aeddd-9.html"> aqui </a>.
+ * <p>
+ * <b>Atenção: estas regras não examinam nenhum campo.</b> Na migração para o ArchUnit 1.x, os predicados
+ * {@code IsAssignableTypeField} e {@code FieldTypeIsAnnotatedWith} passaram a devolver {@code false} em
+ * {@code test()} (a lógica ficou num {@code apply()} que ninguém chama), então nada é selecionado. A classe foi mantida
+ * intacta para não mudar o resultado de quem já a usa. A versão que funciona é
+ * {@code br.com.archbase.architecture.rules.ddd.ArchbaseAggregateRules}, no módulo {@code archbase-architecture-rules}.
  *
  * @see http://scabl.blogspot.com/2015/04/aeddd-9.html
  */

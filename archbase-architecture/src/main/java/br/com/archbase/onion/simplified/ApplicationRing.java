@@ -27,7 +27,7 @@ import java.lang.annotation.Target;
  *
  * @see <a href="https://jeffreypalermo.com/2008/07/the-onion-architecture-part-1/">A arquitetura Onion: parte 1 (Palermo)</a>
  */
-@Retention(RetentionPolicy.CLASS)
+@Retention(RetentionPolicy.RUNTIME)
 @Target({ ElementType.PACKAGE, ElementType.TYPE })
 @Documented
 public @interface ApplicationRing {

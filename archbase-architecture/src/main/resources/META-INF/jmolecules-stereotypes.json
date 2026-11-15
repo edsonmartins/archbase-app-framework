@@ -1,0 +1,206 @@
+{
+  "groups": {
+    "archbase.architecture.hexagonal": {
+      "displayName": "Arquitetura hexagonal (Archbase)",
+      "type": "architecture",
+      "priority": 20
+    },
+    "archbase.architecture.layered": {
+      "displayName": "Arquitetura em camadas (Archbase)",
+      "type": "architecture",
+      "priority": 20
+    },
+    "archbase.architecture.onion.classical": {
+      "displayName": "Arquitetura onion clássica (Archbase)",
+      "type": "architecture",
+      "priority": 20
+    },
+    "archbase.architecture.onion.simplified": {
+      "displayName": "Arquitetura onion simplificada (Archbase)",
+      "type": "architecture",
+      "priority": 20
+    }
+  },
+  "stereotypes": {
+    "archbase.architecture.hexagonal.PrimaryAdapter": {
+      "displayName": "Primary Adapter",
+      "assignments": [
+        "@br.com.archbase.hexagonal.PrimaryAdapter"
+      ],
+      "groups": [
+        "archbase.architecture.hexagonal"
+      ],
+      "priority": 100
+    },
+    "archbase.architecture.hexagonal.SecondaryAdapter": {
+      "displayName": "Secondary Adapter",
+      "assignments": [
+        "@br.com.archbase.hexagonal.SecondaryAdapter"
+      ],
+      "groups": [
+        "archbase.architecture.hexagonal"
+      ],
+      "priority": 200
+    },
+    "archbase.architecture.hexagonal.Adapter": {
+      "displayName": "Adapter",
+      "assignments": [
+        "@br.com.archbase.hexagonal.Adapter"
+      ],
+      "groups": [
+        "archbase.architecture.hexagonal"
+      ],
+      "priority": 300
+    },
+    "archbase.architecture.hexagonal.PrimaryPort": {
+      "displayName": "Primary Port",
+      "assignments": [
+        "@br.com.archbase.hexagonal.PrimaryPort"
+      ],
+      "groups": [
+        "archbase.architecture.hexagonal"
+      ],
+      "priority": 100
+    },
+    "archbase.architecture.hexagonal.SecondaryPort": {
+      "displayName": "Secondary Port",
+      "assignments": [
+        "@br.com.archbase.hexagonal.SecondaryPort"
+      ],
+      "groups": [
+        "archbase.architecture.hexagonal"
+      ],
+      "priority": 200
+    },
+    "archbase.architecture.hexagonal.Port": {
+      "displayName": "Port",
+      "assignments": [
+        "@br.com.archbase.hexagonal.Port"
+      ],
+      "groups": [
+        "archbase.architecture.hexagonal"
+      ],
+      "priority": 300
+    },
+    "archbase.architecture.hexagonal.Application": {
+      "displayName": "Application",
+      "assignments": [
+        "@br.com.archbase.hexagonal.Application"
+      ],
+      "groups": [
+        "archbase.architecture.hexagonal"
+      ],
+      "priority": 400
+    },
+    "archbase.architecture.layered.InterfaceLayer": {
+      "displayName": "Interface Layer",
+      "assignments": [
+        "@br.com.archbase.layered.InterfaceLayer"
+      ],
+      "groups": [
+        "archbase.architecture.layered"
+      ],
+      "priority": 100
+    },
+    "archbase.architecture.layered.ApplicationLayer": {
+      "displayName": "Application Layer",
+      "assignments": [
+        "@br.com.archbase.layered.ApplicationLayer"
+      ],
+      "groups": [
+        "archbase.architecture.layered"
+      ],
+      "priority": 200
+    },
+    "archbase.architecture.layered.DomainLayer": {
+      "displayName": "Domain Layer",
+      "assignments": [
+        "@br.com.archbase.layered.DomainLayer"
+      ],
+      "groups": [
+        "archbase.architecture.layered"
+      ],
+      "priority": 300
+    },
+    "archbase.architecture.layered.InfrastructureLayer": {
+      "displayName": "Infrastructure Layer",
+      "assignments": [
+        "@br.com.archbase.layered.InfrastructureLayer"
+      ],
+      "groups": [
+        "archbase.architecture.layered"
+      ],
+      "priority": 400
+    },
+    "archbase.architecture.onion.classical.DomainModelRing": {
+      "displayName": "Domain Model Ring",
+      "assignments": [
+        "@br.com.archbase.onion.classical.DomainModelRing"
+      ],
+      "groups": [
+        "archbase.architecture.onion.classical"
+      ],
+      "priority": 100
+    },
+    "archbase.architecture.onion.classical.DomainServiceRing": {
+      "displayName": "Domain Service Ring",
+      "assignments": [
+        "@br.com.archbase.onion.classical.DomainServiceRing"
+      ],
+      "groups": [
+        "archbase.architecture.onion.classical"
+      ],
+      "priority": 200
+    },
+    "archbase.architecture.onion.classical.ApplicationServiceRing": {
+      "displayName": "Application Service Ring",
+      "assignments": [
+        "@br.com.archbase.onion.classical.ApplicationServiceRing"
+      ],
+      "groups": [
+        "archbase.architecture.onion.classical"
+      ],
+      "priority": 300
+    },
+    "archbase.architecture.onion.classical.InfrastructureRing": {
+      "displayName": "Infrastructure Ring",
+      "assignments": [
+        "@br.com.archbase.onion.classical.InfrastructureRing"
+      ],
+      "groups": [
+        "archbase.architecture.onion.classical"
+      ],
+      "priority": 400
+    },
+    "archbase.architecture.onion.simplified.DomainRing": {
+      "displayName": "Domain Ring",
+      "assignments": [
+        "@br.com.archbase.onion.simplified.DomainRing"
+      ],
+      "groups": [
+        "archbase.architecture.onion.simplified"
+      ],
+      "priority": 100
+    },
+    "archbase.architecture.onion.simplified.ApplicationRing": {
+      "displayName": "Application Ring",
+      "assignments": [
+        "@br.com.archbase.onion.simplified.ApplicationRing"
+      ],
+      "groups": [
+        "archbase.architecture.onion.simplified"
+      ],
+      "priority": 200
+    },
+    "archbase.architecture.onion.simplified.InfrastructureRing": {
+      "displayName": "Infrastructure Ring",
+      "assignments": [
+        "@br.com.archbase.onion.simplified.InfrastructureRing"
+      ],
+      "groups": [
+        "archbase.architecture.onion.simplified"
+      ],
+      "priority": 300
+    }
+  }
+}

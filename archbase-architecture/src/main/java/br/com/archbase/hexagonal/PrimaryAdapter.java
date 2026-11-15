@@ -29,7 +29,7 @@ import java.lang.annotation.Target;
  * @see PrimaryPort
  */
 @Adapter
-@Retention(RetentionPolicy.CLASS)
+@Retention(RetentionPolicy.RUNTIME)
 @Target({ ElementType.PACKAGE, ElementType.TYPE })
 @Documented
 public @interface PrimaryAdapter {}

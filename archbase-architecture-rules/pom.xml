@@ -41,6 +41,23 @@
             <scope>compile</scope>
         </dependency>
 
+        <!-- ArchUnit core na versão do módulo. O dependencyManagement do pom raiz fixa 1.0.1, cujo ASM
+             só lê bytecode até Java 20: com classes Java 25 o importador devolve ZERO classes e toda regra
+             passa sem examinar nada. Declarado aqui para valer só neste módulo. -->
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit</artifactId>
+            <version>${archunit.version}</version>
+        </dependency>
+
+        <!-- Archbase Architecture - anotações de camadas, onion e hexagonal (jar só de anotações) -->
+        <dependency>
+            <groupId>br.com.archbase</groupId>
+            <artifactId>archbase-architecture</artifactId>
+            <version>${project.version}</version>
+            <scope>compile</scope>
+        </dependency>
+
         <!-- Archbase Security - for HasPermission annotation -->
         <dependency>
             <groupId>br.com.archbase</groupId>

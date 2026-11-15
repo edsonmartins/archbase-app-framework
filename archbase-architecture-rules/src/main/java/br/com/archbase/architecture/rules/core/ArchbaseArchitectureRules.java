@@ -9,8 +9,13 @@ import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 
+import br.com.archbase.architecture.rules.architecture.ArchbaseArchitectureStyleRules;
+import br.com.archbase.architecture.rules.ddd.ArchbaseAggregateRules;
+
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Classe principal para configurar e executar regras de arquitetura Archbase.
@@ -41,6 +46,8 @@ public class ArchbaseArchitectureRules {
     private boolean enableSecurityRules = false;
     private boolean enableMultitenancyRules = false;
     private boolean enableTestRules = false;
+    private boolean enableAggregateRules = false;
+    private final Set<ArchitectureStyle> architectureStyles = EnumSet.noneOf(ArchitectureStyle.class);
     private boolean failOnEmpty = true;
     private boolean checkAll = false;
 
@@ -149,6 +156,55 @@ public class ArchbaseArchitectureRules {
     }
 
     /**
+     * Habilita as regras de modelagem de agregados, verificadas por tipo e anotação
+     * ({@link ArchbaseAggregateRules}):
+     * <ul>
+     * <li>entidades só são referenciadas dentro do agregado a que pertencem;</li>
+     * <li>tipos de domínio referenciam outros agregados por identificador ou associação.</li>
+     * </ul>
+     * Não faz parte de {@link #withAllRules()}: em modelos em que a entidade JPA é o próprio agregado, cada
+     * {@code @ManyToOne} para outro agregado é uma violação, então ligar exige decisão consciente.
+     *
+     * @since 3.4.5
+     */
+    public ArchbaseArchitectureRules withAggregateRules() {
+        this.enableAggregateRules = true;
+        return this;
+    }
+
+    /**
+     * Faz valer as anotações de estilo arquitetural do módulo {@code archbase-architecture}
+     * ({@code @DomainLayer}, {@code @DomainRing}, {@code @PrimaryPort} etc.). Tipos sem essas anotações (no próprio
+     * tipo ou em algum {@code package-info} acima dele) não são afetados.
+     * <p>
+     * Não faz parte de {@link #withAllRules()}.
+     *
+     * @param styles estilos a verificar
+     * @see ArchbaseArchitectureStyleRules
+     * @since 3.4.5
+     */
+    public ArchbaseArchitectureRules withArchitectureStyleRules(ArchitectureStyle... styles) {
+        this.architectureStyles.addAll(List.of(styles));
+        return this;
+    }
+
+    /**
+     * Estilos arquiteturais verificáveis por {@link #withArchitectureStyleRules(ArchitectureStyle...)}.
+     */
+    public enum ArchitectureStyle {
+        /** Camadas (Evans), cada camada depende de si ou de qualquer camada inferior. */
+        LAYERED,
+        /** Camadas (Evans), cada camada depende de si ou só da camada imediatamente inferior. */
+        LAYERED_STRICT,
+        /** Onion clássica (Palermo): domain model, domain services, application services, infrastructure. */
+        ONION_CLASSICAL,
+        /** Onion simplificada: domain, application, infrastructure. */
+        ONION_SIMPLIFIED,
+        /** Hexagonal (ports and adapters). */
+        HEXAGONAL
+    }
+
+    /**
      * Adiciona uma regra customizada.
      *
      * @param rule regra ArchUnit/Taikai customizada
@@ -224,6 +280,23 @@ public class ArchbaseArchitectureRules {
             builder.test(test -> test.junit5(junit -> {
                 junit.classesShouldNotBeAnnotatedWithDisabled();
                 junit.methodsShouldContainAssertionsOrVerifications();
+            }));
+        }
+
+        // Regras de agregado (opcionais, fora de withAllRules)
+        if (enableAggregateRules) {
+            builder.addRule(TaikaiRule.of(ArchbaseAggregateRules.entitiesShouldBeDeclaredForUseInSameAggregate()));
+            builder.addRule(TaikaiRule.of(ArchbaseAggregateRules.aggregateReferencesShouldBeViaIdOrAssociation()));
+        }
+
+        // Regras de estilo arquitetural (opcionais, fora de withAllRules)
+        for (ArchitectureStyle style : architectureStyles) {
+            builder.addRule(TaikaiRule.of(switch (style) {
+                case LAYERED -> ArchbaseArchitectureStyleRules.layered();
+                case LAYERED_STRICT -> ArchbaseArchitectureStyleRules.layeredStrict();
+                case ONION_CLASSICAL -> ArchbaseArchitectureStyleRules.onionClassical();
+                case ONION_SIMPLIFIED -> ArchbaseArchitectureStyleRules.onionSimplified();
+                case HEXAGONAL -> ArchbaseArchitectureStyleRules.hexagonal();
             }));
         }
 

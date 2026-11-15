@@ -262,6 +262,11 @@ public final class ArchbaseDddRules {
 
     /**
      * Regra: Agregados não devem referenciar outros agregados diretamente.
+     * <p>
+     * Esta versão identifica agregados pelo <b>nome</b> (sufixo {@code Aggregate}/{@code AggregateRoot}) e verifica
+     * pacotes, não referências — um agregado que não segue a convenção de nome passa sem ser examinado. Mantida como
+     * está por compatibilidade. Prefira {@link ArchbaseAggregateRules#aggregateReferencesShouldBeViaIdOrAssociation()},
+     * que identifica agregados por {@code AggregateRoot}/{@code @DomainAggregateRoot} e examina os campos.
      */
     public static ArchRule aggregatesShouldNotReferenceOtherAggregatesDirectly() {
         return ArchRuleDefinition.classes()
