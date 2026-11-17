@@ -72,6 +72,7 @@ Archbase is a multi-module Maven project built on Spring Boot 4.1.2 and Java 25.
 | `archbase-shared-kernel` | Common value objects (CPF, CNPJ, Email), converters |
 | `archbase-architecture` | Hexagonal, layered, and onion architecture patterns |
 | `archbase-hypersistence` | Advanced Hibernate types (JSON, arrays, ranges), optimized repositories |
+| `archbase-controlplane` | Control Plane integration: tenant session token (Ed25519/JWKS), `@RequiresAdmin` (opt-in; phase A — license/MQTT pending) |
 
 ### Core Architecture Patterns
 
@@ -340,6 +341,18 @@ archbase.security.password.require-uppercase=false
 archbase.security.password.require-lowercase=false
 archbase.security.password.require-special=false
 archbase.security.password.block-common=false
+
+# Control Plane (archbase-controlplane; ver archbase-controlplane/README.md). Opt-in: sem enabled=true
+# nenhum bean é criado. Ligado, exige archbase.app.tenant.fail-on-missing=true e não sobe sem url,
+# public-url, product e jwks.url/jwks.local-path. Nenhum valor padrão para segredo.
+archbase.controlplane.enabled=false
+archbase.controlplane.url=
+archbase.controlplane.public-url=                           # o aud do token tem de conter
+archbase.controlplane.product=
+archbase.controlplane.jwks.url=
+archbase.controlplane.jwks.local-path=                      # cópia offline, regravada a cada busca
+archbase.controlplane.legacy-jwt=accept                     # accept | reject (reject desliga login local)
+archbase.controlplane.seat-required=false
 
 # RSQL
 archbase.rsql.enabled=true

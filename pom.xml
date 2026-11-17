@@ -83,6 +83,7 @@
         <module>archbase-semver-implementation</module>
         <module>archbase-architecture</module>
         <module>archbase-security</module>
+        <module>archbase-controlplane</module>
         <module>archbase-multitenancy</module>
         <module>archbase-test-utils</module>
         <module>archbase-logging</module>
