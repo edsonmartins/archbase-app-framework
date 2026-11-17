@@ -7,6 +7,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.ApplicationContext;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -21,7 +23,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = {
         "spring.datasource.url=jdbc:h2:mem:cp-off;DB_CLOSE_DELAY=-1",
         "spring.jpa.hibernate.ddl-auto=create-drop",
-        "archbase.security.jwt.secret-key=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
         "archbase.security.jwt.token-expiration=3600000",
         "archbase.security.jwt.refresh-expiration=86400000",
         "archbase.security.whitelist=/api/publico/**",
@@ -33,6 +34,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @DisplayName("Control Plane desligado")
 class ControlPlaneDisabledIntegrationTest {
+
+    @DynamicPropertySource
+    static void segredos(DynamicPropertyRegistry registry) {
+        registry.add("archbase.security.jwt.secret-key", TestSecrets::legacyJwtKey);
+    }
 
     @Autowired
     MockMvc mvc;

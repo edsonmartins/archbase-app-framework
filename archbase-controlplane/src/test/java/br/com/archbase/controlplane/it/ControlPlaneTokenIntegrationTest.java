@@ -42,7 +42,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = {
         "spring.datasource.url=jdbc:h2:mem:cp-accept;DB_CLOSE_DELAY=-1",
         "spring.jpa.hibernate.ddl-auto=create-drop",
-        "archbase.security.jwt.secret-key=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
         "archbase.security.jwt.token-expiration=3600000",
         "archbase.security.jwt.refresh-expiration=86400000",
         "archbase.security.whitelist=/api/publico/**",
@@ -73,6 +72,7 @@ class ControlPlaneTokenIntegrationTest {
     @DynamicPropertySource
     static void jwks(DynamicPropertyRegistry registry) {
         registry.add("archbase.controlplane.jwks.url", CP::jwksUrl);
+        registry.add("archbase.security.jwt.secret-key", TestSecrets::legacyJwtKey);
     }
 
     @AfterAll
