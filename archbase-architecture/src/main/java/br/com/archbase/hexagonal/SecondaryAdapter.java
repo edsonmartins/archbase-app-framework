@@ -31,4 +31,19 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ ElementType.PACKAGE, ElementType.TYPE })
 @Documented
-public @interface SecondaryAdapter {}
+public @interface SecondaryAdapter {
+
+    /**
+     * Nome legível do elemento, para documentação e ferramentas. Vazio: o nome do tipo ou pacote anotado.
+     *
+     * @since 3.4.6
+     */
+    String name() default "";
+
+    /**
+     * Descrição legível do elemento, para documentação e ferramentas.
+     *
+     * @since 3.4.6
+     */
+    String description() default "";
+}

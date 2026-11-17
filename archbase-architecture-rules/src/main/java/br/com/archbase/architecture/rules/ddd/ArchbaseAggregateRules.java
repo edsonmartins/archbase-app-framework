@@ -41,7 +41,7 @@ import java.util.Optional;
  * Nenhuma regra é ligada por padrão: use
  * {@link br.com.archbase.architecture.rules.core.ArchbaseArchitectureRules#withAggregateRules()}.
  *
- * @since 3.4.5
+ * @since 3.4.6
  */
 public final class ArchbaseAggregateRules {
 

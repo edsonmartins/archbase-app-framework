@@ -165,7 +165,7 @@ public class ArchbaseArchitectureRules {
      * Não faz parte de {@link #withAllRules()}: em modelos em que a entidade JPA é o próprio agregado, cada
      * {@code @ManyToOne} para outro agregado é uma violação, então ligar exige decisão consciente.
      *
-     * @since 3.4.5
+     * @since 3.4.6
      */
     public ArchbaseArchitectureRules withAggregateRules() {
         this.enableAggregateRules = true;
@@ -181,7 +181,7 @@ public class ArchbaseArchitectureRules {
      *
      * @param styles estilos a verificar
      * @see ArchbaseArchitectureStyleRules
-     * @since 3.4.5
+     * @since 3.4.6
      */
     public ArchbaseArchitectureRules withArchitectureStyleRules(ArchitectureStyle... styles) {
         this.architectureStyles.addAll(List.of(styles));

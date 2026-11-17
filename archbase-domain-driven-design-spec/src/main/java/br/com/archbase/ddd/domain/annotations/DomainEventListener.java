@@ -10,4 +10,20 @@ import java.lang.annotation.Target;
 @Target(ElementType.METHOD)
 public @interface DomainEventListener {
     boolean asynchronous() default false;
+
+    /**
+     * Namespace do evento tratado, conforme {@link DomainEvent#namespace()}. Opcional: a assinatura do método
+     * normalmente já identifica o evento. Use {@code "*"} para indicar qualquer namespace.
+     *
+     * @since 3.4.6
+     */
+    String namespace() default "";
+
+    /**
+     * Nome do evento tratado, conforme {@link DomainEvent#name()}. Use {@code "*"} para todos os eventos do
+     * {@link #namespace()}.
+     *
+     * @since 3.4.6
+     */
+    String name() default "";
 }

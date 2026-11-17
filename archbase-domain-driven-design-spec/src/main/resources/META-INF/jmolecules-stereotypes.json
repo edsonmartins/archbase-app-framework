@@ -70,7 +70,8 @@
       "assignments": [
         "@br.com.archbase.ddd.domain.annotations.DomainAssociation",
         "br.com.archbase.ddd.domain.contracts.InsideAssociation",
-        "br.com.archbase.ddd.domain.contracts.OutsideAssociation"
+        "br.com.archbase.ddd.domain.contracts.OutsideAssociation",
+        "br.com.archbase.ddd.domain.contracts.Association"
       ],
       "groups": [
         "archbase.ddd"
@@ -175,6 +176,46 @@
       "displayName": "Query",
       "assignments": [
         "@br.com.archbase.ddd.domain.annotations.DomainQuery"
+      ],
+      "groups": [
+        "archbase.events"
+      ],
+      "priority": 0
+    },
+    "archbase.ddd.Identity": {
+      "displayName": "Identity",
+      "assignments": [
+        "@br.com.archbase.ddd.domain.annotations.DomainIdentity"
+      ],
+      "groups": [
+        "archbase.ddd"
+      ],
+      "priority": 0
+    },
+    "archbase.events.Externalized": {
+      "displayName": "Externalized",
+      "assignments": [
+        "@br.com.archbase.ddd.domain.annotations.Externalized"
+      ],
+      "groups": [
+        "archbase.events"
+      ],
+      "priority": 0
+    },
+    "archbase.events.CommandDispatcher": {
+      "displayName": "Command Dispatcher",
+      "assignments": [
+        "@br.com.archbase.ddd.domain.annotations.DomainCommandDispatcher"
+      ],
+      "groups": [
+        "archbase.events"
+      ],
+      "priority": 0
+    },
+    "archbase.events.QueryModel": {
+      "displayName": "Query Model",
+      "assignments": [
+        "@br.com.archbase.ddd.domain.annotations.DomainQueryModel"
       ],
       "groups": [
         "archbase.events"

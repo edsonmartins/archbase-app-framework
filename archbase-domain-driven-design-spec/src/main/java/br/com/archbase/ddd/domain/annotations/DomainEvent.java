@@ -16,4 +16,20 @@ import java.lang.annotation.*;
 @Target(ElementType.TYPE)
 @Documented
 public @interface DomainEvent {
+
+    /**
+     * Namespace do evento, para agrupar eventos relacionados e permitir que consumidores assinem um namespace inteiro.
+     * Vazio: o pacote do tipo (ver {@link br.com.archbase.ddd.domain.events.DomainEventMetadata#namespace(Class)}).
+     *
+     * @since 3.4.6
+     */
+    String namespace() default "";
+
+    /**
+     * Nome lógico do evento, independente do nome da classe — protege contra renomeação quando o evento sai da
+     * aplicação. Vazio: o nome simples do tipo.
+     *
+     * @since 3.4.6
+     */
+    String name() default "";
 }

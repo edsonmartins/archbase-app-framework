@@ -53,7 +53,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Nenhuma destas regras é ligada por padrão: use os métodos {@code with...ArchitectureRules()} de
  * {@link br.com.archbase.architecture.rules.core.ArchbaseArchitectureRules} ou registre a {@link ArchRule} direto.
  *
- * @since 3.4.5
+ * @since 3.4.6
  */
 public final class ArchbaseArchitectureStyleRules {
 
