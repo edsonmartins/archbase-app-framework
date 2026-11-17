@@ -40,6 +40,12 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- Estado dos tenants guardado como JSON -->
+        <dependency>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
         <!-- Token Ed25519 e JWKS: o jjwt já usado pelo archbase-security lê os dois -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>

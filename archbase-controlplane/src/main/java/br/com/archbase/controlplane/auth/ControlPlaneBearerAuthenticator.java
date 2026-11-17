@@ -3,6 +3,9 @@ package br.com.archbase.controlplane.auth;
 import br.com.archbase.controlplane.config.ControlPlaneProperties;
 import br.com.archbase.controlplane.session.ControlPlaneAuthentication;
 import br.com.archbase.controlplane.session.TenantSession;
+import br.com.archbase.controlplane.state.ControlPlaneState;
+import br.com.archbase.controlplane.tenant.TenantSnapshot;
+import br.com.archbase.controlplane.tenant.TenantState;
 import br.com.archbase.controlplane.token.ControlPlaneClaims;
 import br.com.archbase.controlplane.token.ControlPlaneTokenValidator;
 import br.com.archbase.controlplane.token.TokenValidationResult;
@@ -19,6 +22,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -43,12 +47,14 @@ public class ControlPlaneBearerAuthenticator implements ExternalBearerAuthentica
     private final ControlPlaneTokenValidator validator;
     private final ControlPlaneUserResolver userResolver;
     private final ControlPlaneProperties properties;
+    private final ControlPlaneState state;
 
     public ControlPlaneBearerAuthenticator(ControlPlaneTokenValidator validator, ControlPlaneUserResolver userResolver,
-                                           ControlPlaneProperties properties) {
+                                           ControlPlaneProperties properties, ControlPlaneState state) {
         this.validator = validator;
         this.userResolver = userResolver;
         this.properties = properties;
+        this.state = state;
     }
 
     @Override
@@ -77,6 +83,8 @@ public class ControlPlaneBearerAuthenticator implements ExternalBearerAuthentica
                     List.of(new SimpleGrantedAuthority(INSTANCE_AUTHORITY)));
         }
 
+        rejectNewLoginIfSuspended(claims, tenantId);
+
         Optional<UserEntity> localUser = userResolver.resolve(claims, tenantId);
         if (localUser.isPresent() && (!localUser.get().isEnabled() || !localUser.get().isAccountNonLocked())) {
             log.warn("controlplane.auth.rejected code={} tnt={} sub={}", USER_DISABLED, tenantId, claims.subject());
@@ -97,6 +105,30 @@ public class ControlPlaneBearerAuthenticator implements ExternalBearerAuthentica
                     claims.subject());
         }
         return new ControlPlaneAuthentication(localUser.<Object>map(u -> u).orElse(session), session, authorities);
+    }
+
+    /**
+     * Tenant suspenso recusa login novo: token emitido depois da suspensão (ou sem {@code iat}). A sessão que já
+     * existia continua, em modo restrito — leitura e exportação.
+     */
+    private void rejectNewLoginIfSuspended(ControlPlaneClaims claims, String tenantId) {
+        Optional<TenantSnapshot> snapshot = state.tenant(tenantId);
+        if (snapshot.isEmpty() || snapshot.get().state() != TenantState.SUSPENDED) {
+            return;
+        }
+        Instant suspendedAt = snapshot.get().suspendedAt();
+        boolean newLogin = claims.issuedAt() == null || suspendedAt == null || claims.issuedAt().isAfter(suspendedAt);
+        if (!newLogin) {
+            return;
+        }
+        if (properties.getRestrictedMode().getEnforcement() == ControlPlaneProperties.Enforcement.REPORT) {
+            log.warn("controlplane.auth.would_deny code=TENANT_SUSPENDED tnt={} sub={} (enforcement=report)",
+                    tenantId, claims.subject());
+            return;
+        }
+        log.info("controlplane.auth.rejected code=TENANT_SUSPENDED tnt={} sub={}", tenantId, claims.subject());
+        throw new ExternalAuthenticationRejectedException(403, "TENANT_SUSPENDED",
+                "Tenant suspenso: não é possível iniciar nova sessão");
     }
 
     @Override

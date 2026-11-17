@@ -98,6 +98,12 @@ public final class FakeControlPlane implements AutoCloseable {
         return new Token(kid).claim("sub", sub).claim("email", email).claim("tnt", tenant).claim("adm", adm);
     }
 
+    /** Licença da instância (contrato assumido: token_use=license, sub=instância, prd=produto). */
+    public Token license(String kid, String instanceId, String product, Instant expiresAt) {
+        return new Token(kid).claim("sub", instanceId).claim("prd", product).claim("token_use", "license")
+                .expiresAt(expiresAt);
+    }
+
     /** Token de instância (serviço a serviço). */
     public Token instance(String kid, String instanceId) {
         return new Token(kid).claim("sub", instanceId).claim("token_use", "instance");

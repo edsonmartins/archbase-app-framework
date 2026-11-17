@@ -46,8 +46,15 @@ public class ControlPlaneProperties {
     /** Produto com assento obrigatório: token de sessão sem {@code seat} é recusado com {@code NO_SEAT}. */
     private boolean seatRequired;
 
-    /** Carência quando a licença ou o Control Plane não respondem (usada a partir da Fase B). */
-    private Duration gracePeriod;
+    /**
+     * Carência depois do {@code exp} da licença: dentro dela a instância segue normal (status {@code GRACE}); depois,
+     * entra em modo restrito. É o que segura o cliente quando o Control Plane está fora do ar.
+     */
+    private Duration gracePeriod = Duration.ofDays(7);
+
+    private final License license = new License();
+
+    private final RestrictedMode restrictedMode = new RestrictedMode();
 
     private final Jwks jwks = new Jwks();
 
@@ -128,6 +135,57 @@ public class ControlPlaneProperties {
 
     public enum SchemaMode {
         APPLY, OFF
+    }
+
+    /** Licença da instância. */
+    public static class License {
+
+        /**
+         * Arquivo com a licença (JWS compacto). Lido na subida e aplicado se for mais recente que a guardada no banco.
+         * A partir da Fase C, a licença também chega por comando do Control Plane.
+         */
+        private String path;
+
+        public String getPath() {
+            return path;
+        }
+
+        public void setPath(String path) {
+            this.path = path;
+        }
+    }
+
+    /** Modo restrito: licença vencida além da carência ou tenant suspenso. */
+    public static class RestrictedMode {
+
+        /** {@code enforce}: recusa a escrita; {@code report}: só registra em log (para implantação gradual). */
+        private Enforcement enforcement = Enforcement.ENFORCE;
+
+        /**
+         * Caminhos que continuam liberados no modo restrito, em padrão Ant. O login legado fica liberado: entrar para
+         * ler e exportar continua permitido.
+         */
+        private java.util.List<String> allowedPaths = new java.util.ArrayList<>(java.util.List.of("/api/v1/auth/**"));
+
+        public Enforcement getEnforcement() {
+            return enforcement;
+        }
+
+        public void setEnforcement(Enforcement enforcement) {
+            this.enforcement = enforcement;
+        }
+
+        public java.util.List<String> getAllowedPaths() {
+            return allowedPaths;
+        }
+
+        public void setAllowedPaths(java.util.List<String> allowedPaths) {
+            this.allowedPaths = allowedPaths;
+        }
+    }
+
+    public enum Enforcement {
+        ENFORCE, REPORT
     }
 
     /** {@link #issuer} se declarado, senão {@link #url}. */
@@ -225,6 +283,14 @@ public class ControlPlaneProperties {
 
     public Jwks getJwks() {
         return jwks;
+    }
+
+    public License getLicense() {
+        return license;
+    }
+
+    public RestrictedMode getRestrictedMode() {
+        return restrictedMode;
     }
 
     public Schema getSchema() {
