@@ -4,8 +4,13 @@ Liga uma aplicação Archbase ao Control Plane: aceita o token de sessão do ten
 licença, assentos e entitlements, e recebe comandos de provisionamento. **Opt-in**: sem
 `archbase.controlplane.enabled=true`, nenhum bean do módulo é criado e a aplicação se comporta como antes.
 
-> **Estado:** Fase A (token de sessão). Licença, entitlements e assentos (Fase B) e MQTT/provisionamento
-> (Fase C) ainda não estão implementados.
+> **Estado:** Fases A (token de sessão) e B (licença, entitlements, assentos, modo restrito). MQTT e
+> provisionamento (Fase C) ainda não estão implementados: por enquanto a licença entra por arquivo
+> (`license.path`) e o estado dos tenants, por `ControlPlaneState.applyTenant`.
+>
+> **Implantação:** com o módulo ligado e **sem licença**, a instância entra em modo restrito (escrita recusada com
+> `LICENSE_EXPIRED`). Comece com `archbase.controlplane.restricted-mode.enforcement=report`, confira nos logs
+> (`controlplane.restricted.would_deny`) e só então passe para `enforce`.
 
 ## Exemplo mínimo
 
@@ -25,6 +30,9 @@ archbase.controlplane.product=powerview
 archbase.controlplane.jwks.url=${CP_URL}/.well-known/jwks.json
 archbase.controlplane.jwks.local-path=/var/lib/powerview/cp-jwks.json
 archbase.controlplane.legacy-jwt=accept
+archbase.controlplane.instance-id=${CP_INSTANCE_ID}
+archbase.controlplane.license.path=/var/lib/powerview/cp-license.jws
+archbase.controlplane.restricted-mode.enforcement=report   # enforce depois de validar
 
 # Obrigatório com o módulo ligado: nenhum caminho pode cair no tenant padrão.
 archbase.app.tenant.fail-on-missing=true
@@ -47,7 +55,34 @@ class RelatorioController {
     @DeleteMapping("/api/tenants/{id}")
     @RequiresAdmin(AdminScope.CLIENT)  // só client_admin
     public void remover(...) { ... }
+
+    @GetMapping("/api/relatorios/excel")
+    @RequiresEntitlement("powerview.export_excel")   // 403 NOT_ENTITLED sem o entitlement
+    public byte[] excel() { ... }
+
+    @GetMapping("/api/painel")
+    @RequiresSeat                                     // 403 NO_SEAT sem assento
+    public Painel painel() { ... }
+
+    @PostMapping("/api/relatorios/exportar")
+    @ExportOperation                                  // POST que só lê: liberado no modo restrito
+    public byte[] exportar(@RequestBody Filtro filtro) { ... }
+
+    @PostMapping("/api/copiloto")
+    public Resposta perguntar(...) {
+        Usage uso = ControlPlane.entitlements().consume("copilot.ia_creditos", 120);
+        if (uso.exceeded()) { /* estouro é tolerado: o produto decide o que fazer */ }
+        ...
+    }
 }
+```
+
+```java
+boolean can   = ControlPlane.entitlements().can("powerview.export_excel");
+long    limit = ControlPlane.entitlements().value("powerview.assentos");
+boolean seat  = ControlPlane.seats().check(userId);
+TenantState state = ControlPlane.tenantState();        // ACTIVE, DELINQUENT, SUSPENDED, UNKNOWN
+LicenseStatus lic = ControlPlane.license().status();   // VALID, GRACE, EXPIRED
 ```
 
 A aplicação não sobe se faltar `url` (ou `issuer`), `public-url`, `product`, uma fonte de chaves
@@ -71,7 +106,12 @@ listados de uma vez.
 | `archbase.controlplane.clock-skew` | `30s` | Tolerância de relógio para `exp` |
 | `archbase.controlplane.seat-required` | `false` | Recusa token de sessão sem `seat` (`NO_SEAT`) |
 | `archbase.controlplane.schema.mode` | `apply` | `apply`: cria na subida a tabela `CONTROLPLANE_USUARIO`; `off`: a aplicação cria |
-| `archbase.controlplane.instance-id` / `instance-credential` / `grace-period` / `mqtt.*` | — | Fases B e C |
+| `archbase.controlplane.instance-id` | — | Id da instância; a licença tem de ser dela (`sub`) |
+| `archbase.controlplane.license.path` | — | Arquivo com a licença (JWS), aplicado na subida se for mais nova que a do banco |
+| `archbase.controlplane.grace-period` | `7d` | Carência depois do `exp` da licença (status `GRACE`); depois, modo restrito |
+| `archbase.controlplane.restricted-mode.enforcement` | `enforce` | `enforce` recusa; `report` só registra em log |
+| `archbase.controlplane.restricted-mode.allowed-paths` | `/api/v1/auth/**` | Caminhos liberados no modo restrito (padrão Ant) |
+| `archbase.controlplane.instance-credential` / `mqtt.*` | — | Fase C |
 
 ## Token
 
@@ -104,6 +144,31 @@ com `USER_DISABLED`. Sem usuário local, a requisição entra só com a sessão:
 tem um status só: 401 para token inválido (`INVALID_TOKEN`, `INVALID_SIGNATURE`, `UNKNOWN_KEY`, `TOKEN_EXPIRED`,
 `WRONG_ISSUER`, `WRONG_AUDIENCE`) e 403 para o resto (`TENANT_REQUIRED`, `TENANT_MISMATCH`, `NO_SEAT`,
 `USER_DISABLED`, `NOT_ADMIN`). 401 é o sinal para o cliente renovar a sessão; 403 não se resolve renovando.
+
+## Licença, entitlements e assentos
+
+**Contratos assumidos — confirmar com as ADRs 0005, 0010 e 0014.** Cada um está isolado numa classe:
+
+- **Licença** (`LicenseVerifier`): JWS Ed25519 do Control Plane, com `iss`, `sub` = `instance-id`, `prd` = produto,
+  `token_use=license`, `iat` e `exp`. Verificada offline com o mesmo JWKS do token de sessão. Licença vencida com
+  assinatura boa é aceita; quem decide é o status: `VALID` até o `exp`, `GRACE` até `exp + grace-period`, `EXPIRED`
+  depois (ou sem licença). Licença reentregue com `exp` menor que a atual é ignorada.
+- **Estado do tenant** (`TenantSnapshot`): estado (`ACTIVE`, `DELINQUENT`, `SUSPENDED`; desconhecido vira
+  `UNKNOWN`), instante da suspensão, edição, entitlements (booleano = 1/0, limites e créditos numéricos), consumo já
+  contabilizado pelo Control Plane e quem tem assento. Versão crescente: snapshot com versão menor ou igual à atual é
+  ignorado.
+
+Tudo fica em memória e no banco (`CONTROLPLANE_LICENCA`, `CONTROLPLANE_TENANT`, `CONTROLPLANE_CONSUMO`); nenhuma
+consulta por requisição vai ao Control Plane. Com ele fora do ar, o último estado vale até o fim da carência.
+
+| Situação | O que acontece |
+|---|---|
+| Licença `GRACE` | Tudo segue funcionando |
+| Licença `EXPIRED` (ou ausente) | Modo restrito: `GET`/`HEAD`/`OPTIONS`, `@ExportOperation` e `allowed-paths` passam; o resto recebe 403 `LICENSE_EXPIRED`. Nada é apagado |
+| Tenant `SUSPENDED` | Token emitido depois da suspensão (login novo) recebe 403 `TENANT_SUSPENDED`; a sessão anterior lê e exporta, mas não escreve |
+| `@RequiresEntitlement` sem o entitlement | 403 `NOT_ENTITLED` |
+| `@RequiresSeat` | Exige `seat` no token e, se o Control Plane informou os assentos, que o usuário ainda esteja entre eles; senão 403 `NO_SEAT` |
+| `consume` | Sempre registra localmente; o estouro volta em `Usage.exceeded()` e no log, sem recusar |
 
 ## Convivência com o JWT atual
 
