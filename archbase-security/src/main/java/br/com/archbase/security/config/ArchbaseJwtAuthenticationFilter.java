@@ -2,6 +2,10 @@ package br.com.archbase.security.config;
 
 import br.com.archbase.ddd.context.ArchbaseTenantContext;
 import br.com.archbase.security.adapter.AccessTokenPersistenceAdapter;
+import br.com.archbase.security.auth.external.ExternalAuthenticationPolicy;
+import br.com.archbase.security.auth.external.ExternalAuthenticationRejectedException;
+import br.com.archbase.security.auth.external.ExternalBearerAuthenticator;
+import br.com.archbase.security.auth.external.ExternalTokenCheck;
 import br.com.archbase.security.domain.entity.ApiToken;
 import br.com.archbase.security.persistence.AccessTokenEntity;
 import br.com.archbase.security.repository.AccessTokenJpaRepository;
@@ -13,9 +17,12 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -24,6 +31,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.Enumeration;
@@ -62,6 +71,25 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
     @Value("${archbase.security.jwt.accept-token-query-param:true}")
     private boolean acceptTokenQueryParam;
 
+    /**
+     * Autenticadores de bearer token externos (ex.: {@code archbase-controlplane}). Injetados por setter, e não pelo
+     * construtor, para não mudar a assinatura de quem instancia o filtro. Vazio = comportamento de sempre.
+     */
+    private List<ExternalBearerAuthenticator> externalAuthenticators = List.of();
+
+    /** Política do provedor externo; {@code null} = comportamento de sempre. */
+    private ExternalAuthenticationPolicy externalPolicy;
+
+    @Autowired(required = false)
+    public void setExternalAuthenticators(List<ExternalBearerAuthenticator> externalAuthenticators) {
+        this.externalAuthenticators = externalAuthenticators == null ? List.of() : List.copyOf(externalAuthenticators);
+    }
+
+    @Autowired(required = false)
+    public void setExternalPolicy(ExternalAuthenticationPolicy externalPolicy) {
+        this.externalPolicy = externalPolicy;
+    }
+
     public static final String X_TENANT_ID = "X-TENANT-ID";
     public static final String X_COMPANY_ID = "X-COMPANY-ID";
 
@@ -77,6 +105,18 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             log.debug("Requisição recebida: {} {}", request.getMethod(), request.getRequestURI());
             logAllHeaders(request);
+
+            // Token emitido fora do Archbase: o autenticador externo assume a requisição inteira e o
+            // fluxo abaixo (tenant padrão, JWT HS256, token de API) não roda. Sem autenticador
+            // registrado, findExternal devolve null e nada aqui muda.
+            String bearer = bearerJwt(authHeader, tokenParam);
+            ExternalBearerAuthenticator external = findExternal(bearer);
+            if (external != null) {
+                if (authenticateExternally(external, bearer, request, response)) {
+                    filterChain.doFilter(request, response);
+                }
+                return;
+            }
 
             // O fallback para a query string obedece archbase.app.tenant.accept-query-param.
             // Antes ele era incondicional aqui, e como este filtro roda ANTES do
@@ -98,6 +138,16 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
             if (tenantId != null && !tenantId.isEmpty()) {
                 ArchbaseTenantContext.setTenantId(tenantId);
                 log.debug("TenantID definido no contexto: {}", tenantId);
+            } else if (externalPolicy != null && !externalPolicy.allowDefaultTenant()) {
+                // O provedor externo proíbe o tenant padrão. Para o JWT próprio do Archbase, o tenant
+                // vem do claim assinado do token — o mesmo que a reconciliação abaixo já trata como
+                // fonte de verdade. Sem isso, cliente legado que não manda X-TENANT-ID perderia o
+                // acesso ao ligar o provedor externo, porque o usuário seria buscado sem tenant.
+                String doToken = tenantFromLegacyJwt(authHeader, tokenParam);
+                if (doToken != null && !doToken.isEmpty()) {
+                    ArchbaseTenantContext.setTenantId(doToken);
+                    log.debug("TenantID tirado do claim do JWT (tenant padrão desligado): {}", doToken);
+                }
             } else if (defaultTenantId != null && !defaultTenantId.isEmpty()) {
                 ArchbaseTenantContext.setTenantId(defaultTenantId);
                 log.debug("TenantID não fornecido na requisição, utilizando tenant padrão: {}", defaultTenantId);
@@ -201,6 +251,156 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
         }
     }
 
+    /** O JWT apresentado (Bearer ou {@code ?token=}), ou {@code null} se não houver ou se for token de API. */
+    private String bearerJwt(String authHeader, String tokenParam) {
+        if (authHeader != null) {
+            if (authHeader.startsWith("Bearer ")) {
+                String token = authHeader.substring(7);
+                return isValidUUID(token) ? null : token;
+            }
+            return null;
+        }
+        return tokenParam != null && !isValidUUID(tokenParam) ? tokenParam : null;
+    }
+
+    private ExternalBearerAuthenticator findExternal(String token) {
+        if (token == null || externalAuthenticators.isEmpty()) {
+            return null;
+        }
+        for (ExternalBearerAuthenticator candidate : externalAuthenticators) {
+            try {
+                if (candidate.supports(token)) {
+                    return candidate;
+                }
+            } catch (RuntimeException e) {
+                log.warn("Autenticador externo {} falhou ao inspecionar o token: {}",
+                        candidate.getClass().getName(), e.getMessage());
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Autentica pelo provedor externo, com a regra de tenant aplicada aqui: o tenant do token é a fonte de verdade,
+     * um {@code X-TENANT-ID} divergente é recusado, e o tenant padrão nunca é usado.
+     *
+     * @return {@code true} se a requisição pode seguir; {@code false} se a resposta de erro já foi escrita
+     */
+    private boolean authenticateExternally(ExternalBearerAuthenticator external, String token,
+                                           HttpServletRequest request, HttpServletResponse response)
+            throws IOException {
+        ExternalTokenCheck check;
+        try {
+            check = external.check(token, request);
+        } catch (RuntimeException e) {
+            log.error("Autenticador externo {} falhou ao validar o token: {}",
+                    external.getClass().getName(), e.getMessage(), e);
+            check = ExternalTokenCheck.rejected(HttpServletResponse.SC_UNAUTHORIZED, "INVALID_TOKEN",
+                    "Token inválido");
+        }
+        if (check == null || !check.isAccepted()) {
+            ExternalTokenCheck rejected = check != null ? check : ExternalTokenCheck.rejected(
+                    HttpServletResponse.SC_UNAUTHORIZED, "INVALID_TOKEN", "Token inválido");
+            writeExternalError(response, rejected.status(), rejected.code(), rejected.message());
+            return false;
+        }
+
+        String headerTenant = request.getHeader(X_TENANT_ID);
+        if ((headerTenant == null || headerTenant.isEmpty()) && acceptTenantQueryParam) {
+            headerTenant = request.getParameter(X_TENANT_ID);
+        }
+        String tenant = check.tenantId();
+        if (tenant == null || tenant.isBlank()) {
+            if (headerTenant == null || headerTenant.isBlank()) {
+                writeExternalError(response, HttpServletResponse.SC_FORBIDDEN, "TENANT_REQUIRED",
+                        "A requisição não identifica o tenant");
+                return false;
+            }
+            tenant = headerTenant;
+        } else if (headerTenant != null && !headerTenant.isEmpty() && !headerTenant.equals(tenant)) {
+            log.warn("Acesso cross-tenant NEGADO (token externo): tenantDoToken={}, X-TENANT-ID={}, {} {}",
+                    tenant, headerTenant, request.getMethod(), request.getRequestURI());
+            writeExternalError(response, HttpServletResponse.SC_FORBIDDEN, "TENANT_MISMATCH",
+                    "X-TENANT-ID não corresponde ao tenant do token");
+            return false;
+        }
+        ArchbaseTenantContext.setTenantId(tenant);
+
+        String companyId = request.getHeader(X_COMPANY_ID);
+        if ((companyId == null || companyId.isEmpty()) && acceptTenantQueryParam) {
+            companyId = request.getParameter(X_COMPANY_ID);
+        }
+        if (companyId != null && !companyId.isEmpty()) {
+            ArchbaseTenantContext.setCompanyId(companyId);
+        }
+
+        Authentication authentication;
+        try {
+            authentication = external.authenticate(check, request);
+        } catch (ExternalAuthenticationRejectedException e) {
+            writeExternalError(response, e.getStatus(), e.getCode(), e.getMessage());
+            return false;
+        } catch (RuntimeException e) {
+            log.error("Autenticador externo {} falhou ao montar a autenticação: {}",
+                    external.getClass().getName(), e.getMessage(), e);
+            authentication = null;
+        }
+        if (authentication == null) {
+            writeExternalError(response, HttpServletResponse.SC_UNAUTHORIZED, "INVALID_TOKEN", "Token inválido");
+            return false;
+        }
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+        return true;
+    }
+
+    private static void writeExternalError(HttpServletResponse response, int status, String code, String message)
+            throws IOException {
+        if (status == HttpServletResponse.SC_UNAUTHORIZED) {
+            response.setHeader("WWW-Authenticate", "Bearer error=\"invalid_token\"");
+        }
+        response.setStatus(status);
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.getWriter().write("{\"status\":" + status
+                + ",\"error\":\"" + jsonEscape(code) + "\""
+                + ",\"code\":\"" + jsonEscape(code) + "\""
+                + ",\"message\":\"" + jsonEscape(message) + "\"}");
+    }
+
+    private static String jsonEscape(String value) {
+        if (value == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(value.length());
+        for (char c : value.toCharArray()) {
+            switch (c) {
+                case '"' -> sb.append("\\\"");
+                case '\\' -> sb.append("\\\\");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                default -> {
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+                }
+            }
+        }
+        return sb.toString();
+    }
+
+    /** {@link #resolveTenantFromJwt}, sem deixar falha de leitura do token interromper a requisição. */
+    private String tenantFromLegacyJwt(String authHeader, String tokenParam) {
+        try {
+            return resolveTenantFromJwt(authHeader, tokenParam);
+        } catch (RuntimeException e) {
+            log.debug("Não foi possível ler o tenant do JWT: {}", e.getMessage());
+            return null;
+        }
+    }
+
     /** Tenant declarado no claim do JWT (Bearer ou via URL); {@code null} para API token (UUID). */
     private String resolveTenantFromJwt(String authHeader, String tokenParam) {
         if (authHeader != null && authHeader.startsWith("Bearer ") && !isValidUUID(authHeader.substring(7))) {
@@ -213,6 +413,11 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     private void processJwtToken(String token, HttpServletRequest request) {
+        if (externalPolicy != null && !externalPolicy.acceptLegacyJwt()) {
+            log.warn("JWT próprio do Archbase recusado: o provedor externo exige o token novo "
+                    + "(archbase.controlplane.legacy-jwt=reject)");
+            return;
+        }
         try {
             // Refresh token e desafio de MFA são JWTs assinados com o mesmo subject do access
             // token: sem esta checagem, ambos passariam por credencial. O refresh agora é
