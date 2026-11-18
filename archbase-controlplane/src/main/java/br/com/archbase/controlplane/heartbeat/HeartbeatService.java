@@ -117,6 +117,7 @@ public class HeartbeatService implements SmartLifecycle {
                 store.markReported(ids);
                 log.info("controlplane.heartbeat.sent channel=MQTT tenants={} usage_rows={}", state.tenantIds().size(),
                         ids.size());
+                state.metrics().heartbeat("mqtt");
                 return Channel.MQTT;
             } catch (Exception e) {
                 log.warn("controlplane.heartbeat.mqtt_failed erro={} — tentando HTTPS", e.getMessage());
@@ -135,6 +136,7 @@ public class HeartbeatService implements SmartLifecycle {
                     store.markReported(ids);
                     log.info("controlplane.heartbeat.sent channel=HTTPS tenants={} usage_rows={}",
                             state.tenantIds().size(), ids.size());
+                    state.metrics().heartbeat("https");
                     return Channel.HTTPS;
                 }
                 log.warn("controlplane.heartbeat.https_failed status={}", response.statusCode());
@@ -144,6 +146,7 @@ public class HeartbeatService implements SmartLifecycle {
                 log.warn("controlplane.heartbeat.https_failed erro={}", e.getMessage());
             }
         }
+        state.metrics().heartbeat("none");
         log.error("controlplane.heartbeat.undelivered usage_rows={} — fica para o próximo", ids.size());
         return Channel.NONE;
     }

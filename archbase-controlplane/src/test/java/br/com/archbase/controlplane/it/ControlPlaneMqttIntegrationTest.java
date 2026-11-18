@@ -44,7 +44,7 @@ import static org.awaitility.Awaitility.await;
  */
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(classes = ControlPlaneTestApplication.class)
-@Import(RecordingProvisionerConfig.class)
+@Import({RecordingProvisionerConfig.class, br.com.archbase.controlplane.fixtures.MeterRegistryConfig.class})
 @TestPropertySource(properties = {
         "spring.datasource.url=jdbc:h2:mem:cp-mqtt;DB_CLOSE_DELAY=-1",
         "spring.jpa.hibernate.ddl-auto=create-drop",
@@ -129,6 +129,18 @@ class ControlPlaneMqttIntegrationTest {
     PlatformTransactionManager transactionManager;
     @Autowired
     JdbcTemplate jdbc;
+    @Autowired
+    io.micrometer.core.instrument.MeterRegistry meters;
+
+    private double commands(String type, String status) {
+        var c = meters.find("controlplane.commands").tags("type", type, "status", status).counter();
+        return c == null ? 0 : c.count();
+    }
+
+    private double heartbeats(String channel) {
+        var c = meters.find("controlplane.heartbeat").tag("channel", channel).counter();
+        return c == null ? 0 : c.count();
+    }
 
     @BeforeEach
     void setUp() throws Exception {
@@ -157,11 +169,15 @@ class ControlPlaneMqttIntegrationTest {
         String tenant = "t-" + UUID.randomUUID();
         String command = provisionCommand(id, tenant);
 
+        double aplicados = commands("tenant.provision", "applied");
+        double duplicados = commands("tenant.provision", "duplicate");
         observer.publishCommand(INSTANCE, command);
         observer.publishCommand(INSTANCE, command);
 
         await().atMost(Duration.ofSeconds(15)).until(() -> observer.matching(BrokerObserver.result(id)).size() == 2);
         assertThat(provisioner.count("provision", tenant)).isEqualTo(1);
+        assertThat(commands("tenant.provision", "applied")).isEqualTo(aplicados + 1);
+        assertThat(commands("tenant.provision", "duplicate")).isEqualTo(duplicados + 1);
         var results = observer.matching(BrokerObserver.result(id));
         assertThat(results).allSatisfy(r -> assertThat(r.body().path("status").asString()).isEqualTo("applied"));
         assertThat(results).anySatisfy(r -> assertThat(r.body().path("duplicate").asBoolean()).isTrue());
@@ -188,12 +204,15 @@ class ControlPlaneMqttIntegrationTest {
         String forjado = CP.command(KID, INSTANCE, id, "tenant.provision", Map.of("tenantId", tenant))
                 .signedByStranger().compact();
 
+        double recusados = commands("unknown", "rejected");
         observer.publishCommand(INSTANCE, forjado);
 
         BrokerObserver.Received result = observer.await(BrokerObserver.result(id), Duration.ofSeconds(15));
         assertThat(result.body().path("status").asString()).isEqualTo("rejected");
         assertThat(provisioner.calls()).isEmpty();
         assertThat(store.commandApplied(id)).isFalse();
+        assertThat(commands("unknown", "rejected")).as("assinatura inválida vira métrica para alerta")
+                .isEqualTo(recusados + 1);
     }
 
     @Test
@@ -216,12 +235,14 @@ class ControlPlaneMqttIntegrationTest {
         String tenant = "t-" + UUID.randomUUID();
         String command = provisionCommand(id, tenant);
 
+        double falhas = commands("tenant.provision", "failed");
         provisioner.failWith("preset varejo indisponível");
         observer.publishCommand(INSTANCE, command);
         BrokerObserver.Received failed = observer.await(BrokerObserver.result(id), Duration.ofSeconds(15));
         assertThat(failed.body().path("status").asString()).isEqualTo("failed");
         assertThat(failed.body().path("reason").asString()).isEqualTo("preset varejo indisponível");
         assertThat(store.commandApplied(id)).as("a transação desfaz o registro do comando").isFalse();
+        assertThat(commands("tenant.provision", "failed")).isEqualTo(falhas + 1);
         assertThat(state.tenant(tenant)).as("o cache não anuncia o que o produto não aplicou").isEmpty();
 
         provisioner.failWith(null);
@@ -347,11 +368,16 @@ class ControlPlaneMqttIntegrationTest {
     void brokerForaDoAr() throws Exception {
         state.recordUsage("t-uso", "copilot.ia_creditos", 7);
         int antes = CP.heartbeats().size();
+        double viaHttps = heartbeats("https");
+        assertThat(meters.get("controlplane.mqtt.connected").gauge().value()).isEqualTo(1);
 
         MOSQUITTO.getDockerClient().pauseContainerCmd(MOSQUITTO.getContainerId()).exec();
         try {
             await().atMost(Duration.ofSeconds(20)).until(() -> !mqtt.isConnected());
+            assertThat(meters.get("controlplane.mqtt.connected").gauge().value()).isZero();
+            assertThat(meters.get("controlplane.mqtt.disconnects").functionCounter().count()).isGreaterThanOrEqualTo(1);
             assertThat(heartbeat.send()).isEqualTo(HeartbeatService.Channel.HTTPS);
+            assertThat(heartbeats("https")).isEqualTo(viaHttps + 1);
         } finally {
             MOSQUITTO.getDockerClient().unpauseContainerCmd(MOSQUITTO.getContainerId()).exec();
         }
@@ -391,6 +417,15 @@ class ControlPlaneMqttIntegrationTest {
         await().atMost(Duration.ofSeconds(15)).until(() -> store.meta("manifest.version").isPresent());
         assertThat(store.meta("manifest.version")).contains("2.4.0");
         assertThat(manifest.publishIfChanged()).as("mesma versão não publica de novo").isFalse();
+    }
+
+    @Test
+    @DisplayName("gauges do JWKS e da licença ficam disponíveis para coleta")
+    void gaugesBasicos() {
+        assertThat(meters.get("controlplane.jwks.keys").gauge().value()).isGreaterThanOrEqualTo(1);
+        assertThat(meters.get("controlplane.jwks.fetch").tag("result", "success").functionCounter().count())
+                .isGreaterThanOrEqualTo(1);
+        assertThat(meters.find("controlplane.license.status").gauge()).isNotNull();
     }
 
     private ControlPlaneMqttClient otherInstanceClient(String instance) {

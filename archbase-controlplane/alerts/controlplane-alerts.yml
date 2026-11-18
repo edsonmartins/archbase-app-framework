@@ -1,0 +1,154 @@
+# Regras de alerta do archbase-controlplane, no formato de regras do Prometheus (aceito pelo vmalert do
+# VictoriaMetrics e importável no Grafana Alerting). Uma regra por caso da tabela "Comportamento em falha".
+#
+# Pré-requisito: a aplicação exporta as métricas do Micrometer em formato Prometheus
+# (micrometer-registry-prometheus + /actuator/prometheus) e o VictoriaMetrics coleta esse endpoint.
+# Os nomes abaixo são conferidos pelo teste PrometheusNamesTest: uma regra que cite métrica inexistente quebra o build.
+groups:
+  - name: archbase-controlplane
+    rules:
+
+      # --- Control Plane fora do ar: a instância segue com o cache até exp + carência -----------------------------
+      - alert: ControlPlaneJwksInacessivel
+        expr: increase(controlplane_jwks_fetch_total{result="failure"}[30m]) > 0
+          and increase(controlplane_jwks_fetch_total{result="success"}[30m]) == 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: o JWKS do Control Plane não responde"
+          description: "A instância segue com as chaves da cópia local; chave nova (rotação) não será aceita até voltar."
+
+      - alert: ControlPlaneSemChaves
+        expr: controlplane_jwks_keys == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}: nenhuma chave do Control Plane carregada"
+          description: "Nenhum token do Control Plane é aceito. Verifique archbase.controlplane.jwks.url e jwks.local-path."
+
+      - alert: ControlPlaneLicencaEmCarencia
+        expr: controlplane_license_status == 1
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: licença vencida, em carência"
+          description: "Tudo funciona até o fim da carência. Faltam {{ $value }} — ver controlplane_license_grace_end_seconds."
+
+      - alert: ControlPlaneCarenciaAcabando
+        expr: controlplane_license_grace_end_seconds > 0 and controlplane_license_grace_end_seconds < 86400
+          and controlplane_license_status == 1
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}: menos de 24h para o modo restrito"
+          description: "Sem renovação da licença, a escrita passa a ser recusada com LICENSE_EXPIRED."
+
+      # --- Licença vencida além da carência: modo restrito ----------------------------------------------------------
+      - alert: ControlPlaneModoRestrito
+        expr: controlplane_license_status == 2
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}: licença vencida além da carência (ou ausente)"
+          description: "Leitura e exportação liberadas; escrita recusada com LICENSE_EXPIRED. Nenhum dado é apagado."
+
+      - alert: ControlPlaneEscritaBarrada
+        expr: increase(controlplane_restricted_denied_total{enforcement="enforce"}[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: escritas recusadas pelo modo restrito ({{ $labels.code }})"
+
+      - alert: ControlPlaneModoRestritoEmReport
+        expr: increase(controlplane_restricted_denied_total{enforcement="report"}[1h]) > 0
+        labels:
+          severity: info
+        annotations:
+          summary: "{{ $labels.instance }}: escritas que seriam recusadas ({{ $labels.code }}) — enforcement=report"
+          description: "Antes de passar para enforce, confira que estas recusas são as esperadas."
+
+      # --- Tenant suspenso -------------------------------------------------------------------------------------------
+      - alert: ControlPlaneTenantSuspenso
+        expr: controlplane_tenants{state="SUSPENDED"} > 0
+        labels:
+          severity: info
+        annotations:
+          summary: "{{ $labels.instance }}: {{ $value }} tenant(s) suspenso(s)"
+          description: "Login novo e escrita recusados com TENANT_SUSPENDED; exportação liberada."
+
+      # --- Broker fora do ar: heartbeat cai para HTTPS ---------------------------------------------------------------
+      - alert: ControlPlaneBrokerDesconectado
+        expr: controlplane_mqtt_connected == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: sem conexão com o broker do Control Plane"
+          description: "Comandos ficam pendentes na sessão do broker e chegam quando a conexão volta."
+
+      - alert: ControlPlaneHeartbeatPorHttps
+        expr: increase(controlplane_heartbeat_total{channel="https"}[30m]) > 0
+        labels:
+          severity: info
+        annotations:
+          summary: "{{ $labels.instance }}: heartbeat saindo por HTTPS (broker indisponível)"
+
+      - alert: ControlPlaneHeartbeatNaoEntregue
+        expr: increase(controlplane_heartbeat_total{channel="none"}[30m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: heartbeat não chegou ao Control Plane por nenhum canal"
+
+      # --- Consumo metered durante a queda: registra local e reconcilia ---------------------------------------------
+      - alert: ControlPlaneConsumoSemReconciliar
+        expr: controlplane_usage_unreported > 1000
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: {{ $value }} registros de consumo sem reportar há mais de 1h"
+
+      - alert: ControlPlaneConsumoAcimaDoLimite
+        expr: increase(controlplane_usage_exceeded_total[1h]) > 0
+        labels:
+          severity: info
+        annotations:
+          summary: "{{ $labels.instance }}: consumo de {{ $labels.key }} acima do limite (tolerado)"
+
+      # --- Provisionamento falha no produto -------------------------------------------------------------------------
+      - alert: ControlPlaneProvisionamentoFalhou
+        expr: increase(controlplane_commands_total{status="failed"}[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: comando {{ $labels.type }} falhou no produto"
+          description: "O Control Plane reenvia; o motivo está no evento command.result e no log controlplane.command.failed."
+
+      # --- Comando com assinatura inválida ---------------------------------------------------------------------------
+      - alert: ControlPlaneComandoForjado
+        expr: increase(controlplane_commands_total{status="rejected"}[15m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}: comando recusado por assinatura inválida ou instância errada"
+          description: "Veja o logger br.com.archbase.controlplane.security."
+
+      # --- Tokens recusados em volume que sugere ataque ou configuração errada ------------------------------------
+      - alert: ControlPlaneTokensSuspeitos
+        expr: sum by (instance, code) (rate(controlplane_token_rejected_total{code=~"INVALID_SIGNATURE|WRONG_ISSUER|WRONG_AUDIENCE|TENANT_MISMATCH|UNKNOWN_KEY"}[5m])) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: tokens recusados com {{ $labels.code }} acima de 0,2/s"
+
+      - alert: ControlPlaneAcessoNegadoEmVolume
+        expr: sum by (instance, code) (rate(controlplane_access_denied_total[5m])) > 1
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "{{ $labels.instance }}: acessos negados com {{ $labels.code }} acima de 1/s"
+          description: "Pode ser entitlement retirado, assento a menos ou tela oferecendo ação que o usuário não tem."

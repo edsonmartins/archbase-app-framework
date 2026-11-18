@@ -48,7 +48,7 @@ public class ControlPlaneAccessInterceptor implements MethodInterceptor {
         return invocation.proceed();
     }
 
-    private static void checkAdmin(AdminScope scope, MethodInvocation invocation) {
+    private void checkAdmin(AdminScope scope, MethodInvocation invocation) {
         Optional<TenantSession> session = ControlPlane.findCurrentSession();
         boolean allowed = session.isPresent()
                 && !session.get().instance()
@@ -82,8 +82,8 @@ public class ControlPlaneAccessInterceptor implements MethodInterceptor {
         }
     }
 
-    private static void deny(String code, String message, Optional<TenantSession> session,
-                             MethodInvocation invocation) {
+    private void deny(String code, String message, Optional<TenantSession> session, MethodInvocation invocation) {
+        state.metrics().accessDenied(code);
         log.info("controlplane.access.denied code={} tnt={} sub={} metodo={}", code,
                 ArchbaseTenantContext.getTenantId(), session.map(TenantSession::userId).orElse(null),
                 invocation.getMethod().getName());

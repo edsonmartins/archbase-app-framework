@@ -53,6 +53,14 @@ public class CommandProcessor {
     }
 
     public CommandOutcome process(String payload) {
+        CommandOutcome outcome = doProcess(payload);
+        if (outcome != null) {
+            state.metrics().command(outcome.type(), outcome.status().name().toLowerCase(java.util.Locale.ROOT));
+        }
+        return outcome;
+    }
+
+    private CommandOutcome doProcess(String payload) {
         ControlPlaneCommand command;
         try {
             command = verifier.verify(payload);

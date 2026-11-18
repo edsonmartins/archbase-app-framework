@@ -301,7 +301,7 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
         if (check == null || !check.isAccepted()) {
             ExternalTokenCheck rejected = check != null ? check : ExternalTokenCheck.rejected(
                     HttpServletResponse.SC_UNAUTHORIZED, "INVALID_TOKEN", "Token inválido");
-            writeExternalError(response, rejected.status(), rejected.code(), rejected.message());
+            rejectExternally(external, request, response, rejected.status(), rejected.code(), rejected.message());
             return false;
         }
 
@@ -312,7 +312,7 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
         String tenant = check.tenantId();
         if (tenant == null || tenant.isBlank()) {
             if (headerTenant == null || headerTenant.isBlank()) {
-                writeExternalError(response, HttpServletResponse.SC_FORBIDDEN, "TENANT_REQUIRED",
+                rejectExternally(external, request, response, HttpServletResponse.SC_FORBIDDEN, "TENANT_REQUIRED",
                         "A requisição não identifica o tenant");
                 return false;
             }
@@ -320,7 +320,7 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
         } else if (headerTenant != null && !headerTenant.isEmpty() && !headerTenant.equals(tenant)) {
             log.warn("Acesso cross-tenant NEGADO (token externo): tenantDoToken={}, X-TENANT-ID={}, {} {}",
                     tenant, headerTenant, request.getMethod(), request.getRequestURI());
-            writeExternalError(response, HttpServletResponse.SC_FORBIDDEN, "TENANT_MISMATCH",
+            rejectExternally(external, request, response, HttpServletResponse.SC_FORBIDDEN, "TENANT_MISMATCH",
                     "X-TENANT-ID não corresponde ao tenant do token");
             return false;
         }
@@ -338,7 +338,7 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             authentication = external.authenticate(check, request);
         } catch (ExternalAuthenticationRejectedException e) {
-            writeExternalError(response, e.getStatus(), e.getCode(), e.getMessage());
+            rejectExternally(external, request, response, e.getStatus(), e.getCode(), e.getMessage());
             return false;
         } catch (RuntimeException e) {
             log.error("Autenticador externo {} falhou ao montar a autenticação: {}",
@@ -346,11 +346,22 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
             authentication = null;
         }
         if (authentication == null) {
-            writeExternalError(response, HttpServletResponse.SC_UNAUTHORIZED, "INVALID_TOKEN", "Token inválido");
+            rejectExternally(external, request, response, HttpServletResponse.SC_UNAUTHORIZED, "INVALID_TOKEN", "Token inválido");
             return false;
         }
         SecurityContextHolder.getContext().setAuthentication(authentication);
         return true;
+    }
+
+    private static void rejectExternally(ExternalBearerAuthenticator external, HttpServletRequest request,
+                                         HttpServletResponse response, int status, String code, String message)
+            throws IOException {
+        try {
+            external.onRejected(code, request);
+        } catch (RuntimeException e) {
+            log.debug("onRejected de {} falhou: {}", external.getClass().getName(), e.getMessage());
+        }
+        writeExternalError(response, status, code, message);
     }
 
     private static void writeExternalError(HttpServletResponse response, int status, String code, String message)

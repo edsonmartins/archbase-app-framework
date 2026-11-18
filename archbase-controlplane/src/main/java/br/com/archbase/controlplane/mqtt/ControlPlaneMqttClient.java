@@ -68,6 +68,8 @@ public class ControlPlaneMqttClient implements SmartLifecycle {
     private volatile ScheduledExecutorService scheduler;
     private volatile boolean running;
     private volatile Duration nextDelay;
+    private final java.util.concurrent.atomic.AtomicLong connectFailures = new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.atomic.AtomicLong disconnects = new java.util.concurrent.atomic.AtomicLong();
 
     public ControlPlaneMqttClient(String uri, String clientId, String username, String password, String instanceId,
                                   String product, String productVersion, Duration sessionExpiry,
@@ -100,6 +102,19 @@ public class ControlPlaneMqttClient implements SmartLifecycle {
 
     public ControlPlaneTopics topics() {
         return topics;
+    }
+
+    /**
+     * Tentativas da primeira conexão que falharam. As reconexões depois de uma queda são do Paho e não passam por
+     * aqui — elas aparecem em {@link #disconnects()}.
+     */
+    public long connectFailures() {
+        return connectFailures.get();
+    }
+
+    /** Quedas da conexão com o broker. */
+    public long disconnects() {
+        return disconnects.get();
     }
 
     // ------------------------------------------------------------------ ciclo de vida
@@ -187,6 +202,7 @@ public class ControlPlaneMqttClient implements SmartLifecycle {
             client.connect(options()).waitForCompletion(Math.max(5000, keepAlive.toMillis()));
             nextDelay = reconnectMinDelay;
         } catch (MqttException e) {
+            connectFailures.incrementAndGet();
             Duration delay = nextDelay;
             nextDelay = min(delay.multipliedBy(2), reconnectMaxDelay);
             log.warn("controlplane.mqtt.connect_failed uri={} erro={} — nova tentativa em {}s", uri, e.getMessage(),
@@ -307,6 +323,7 @@ public class ControlPlaneMqttClient implements SmartLifecycle {
 
         @Override
         public void disconnected(MqttDisconnectResponse response) {
+            disconnects.incrementAndGet();
             log.warn("controlplane.mqtt.disconnected motivo={}", response == null ? null : response.getReasonString());
         }
 

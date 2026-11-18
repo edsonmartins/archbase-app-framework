@@ -39,6 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest(classes = ControlPlaneTestApplication.class)
 @AutoConfigureMockMvc
+@org.springframework.context.annotation.Import(br.com.archbase.controlplane.fixtures.MeterRegistryConfig.class)
 @TestPropertySource(properties = {
         "spring.datasource.url=jdbc:h2:mem:cp-accept;DB_CLOSE_DELAY=-1",
         "spring.jpa.hibernate.ddl-auto=create-drop",
@@ -90,6 +91,13 @@ class ControlPlaneTokenIntegrationTest {
     PasswordEncoder encoder;
     @Autowired
     JdbcTemplate jdbc;
+    @Autowired
+    io.micrometer.core.instrument.MeterRegistry meters;
+
+    private double rejected(String code) {
+        var c = meters.find("controlplane.token.rejected").tag("code", code).counter();
+        return c == null ? 0 : c.count();
+    }
 
     private final ObjectMapper json = new ObjectMapper();
     private UserEntity ana;
@@ -133,10 +141,13 @@ class ControlPlaneTokenIntegrationTest {
         @Test
         @DisplayName("o mesmo token com X-TENANT-ID do tenant B é recusado")
         void outroTenantNoCabecalhoERecusado() throws Exception {
+            double antes = rejected("TENANT_MISMATCH");
             mvc.perform(get("/api/teste/quem").header("Authorization", sessionA("member"))
                             .header("X-TENANT-ID", TENANT_B))
                     .andExpect(status().isForbidden())
                     .andExpect(jsonPath("$.code").value("TENANT_MISMATCH"));
+            assertThat(rejected("TENANT_MISMATCH")).as("recusa decidida no filtro também vira métrica")
+                    .isEqualTo(antes + 1);
         }
 
         @Test
@@ -172,11 +183,13 @@ class ControlPlaneTokenIntegrationTest {
         @Test
         @DisplayName("aud de outra instância é recusado")
         void outraInstancia() throws Exception {
+            double antes = rejected("WRONG_AUDIENCE");
             String token = CP.session(KID, "cp-user-ana", EMAIL, TENANT_A, "member")
                     .audience("https://outra.instancia.teste").bearer();
             mvc.perform(get("/api/teste/quem").header("Authorization", token))
                     .andExpect(status().isUnauthorized())
                     .andExpect(jsonPath("$.code").value("WRONG_AUDIENCE"));
+            assertThat(rejected("WRONG_AUDIENCE")).isEqualTo(antes + 1);
         }
 
         @Test
@@ -302,9 +315,13 @@ class ControlPlaneTokenIntegrationTest {
         @Test
         @DisplayName("member é recusado com NOT_ADMIN")
         void member() throws Exception {
+            var antes = meters.find("controlplane.access.denied").tag("code", "NOT_ADMIN").counter();
+            double base = antes == null ? 0 : antes.count();
             mvc.perform(get("/api/teste/admin-tenant").header("Authorization", sessionA("member")))
                     .andExpect(status().isForbidden())
                     .andExpect(jsonPath("$.code").value("NOT_ADMIN"));
+            assertThat(meters.get("controlplane.access.denied").tag("code", "NOT_ADMIN").counter().count())
+                    .isEqualTo(base + 1);
         }
 
         @Test

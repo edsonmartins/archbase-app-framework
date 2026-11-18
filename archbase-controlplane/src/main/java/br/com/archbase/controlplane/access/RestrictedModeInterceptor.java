@@ -67,6 +67,7 @@ public class RestrictedModeInterceptor implements HandlerInterceptor {
         if (code == null) {
             return true;
         }
+        state.metrics().restrictedDenied(code, config.getEnforcement().name().toLowerCase(java.util.Locale.ROOT));
         if (config.getEnforcement() == ControlPlaneProperties.Enforcement.REPORT) {
             log.warn("controlplane.restricted.would_deny code={} tnt={} {} {} (enforcement=report)", code,
                     ArchbaseTenantContext.getTenantId(), request.getMethod(), request.getRequestURI());

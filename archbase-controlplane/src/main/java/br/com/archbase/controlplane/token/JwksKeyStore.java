@@ -51,6 +51,8 @@ public class JwksKeyStore {
     private final HttpClient httpClient;
 
     private volatile Map<String, PublicKey> keys = Map.of();
+    private final java.util.concurrent.atomic.AtomicLong fetchSuccesses = new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.atomic.AtomicLong fetchFailures = new java.util.concurrent.atomic.AtomicLong();
     private volatile Instant lastFetchAttempt = Instant.EPOCH;
 
     public JwksKeyStore(String url, String localPath, Duration refreshMinInterval, Duration timeout, Clock clock) {
@@ -91,6 +93,16 @@ public class JwksKeyStore {
         return Optional.empty();
     }
 
+    /** Buscas do JWKS remoto que trouxeram chaves. */
+    public long fetchSuccesses() {
+        return fetchSuccesses.get();
+    }
+
+    /** Buscas do JWKS remoto que falharam (rede, status, JWKS sem chave Ed25519). */
+    public long fetchFailures() {
+        return fetchFailures.get();
+    }
+
     /** {@code kid}s carregados no momento (diagnóstico e testes). */
     public java.util.Set<String> knownKeyIds() {
         return keys.keySet();
@@ -107,6 +119,12 @@ public class JwksKeyStore {
 
     /** Busca o JWKS remoto. Devolve se a busca deu certo. */
     synchronized boolean refresh() {
+        boolean ok = doRefresh();
+        (ok ? fetchSuccesses : fetchFailures).incrementAndGet();
+        return ok;
+    }
+
+    private boolean doRefresh() {
         lastFetchAttempt = clock.instant();
         try {
             HttpRequest request = HttpRequest.newBuilder(URI.create(url))
