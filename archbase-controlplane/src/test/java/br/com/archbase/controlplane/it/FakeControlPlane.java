@@ -58,7 +58,30 @@ public final class FakeControlPlane implements AutoCloseable {
             }
             exchange.close();
         });
+        server.createContext("/api/v1/instances/", exchange -> {
+            byte[] body = exchange.getRequestBody().readAllBytes();
+            heartbeats.add(new String(body, StandardCharsets.UTF_8));
+            heartbeatAuth.add(String.valueOf(exchange.getRequestHeaders().getFirst("Authorization")));
+            exchange.sendResponseHeaders(202, -1);
+            exchange.close();
+        });
         server.start();
+    }
+
+    private final java.util.List<String> heartbeats = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final java.util.List<String> heartbeatAuth = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    public String baseUrl() {
+        return "http://127.0.0.1:" + server.getAddress().getPort();
+    }
+
+    /** Heartbeats recebidos por HTTPS (corpo JSON). */
+    public java.util.List<String> heartbeats() {
+        return heartbeats;
+    }
+
+    public java.util.List<String> heartbeatAuth() {
+        return heartbeatAuth;
     }
 
     public String jwksUrl() {
@@ -102,6 +125,12 @@ public final class FakeControlPlane implements AutoCloseable {
     public Token license(String kid, String instanceId, String product, Instant expiresAt) {
         return new Token(kid).claim("sub", instanceId).claim("prd", product).claim("token_use", "license")
                 .expiresAt(expiresAt);
+    }
+
+    /** Comando assinado (contrato assumido: token_use=command, sub=instância, jti=id, cmd=tipo, data). */
+    public Token command(String kid, String instanceId, String commandId, String type, Map<String, Object> data) {
+        return new Token(kid).claim("sub", instanceId).claim("token_use", "command").claim("jti", commandId)
+                .claim("cmd", type).claim("data", data);
     }
 
     /** Token de instância (serviço a serviço). */
@@ -190,6 +219,8 @@ public final class FakeControlPlane implements AutoCloseable {
             claims.forEach((name, value) -> {
                 if ("sub".equals(name)) {
                     builder.subject((String) value);
+                } else if ("jti".equals(name)) {
+                    builder.id((String) value);
                 } else {
                     builder.claim(name, value);
                 }

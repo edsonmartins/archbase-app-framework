@@ -34,6 +34,15 @@ public class ControlPlaneStartupValidator {
             problems.add("archbase.app.tenant.fail-on-missing precisa ser true com o Control Plane ligado: "
                     + "sem isso, consulta sem tenant no contexto cai em archbase.app.tenant.default.id");
         }
+        if (properties.mqttEnabled()) {
+            if (isBlank(properties.getInstanceId())) {
+                problems.add("archbase.controlplane.instance-id é obrigatório com o MQTT ligado (mqtt.uri)");
+            }
+            if (isBlank(properties.getInstanceCredential()) && isBlank(properties.getMqtt().getPassword())) {
+                problems.add("archbase.controlplane.instance-credential (ou mqtt.password) é obrigatório com o MQTT "
+                        + "ligado");
+            }
+        }
         if (!problems.isEmpty()) {
             throw new IllegalStateException("archbase-controlplane ligado com configuração incompleta:\n - "
                     + String.join("\n - ", problems));

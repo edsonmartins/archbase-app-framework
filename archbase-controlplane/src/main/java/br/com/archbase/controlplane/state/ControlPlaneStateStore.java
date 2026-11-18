@@ -42,6 +42,8 @@ public class ControlPlaneStateStore {
     public static final String LICENSE_TABLE = "CONTROLPLANE_LICENCA";
     public static final String TENANT_TABLE = "CONTROLPLANE_TENANT";
     public static final String USAGE_TABLE = "CONTROLPLANE_CONSUMO";
+    public static final String COMMAND_TABLE = "CONTROLPLANE_COMANDO";
+    public static final String META_TABLE = "CONTROLPLANE_META";
 
     private static final String LICENSE_ROW = "INSTANCIA";
 
@@ -76,6 +78,14 @@ public class ControlPlaneStateStore {
                 + "QUANTIDADE BIGINT NOT NULL, "
                 + "DH_CONSUMO TIMESTAMP NOT NULL, "
                 + "REPORTADO INTEGER NOT NULL)");
+        createIfMissing(COMMAND_TABLE, "CREATE TABLE " + COMMAND_TABLE + " ("
+                + "ID VARCHAR(100) NOT NULL PRIMARY KEY, "
+                + "TIPO VARCHAR(100) NOT NULL, "
+                + "DH_APLICACAO TIMESTAMP NOT NULL)");
+        createIfMissing(META_TABLE, "CREATE TABLE " + META_TABLE + " ("
+                + "CHAVE VARCHAR(100) NOT NULL PRIMARY KEY, "
+                + "VALOR VARCHAR(500) NOT NULL, "
+                + "DH_ATUALIZACAO TIMESTAMP NOT NULL)");
     }
 
     private void createIfMissing(String table, String ddl) {
@@ -177,6 +187,73 @@ public class ControlPlaneStateStore {
         Long sum = jdbc.queryForObject("SELECT COALESCE(SUM(QUANTIDADE), 0) FROM " + USAGE_TABLE
                 + " WHERE TENANT_ID = ? AND CHAVE = ? AND REPORTADO = 0", Long.class, tenantId, key);
         return sum == null ? 0 : sum;
+    }
+
+    /** Consumo ainda não reportado, linha a linha, para o heartbeat. */
+    public List<UsageRow> unreportedRows(int limit) {
+        return jdbc.query("SELECT ID, TENANT_ID, CHAVE, QUANTIDADE FROM " + USAGE_TABLE
+                        + " WHERE REPORTADO = 0 ORDER BY DH_CONSUMO",
+                (rs, i) -> new UsageRow(rs.getString(1), rs.getString(2), rs.getString(3), rs.getLong(4)))
+                .stream().limit(limit).toList();
+    }
+
+    /** Marca como reportadas as linhas que o Control Plane recebeu. */
+    public void markReported(List<String> ids) {
+        if (ids.isEmpty()) {
+            return;
+        }
+        jdbc.batchUpdate("UPDATE " + USAGE_TABLE + " SET REPORTADO = 1 WHERE ID = ?",
+                ids.stream().map(id -> new Object[]{id}).toList());
+    }
+
+    public record UsageRow(String id, String tenantId, String key, long amount) {
+    }
+
+    // ------------------------------------------------------------------ comandos aplicados
+
+    /**
+     * Registra o comando como aplicado. Chamado dentro da transação do comando: se ela for desfeita, o registro
+     * também é, e o comando poderá ser aplicado de novo.
+     *
+     * @return {@code false} se o comando já tinha sido aplicado
+     */
+    public boolean recordCommand(String commandId, String type) {
+        try {
+            jdbc.update("INSERT INTO " + COMMAND_TABLE + " (ID, TIPO, DH_APLICACAO) VALUES (?, ?, ?)",
+                    commandId, type, Timestamp.from(Instant.now()));
+            return true;
+        } catch (org.springframework.dao.DuplicateKeyException e) {
+            return false;
+        }
+    }
+
+    public boolean commandApplied(String commandId) {
+        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM " + COMMAND_TABLE + " WHERE ID = ?",
+                Integer.class, commandId);
+        return count != null && count > 0;
+    }
+
+    // ------------------------------------------------------------------ metadados
+
+    public Optional<String> meta(String key) {
+        return jdbc.queryForList("SELECT VALOR FROM " + META_TABLE + " WHERE CHAVE = ?", String.class, key)
+                .stream().findFirst();
+    }
+
+    public void setMeta(String key, String value) {
+        Timestamp now = Timestamp.from(Instant.now());
+        int updated = jdbc.update("UPDATE " + META_TABLE + " SET VALOR = ?, DH_ATUALIZACAO = ? WHERE CHAVE = ?",
+                value, now, key);
+        if (updated == 0) {
+            jdbc.update("INSERT INTO " + META_TABLE + " (CHAVE, VALOR, DH_ATUALIZACAO) VALUES (?, ?, ?)",
+                    key, value, now);
+        }
+    }
+
+    // ------------------------------------------------------------------ tenants removidos
+
+    public void deleteTenant(String tenantId) {
+        jdbc.update("DELETE FROM " + TENANT_TABLE + " WHERE TENANT_ID = ?", tenantId);
     }
 
     // ------------------------------------------------------------------ JSON

@@ -16,6 +16,10 @@
         entitlements e provisionamento. Opt-in por archbase.controlplane.enabled=true.
     </description>
 
+    <properties>
+        <paho.mqttv5.version>1.2.5</paho.mqttv5.version>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>br.com.archbase</groupId>
@@ -38,6 +42,18 @@
             <groupId>jakarta.servlet</groupId>
             <artifactId>jakarta.servlet-api</artifactId>
             <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-tx</artifactId>
+        </dependency>
+
+        <!-- Canal de comandos e eventos com o Control Plane (o PowerView já usa Paho v5) -->
+        <dependency>
+            <groupId>org.eclipse.paho</groupId>
+            <artifactId>org.eclipse.paho.mqttv5.client</artifactId>
+            <version>${paho.mqttv5.version}</version>
         </dependency>
 
         <!-- Estado dos tenants guardado como JSON -->
@@ -84,6 +100,16 @@
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

@@ -11,6 +11,13 @@ import br.com.archbase.controlplane.state.ControlPlaneStateStore;
 import br.com.archbase.controlplane.access.ControlPlaneExceptionHandler;
 import br.com.archbase.controlplane.access.RequiresAdmin;
 import br.com.archbase.controlplane.auth.ControlPlaneBearerAuthenticator;
+import br.com.archbase.controlplane.command.CommandProcessor;
+import br.com.archbase.controlplane.command.CommandVerifier;
+import br.com.archbase.controlplane.heartbeat.HeartbeatService;
+import br.com.archbase.controlplane.heartbeat.ManifestPublisher;
+import br.com.archbase.controlplane.mqtt.ControlPlaneMqttClient;
+import br.com.archbase.controlplane.provisioning.FeatureManifestProvider;
+import br.com.archbase.controlplane.provisioning.TenantProvisioner;
 import br.com.archbase.controlplane.token.ControlPlaneTokenValidator;
 import br.com.archbase.controlplane.token.JwksKeyStore;
 import br.com.archbase.controlplane.user.ControlPlaneUserResolver;
@@ -31,9 +38,14 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Role;
 import org.springframework.core.env.Environment;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -166,6 +178,77 @@ public class ControlPlaneAutoConfiguration {
     @Bean
     public ControlPlaneExceptionHandler controlPlaneExceptionHandler() {
         return new ControlPlaneExceptionHandler();
+    }
+
+    /**
+     * Canal de comandos e eventos (Fase C). Só com {@code archbase.controlplane.mqtt.uri} preenchida.
+     */
+    @Configuration(proxyBeanMethods = false)
+    @Conditional(MqttConfiguredCondition.class)
+    static class MqttConfiguration {
+
+        @Bean
+        public CommandVerifier controlPlaneCommandVerifier(JwksKeyStore keyStore, ControlPlaneProperties properties) {
+            return new CommandVerifier(keyStore, properties.effectiveIssuer(), properties.getInstanceId());
+        }
+
+        @Bean
+        public CommandProcessor controlPlaneCommandProcessor(CommandVerifier verifier, ControlPlaneStateStore store,
+                                                             ControlPlaneState state,
+                                                             ObjectProvider<TenantProvisioner> provisioner,
+                                                             ObjectProvider<PlatformTransactionManager> transactions,
+                                                             DataSource dataSource) {
+            PlatformTransactionManager manager = transactions.getIfUnique(
+                    () -> new DataSourceTransactionManager(dataSource));
+            return new CommandProcessor(verifier, store, state, provisioner, new TransactionTemplate(manager));
+        }
+
+        @Bean
+        public ControlPlaneMqttClient controlPlaneMqttClient(ControlPlaneProperties properties,
+                                                             CommandProcessor processor) {
+            ControlPlaneProperties.Mqtt mqtt = properties.getMqtt();
+            return new ControlPlaneMqttClient(mqtt.getUri(),
+                    firstNonBlank(mqtt.getClientId(), properties.getInstanceId()),
+                    firstNonBlank(mqtt.getUsername(), properties.getInstanceId()),
+                    firstNonBlank(mqtt.getPassword(), properties.getInstanceCredential()),
+                    properties.getInstanceId(), properties.getProduct(), productVersion(properties),
+                    mqtt.getSessionExpiry(), mqtt.getReconnectMinDelay(), mqtt.getReconnectMaxDelay(),
+                    mqtt.getKeepAlive(), processor);
+        }
+
+        @Bean
+        public ManifestPublisher controlPlaneManifestPublisher(ControlPlaneMqttClient mqtt,
+                                                               ControlPlaneStateStore store,
+                                                               ObjectProvider<TenantProvisioner> provisioner,
+                                                               ObjectProvider<FeatureManifestProvider> features,
+                                                               ControlPlaneProperties properties) {
+            ManifestPublisher publisher = new ManifestPublisher(mqtt, store, provisioner, features,
+                    properties.getProduct(), productVersion(properties));
+            mqtt.onConnect(reconnect -> publisher.publishIfChanged());
+            return publisher;
+        }
+
+        @Bean
+        public HeartbeatService controlPlaneHeartbeat(ControlPlaneMqttClient mqtt, ControlPlaneState state,
+                                                      ControlPlaneStateStore store, ControlPlaneProperties properties) {
+            String url = firstNonBlank(properties.getHeartbeat().getUrl(),
+                    trimSlash(properties.getUrl()) + "/api/v1/instances/" + properties.getInstanceId() + "/heartbeat");
+            return new HeartbeatService(mqtt, state, store, properties.getInstanceId(), properties.getProduct(),
+                    productVersion(properties), url, properties.getInstanceCredential(),
+                    properties.getHeartbeat().getInterval());
+        }
+
+        private static String productVersion(ControlPlaneProperties properties) {
+            return firstNonBlank(properties.getProductVersion(), "desconhecida");
+        }
+
+        private static String firstNonBlank(String value, String fallback) {
+            return value != null && !value.isBlank() ? value : fallback;
+        }
+
+        private static String trimSlash(String value) {
+            return value != null && value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+        }
     }
 
     /**

@@ -4,9 +4,9 @@ Liga uma aplicação Archbase ao Control Plane: aceita o token de sessão do ten
 licença, assentos e entitlements, e recebe comandos de provisionamento. **Opt-in**: sem
 `archbase.controlplane.enabled=true`, nenhum bean do módulo é criado e a aplicação se comporta como antes.
 
-> **Estado:** Fases A (token de sessão) e B (licença, entitlements, assentos, modo restrito). MQTT e
-> provisionamento (Fase C) ainda não estão implementados: por enquanto a licença entra por arquivo
-> (`license.path`) e o estado dos tenants, por `ControlPlaneState.applyTenant`.
+> **Estado:** Fases A (token de sessão), B (licença, entitlements, assentos, modo restrito) e C (comandos de
+> provisionamento, status e heartbeat por MQTT). Métricas para o VictoriaMetrics (Fase D) ainda não estão
+> implementadas.
 >
 > **Implantação:** com o módulo ligado e **sem licença**, a instância entra em modo restrito (escrita recusada com
 > `LICENSE_EXPIRED`). Comece com `archbase.controlplane.restricted-mode.enforcement=report`, confira nos logs
@@ -33,6 +33,9 @@ archbase.controlplane.legacy-jwt=accept
 archbase.controlplane.instance-id=${CP_INSTANCE_ID}
 archbase.controlplane.license.path=/var/lib/powerview/cp-license.jws
 archbase.controlplane.restricted-mode.enforcement=report   # enforce depois de validar
+archbase.controlplane.instance-credential=${CP_INSTANCE_CREDENTIAL}
+archbase.controlplane.product-version=${APP_VERSION}
+archbase.controlplane.mqtt.uri=ssl://broker.controlplane:8883   # ou wss://broker.controlplane:443/mqtt
 
 # Obrigatório com o módulo ligado: nenhum caminho pode cair no tenant padrão.
 archbase.app.tenant.fail-on-missing=true
@@ -111,7 +114,15 @@ listados de uma vez.
 | `archbase.controlplane.grace-period` | `7d` | Carência depois do `exp` da licença (status `GRACE`); depois, modo restrito |
 | `archbase.controlplane.restricted-mode.enforcement` | `enforce` | `enforce` recusa; `report` só registra em log |
 | `archbase.controlplane.restricted-mode.allowed-paths` | `/api/v1/auth/**` | Caminhos liberados no modo restrito (padrão Ant) |
-| `archbase.controlplane.instance-credential` / `mqtt.*` | — | Fase C |
+| `archbase.controlplane.instance-credential` | — | Credencial da instância: senha no broker e Bearer do heartbeat HTTPS |
+| `archbase.controlplane.product-version` | `desconhecida` | Versão do produto; mudou, presets e manifesto são publicados de novo |
+| `archbase.controlplane.mqtt.uri` | — | Broker (`ssl://...:8883` ou `wss://...:443/...`). Vazio: canal MQTT desligado |
+| `archbase.controlplane.mqtt.username` / `password` / `client-id` | `instance-id` / `instance-credential` / `instance-id` | Identidade no broker |
+| `archbase.controlplane.mqtt.session-expiry` | `7d` | Quanto tempo o broker guarda a sessão e os comandos pendentes |
+| `archbase.controlplane.mqtt.reconnect-min-delay` / `reconnect-max-delay` | `1s` / `2m` | Espera crescente entre reconexões |
+| `archbase.controlplane.mqtt.keep-alive` | `60s` | Keep-alive MQTT |
+| `archbase.controlplane.heartbeat.interval` | `5m` | Intervalo do heartbeat |
+| `archbase.controlplane.heartbeat.url` | `{url}/api/v1/instances/{instance-id}/heartbeat` | Fallback HTTPS do heartbeat |
 
 ## Token
 
@@ -169,6 +180,57 @@ consulta por requisição vai ao Control Plane. Com ele fora do ar, o último es
 | `@RequiresEntitlement` sem o entitlement | 403 `NOT_ENTITLED` |
 | `@RequiresSeat` | Exige `seat` no token e, se o Control Plane informou os assentos, que o usuário ainda esteja entre eles; senão 403 `NO_SEAT` |
 | `consume` | Sempre registra localmente; o estouro volta em `Usage.exceeded()` e no log, sem recusar |
+
+## Provisionamento por MQTT
+
+O módulo cuida do transporte; o produto implementa só o que cada comando significa para o seu banco:
+
+```java
+@Component
+class PowerViewProvisioner implements TenantProvisioner {
+    public ProvisionResult provision(TenantSpec spec) { ... }   // cria o tenant a partir do preset
+    public ProvisionResult update(TenantSpec spec)    { ... }   // edição, entitlements, assentos
+    public ProvisionResult suspend(String tenantId)   { ... }
+    public ProvisionResult resume(String tenantId)    { ... }
+    public ProvisionResult deprovision(String tenantId) { ... } // exporta e apaga
+    public ProvisionResult reset(String tenantId)     { ... }   // demo: volta ao preset
+    public List<PresetDescriptor> presets()           { ... }
+}
+```
+
+Cada chamada roda numa transação, com `ArchbaseTenantContext` no tenant do comando. Devolver
+`ProvisionResult.failed(motivo)` ou lançar exceção desfaz tudo e publica `failed`; o Control Plane reenvia. Um
+`FeatureManifestProvider` opcional publica as chaves de entitlement que o produto entende.
+
+| Tópico | Uso |
+|---|---|
+| `cp/v1/inst/{id}/cmd` | Comandos do Control Plane (assinados), QoS 1 |
+| `cp/v1/inst/{id}/evt` | Resultado de cada comando (`applied`, `failed`, `rejected`), heartbeat e manifesto |
+| `cp/v1/inst/{id}/status` | Retido: `online` ao conectar, `offline` ao parar, e `offline` como Last Will se a instância cair |
+
+**Garantias:**
+
+- **Assinatura.** Comando sem assinatura válida do Control Plane, ou endereçado a outra instância, não chama nada.
+  É registrado no logger `br.com.archbase.controlplane.security` e publicado como `rejected`.
+- **Idempotência.** O id do comando (`jti`) vai para `CONTROLPLANE_COMANDO` na mesma transação do produto.
+  Repetição não chama o produto e é publicada como `applied` com `duplicate: true`, para o Control Plane parar de
+  reenviar. Se o produto falha, o registro também é desfeito e o reenvio é aplicado.
+- **Entrega.** A sessão é persistente (`cleanStart=false`) e o ack ao broker só sai depois do processamento: comando
+  publicado com a instância fora chega quando ela volta, e uma queda no meio do processamento faz o broker
+  reentregar.
+- **Comandos do próprio módulo.** `license.renewed`, `entitlements.changed` e `membership.changed` atualizam os caches
+  sem chamar o produto. O cache do tenant só muda depois do commit do produto.
+- **Heartbeat.** Sai a cada `heartbeat.interval` com versão, tenants atendidos, saúde, status da licença e consumo
+  metered ainda não reportado (agregado por tenant e chave). Com o broker fora do ar, vai por HTTPS. O consumo só é
+  marcado como reportado depois da confirmação.
+- **Presets e manifesto.** Publicados no primeiro registro e a cada `product-version` nova.
+- **Broker fora do ar na subida.** Não impede a aplicação de subir: a conexão é tentada em segundo plano, com espera
+  crescente.
+
+**Contrato assumido — confirmar com a ADR-0014** (isolado em `CommandVerifier`). O comando é um JWS Ed25519 do
+Control Plane com `iss`, `sub` = `instance-id`, `token_use=command`, `jti` = id do comando, `cmd` = tipo, `iat` e o
+objeto `data`, com `tenantId` e os campos do tipo. `data.version`, se vier, ordena as mudanças de estado do tenant:
+comando atrasado com versão menor é ignorado. Sem ela, vale a ordem de chegada.
 
 ## Convivência com o JWT atual
 
