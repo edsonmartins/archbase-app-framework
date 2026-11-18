@@ -129,6 +129,18 @@ public class ControlPlaneState {
         return tenantId == null ? Optional.empty() : Optional.ofNullable(tenants.get(tenantId));
     }
 
+    /** Tenants que esta instância atende (os que têm snapshot). */
+    public java.util.Set<String> tenantIds() {
+        return java.util.Set.copyOf(tenants.keySet());
+    }
+
+    /** Esquece o tenant (desprovisionado). */
+    public synchronized void removeTenant(String tenantId) {
+        store.deleteTenant(tenantId);
+        tenants.remove(tenantId);
+        log.info("controlplane.tenant.removed tnt={}", tenantId);
+    }
+
     // ------------------------------------------------------------------ consumo
 
     public void recordUsage(String tenantId, String key, long amount) {

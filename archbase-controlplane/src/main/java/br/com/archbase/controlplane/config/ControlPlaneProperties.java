@@ -54,6 +54,16 @@ public class ControlPlaneProperties {
 
     private final License license = new License();
 
+    private final Mqtt mqtt = new Mqtt();
+
+    private final Heartbeat heartbeat = new Heartbeat();
+
+    /**
+     * Versão do produto, enviada no heartbeat. Mudou desde a última publicação, os presets e o manifesto de features
+     * são publicados de novo.
+     */
+    private String productVersion;
+
     private final RestrictedMode restrictedMode = new RestrictedMode();
 
     private final Jwks jwks = new Jwks();
@@ -152,6 +162,120 @@ public class ControlPlaneProperties {
 
         public void setPath(String path) {
             this.path = path;
+        }
+    }
+
+    /** Conexão com o broker do Control Plane. Sem {@code uri}, o canal MQTT fica desligado. */
+    public static class Mqtt {
+
+        /** Broker: {@code ssl://host:8883} ou {@code wss://host:443/mqtt}. */
+        private String uri;
+
+        /** Usuário no broker. Vazio: o {@code instance-id}. */
+        private String username;
+
+        /** Senha no broker. Vazia: a {@code instance-credential}. */
+        private String password;
+
+        /** Client id. Vazio: o {@code instance-id} — estável, para a sessão persistente ser reencontrada. */
+        private String clientId;
+
+        /** Quanto tempo o broker guarda a sessão (e os comandos pendentes) com a instância desconectada. */
+        private java.time.Duration sessionExpiry = java.time.Duration.ofDays(7);
+
+        /** Espera inicial e máxima entre tentativas de reconexão (crescente). */
+        private java.time.Duration reconnectMinDelay = java.time.Duration.ofSeconds(1);
+        private java.time.Duration reconnectMaxDelay = java.time.Duration.ofMinutes(2);
+
+        private java.time.Duration keepAlive = java.time.Duration.ofSeconds(60);
+
+        public String getUri() {
+            return uri;
+        }
+
+        public void setUri(String uri) {
+            this.uri = uri;
+        }
+
+        public String getUsername() {
+            return username;
+        }
+
+        public void setUsername(String username) {
+            this.username = username;
+        }
+
+        public String getPassword() {
+            return password;
+        }
+
+        public void setPassword(String password) {
+            this.password = password;
+        }
+
+        public String getClientId() {
+            return clientId;
+        }
+
+        public void setClientId(String clientId) {
+            this.clientId = clientId;
+        }
+
+        public java.time.Duration getSessionExpiry() {
+            return sessionExpiry;
+        }
+
+        public void setSessionExpiry(java.time.Duration sessionExpiry) {
+            this.sessionExpiry = sessionExpiry;
+        }
+
+        public java.time.Duration getReconnectMinDelay() {
+            return reconnectMinDelay;
+        }
+
+        public void setReconnectMinDelay(java.time.Duration reconnectMinDelay) {
+            this.reconnectMinDelay = reconnectMinDelay;
+        }
+
+        public java.time.Duration getReconnectMaxDelay() {
+            return reconnectMaxDelay;
+        }
+
+        public void setReconnectMaxDelay(java.time.Duration reconnectMaxDelay) {
+            this.reconnectMaxDelay = reconnectMaxDelay;
+        }
+
+        public java.time.Duration getKeepAlive() {
+            return keepAlive;
+        }
+
+        public void setKeepAlive(java.time.Duration keepAlive) {
+            this.keepAlive = keepAlive;
+        }
+    }
+
+    /** Heartbeat para o Control Plane: pelo MQTT e, com o broker fora do ar, por HTTPS. */
+    public static class Heartbeat {
+
+        private java.time.Duration interval = java.time.Duration.ofMinutes(5);
+
+        /** Endpoint HTTPS do fallback. Vazio: {@code {url}/api/v1/instances/{instance-id}/heartbeat}. */
+        private String url;
+
+        public java.time.Duration getInterval() {
+            return interval;
+        }
+
+        public void setInterval(java.time.Duration interval) {
+            this.interval = interval;
+        }
+
+        public String getUrl() {
+            return url;
+        }
+
+        public void setUrl(String url) {
+            this.url = url;
         }
     }
 
@@ -287,6 +411,27 @@ public class ControlPlaneProperties {
 
     public License getLicense() {
         return license;
+    }
+
+    public Mqtt getMqtt() {
+        return mqtt;
+    }
+
+    public Heartbeat getHeartbeat() {
+        return heartbeat;
+    }
+
+    public String getProductVersion() {
+        return productVersion;
+    }
+
+    public void setProductVersion(String productVersion) {
+        this.productVersion = productVersion;
+    }
+
+    /** Se o canal MQTT está configurado. */
+    public boolean mqttEnabled() {
+        return mqtt.getUri() != null && !mqtt.getUri().isBlank();
     }
 
     public RestrictedMode getRestrictedMode() {
