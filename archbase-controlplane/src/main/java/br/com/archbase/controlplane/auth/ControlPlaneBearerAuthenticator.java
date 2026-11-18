@@ -132,6 +132,11 @@ public class ControlPlaneBearerAuthenticator implements ExternalBearerAuthentica
     }
 
     @Override
+    public void onRejected(String code, HttpServletRequest request) {
+        state.metrics().tokenRejected(code);
+    }
+
+    @Override
     public boolean acceptLegacyJwt() {
         return properties.getLegacyJwt() == ControlPlaneProperties.LegacyJwtMode.ACCEPT;
     }

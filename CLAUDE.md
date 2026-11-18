@@ -72,7 +72,7 @@ Archbase is a multi-module Maven project built on Spring Boot 4.1.2 and Java 25.
 | `archbase-shared-kernel` | Common value objects (CPF, CNPJ, Email), converters |
 | `archbase-architecture` | Hexagonal, layered, and onion architecture patterns |
 | `archbase-hypersistence` | Advanced Hibernate types (JSON, arrays, ranges), optimized repositories |
-| `archbase-controlplane` | Control Plane integration: session token (Ed25519/JWKS), license, entitlements, seats, restricted mode, MQTT provisioning via `TenantProvisioner` (opt-in) |
+| `archbase-controlplane` | Control Plane integration: session token (Ed25519/JWKS), license, entitlements, seats, restricted mode, MQTT provisioning via `TenantProvisioner`, Micrometer metrics + vmalert rules (opt-in) |
 
 ### Core Architecture Patterns
 

@@ -36,4 +36,14 @@ public interface ExternalBearerAuthenticator {
      * {@code ArchbaseTenantContext} já definido para {@link ExternalTokenCheck#tenantId()}.
      */
     Authentication authenticate(ExternalTokenCheck check, HttpServletRequest request);
+
+    /**
+     * Avisado a cada recusa de um token que este autenticador assumiu, qualquer que seja a etapa — inclusive as
+     * decididas pelo filtro ({@code TENANT_MISMATCH}, {@code TENANT_REQUIRED}). Para métrica e auditoria; não muda a
+     * resposta. Padrão: não faz nada.
+     *
+     * @since 3.4.6
+     */
+    default void onRejected(String code, HttpServletRequest request) {
+    }
 }

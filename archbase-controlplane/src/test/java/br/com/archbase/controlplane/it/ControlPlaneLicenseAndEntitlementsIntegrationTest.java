@@ -39,7 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Critérios de aceite da Fase B: licença, carência, modo restrito, tenant suspenso, entitlements e assentos. */
 @SpringBootTest(classes = ControlPlaneTestApplication.class)
 @AutoConfigureMockMvc
-@Import(MutableClockConfig.class)
+@Import({MutableClockConfig.class, br.com.archbase.controlplane.fixtures.MeterRegistryConfig.class})
 @TestPropertySource(properties = {
         "spring.datasource.url=jdbc:h2:mem:cp-faseb;DB_CLOSE_DELAY=-1",
         "spring.jpa.hibernate.ddl-auto=create-drop",
@@ -91,6 +91,12 @@ class ControlPlaneLicenseAndEntitlementsIntegrationTest {
     UserJpaRepository users;
     @Autowired
     AccessTokenJpaRepository tokens;
+    @Autowired
+    io.micrometer.core.instrument.MeterRegistry meters;
+
+    private double gauge(String name) {
+        return meters.get(name).gauge().value();
+    }
 
     /**
      * Estático: o contexto (e o estado nele) é compartilhado entre os testes, e snapshot com versão menor que a já
@@ -185,6 +191,9 @@ class ControlPlaneLicenseAndEntitlementsIntegrationTest {
                     .andExpect(jsonPath("$.remaining").value(0))
                     .andExpect(jsonPath("$.exceeded").value(true));
             assertThat(store.unreportedUsage(TENANT, "copilot.ia_creditos")).isEqualTo(170);
+            assertThat(meters.get("controlplane.usage.exceeded").tag("key", "copilot.ia_creditos").counter().count())
+                    .isGreaterThanOrEqualTo(1);
+            assertThat(gauge("controlplane.usage.unreported")).isGreaterThanOrEqualTo(2);
         }
 
         @Test
@@ -257,8 +266,12 @@ class ControlPlaneLicenseAndEntitlementsIntegrationTest {
 
                 mvc.perform(post("/api/teste/b/escrita").header("Authorization", sessao(null)))
                         .andExpect(status().isOk());
+                assertThat(gauge("controlplane.license.status")).isZero();
 
                 clock.advance(Duration.ofDays(3));   // venceu, dentro da carência de 7 dias
+                assertThat(gauge("controlplane.license.status")).isEqualTo(1);
+                assertThat(gauge("controlplane.license.expiry.seconds")).isNegative();
+                assertThat(gauge("controlplane.license.grace.end.seconds")).isPositive();
                 mvc.perform(get("/api/teste/b/estado").header("Authorization", sessao(null)))
                         .andExpect(jsonPath("$.license").value("GRACE"));
                 mvc.perform(post("/api/teste/b/escrita").header("Authorization", sessao(null)))
@@ -268,9 +281,15 @@ class ControlPlaneLicenseAndEntitlementsIntegrationTest {
                 mvc.perform(get("/api/teste/b/estado").header("Authorization", sessao(null)))
                         .andExpect(status().isOk())
                         .andExpect(jsonPath("$.license").value("EXPIRED"));
+                var negadas = meters.find("controlplane.restricted.denied").tag("code", "LICENSE_EXPIRED").counter();
+                double antes = negadas == null ? 0 : negadas.count();
                 mvc.perform(post("/api/teste/b/escrita").header("Authorization", sessao(null)))
                         .andExpect(status().isForbidden())
                         .andExpect(jsonPath("$.code").value("LICENSE_EXPIRED"));
+                assertThat(gauge("controlplane.license.status")).isEqualTo(2);
+                assertThat(gauge("controlplane.license.grace.end.seconds")).isNegative();
+                assertThat(meters.get("controlplane.restricted.denied").tags("code", "LICENSE_EXPIRED",
+                        "enforcement", "enforce").counter().count()).isEqualTo(antes + 1);
                 mvc.perform(post("/api/teste/b/exportar").header("Authorization", sessao(null)))
                         .andExpect(status().isOk());
             } finally {
@@ -308,6 +327,7 @@ class ControlPlaneLicenseAndEntitlementsIntegrationTest {
         @DisplayName("sessão anterior à suspensão lê e exporta, mas não escreve")
         void sessaoExistente() throws Exception {
             tenant(TenantState.SUSPENDED, Instant.now().plus(Duration.ofMinutes(1)), null);
+            assertThat(meters.get("controlplane.tenants").tag("state", "SUSPENDED").gauge().value()).isEqualTo(1);
             mvc.perform(get("/api/teste/b/estado").header("Authorization", sessao(null)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.tenantState").value("SUSPENDED"));

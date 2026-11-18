@@ -49,6 +49,12 @@
             <artifactId>spring-tx</artifactId>
         </dependency>
 
+        <!-- Métricas: o módulo registra; a aplicação escolhe o exportador (ex.: Prometheus para o VictoriaMetrics) -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
+
         <!-- Canal de comandos e eventos com o Control Plane (o PowerView já usa Paho v5) -->
         <dependency>
             <groupId>org.eclipse.paho</groupId>
@@ -100,6 +106,12 @@
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Confere, em teste, os nomes que as regras de alerta usam -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

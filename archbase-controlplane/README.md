@@ -4,9 +4,8 @@ Liga uma aplicação Archbase ao Control Plane: aceita o token de sessão do ten
 licença, assentos e entitlements, e recebe comandos de provisionamento. **Opt-in**: sem
 `archbase.controlplane.enabled=true`, nenhum bean do módulo é criado e a aplicação se comporta como antes.
 
-> **Estado:** Fases A (token de sessão), B (licença, entitlements, assentos, modo restrito) e C (comandos de
-> provisionamento, status e heartbeat por MQTT). Métricas para o VictoriaMetrics (Fase D) ainda não estão
-> implementadas.
+> **Estado:** Fases A (token de sessão), B (licença, entitlements, assentos, modo restrito), C (comandos de
+> provisionamento, status e heartbeat por MQTT) e D (métricas e regras de alerta).
 >
 > **Implantação:** com o módulo ligado e **sem licença**, a instância entra em modo restrito (escrita recusada com
 > `LICENSE_EXPIRED`). Comece com `archbase.controlplane.restricted-mode.enforcement=report`, confira nos logs
@@ -231,6 +230,58 @@ Cada chamada roda numa transação, com `ArchbaseTenantContext` no tenant do com
 Control Plane com `iss`, `sub` = `instance-id`, `token_use=command`, `jti` = id do comando, `cmd` = tipo, `iat` e o
 objeto `data`, com `tenantId` e os campos do tipo. `data.version`, se vier, ordena as mudanças de estado do tenant:
 comando atrasado com versão menor é ignorado. Sem ela, vale a ordem de chegada.
+
+## Métricas e alertas
+
+Cada caso de falha tem log estruturado (`controlplane.*`) e métrica no Micrometer. O módulo só registra no
+`MeterRegistry` da aplicação. Para o VictoriaMetrics coletar, a aplicação expõe em formato Prometheus:
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
+<dependency>
+    <groupId>io.micrometer</groupId>
+    <artifactId>micrometer-registry-prometheus</artifactId>
+</dependency>
+```
+
+```properties
+management.endpoints.web.exposure.include=health,prometheus
+```
+
+Sem registry, as métricas não vão a lugar nenhum e nada quebra. Nenhuma métrica tem o tenant como tag: o número de
+tenants não tem teto, e o tenant está no log de cada caso.
+
+| Métrica (Prometheus) | Tipo | Tags | Caso |
+|---|---|---|---|
+| `controlplane_license_status` | gauge | — | 0 `VALID`, 1 `GRACE`, 2 `EXPIRED` ou ausente |
+| `controlplane_license_expiry_seconds` | gauge | — | Segundos até o `exp` (negativo depois) |
+| `controlplane_license_grace_end_seconds` | gauge | — | Segundos até o modo restrito |
+| `controlplane_restricted_denied_total` | counter | `code`, `enforcement` | Escrita barrada (`LICENSE_EXPIRED`, `TENANT_SUSPENDED`); `report` também conta |
+| `controlplane_tenants` | gauge | `state` | Tenants por estado |
+| `controlplane_jwks_keys` | gauge | — | Chaves carregadas; 0 = nenhum token aceito |
+| `controlplane_jwks_fetch_total` | counter | `result` | Buscas do JWKS (`success`, `failure`) |
+| `controlplane_mqtt_connected` | gauge | — | 1 = conectado ao broker |
+| `controlplane_mqtt_connect_failures_total` | counter | — | Falhas da primeira conexão |
+| `controlplane_mqtt_disconnects_total` | counter | — | Quedas da conexão |
+| `controlplane_heartbeat_total` | counter | `channel` | `mqtt`, `https` (broker fora) ou `none` (não entregue) |
+| `controlplane_usage_unreported` | gauge | — | Consumo metered ainda não reportado |
+| `controlplane_usage_exceeded_total` | counter | `key` | Consumo acima do limite (tolerado) |
+| `controlplane_commands_total` | counter | `type`, `status` | `applied`, `duplicate`, `failed` (produto falhou), `rejected` (assinatura inválida) |
+| `controlplane_token_rejected_total` | counter | `code` | Token recusado, inclusive `TENANT_MISMATCH` decidido no filtro |
+| `controlplane_access_denied_total` | counter | `code` | `NOT_ADMIN`, `NO_SEAT`, `NOT_ENTITLED` |
+
+As regras de alerta prontas estão em [`alerts/controlplane-alerts.yml`](alerts/controlplane-alerts.yml), no formato do
+vmalert, também importável no Grafana Alerting. Há uma regra por caso da tabela de falhas: JWKS inacessível, sem
+chaves, carência, carência acabando, modo restrito, escrita barrada, tenant suspenso, broker desconectado, heartbeat
+por HTTPS ou não entregue, consumo sem reconciliar ou acima do limite, provisionamento que falhou, comando forjado e
+tokens recusados em volume. O teste `PrometheusNamesTest` quebra o build se uma regra citar uma métrica que o
+módulo não exporta.
+
+`controlplane_usage_unreported` faz um `COUNT` no banco a cada coleta. É barato, mas se o intervalo de coleta for
+muito curto, considere aumentá-lo.
 
 ## Convivência com o JWT atual
 

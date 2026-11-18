@@ -15,6 +15,7 @@ class RestrictedModeInterceptorTest {
     private ControlPlaneState expired() {
         ControlPlaneState state = Mockito.mock(ControlPlaneState.class);
         Mockito.when(state.licenseStatus()).thenReturn(LicenseStatus.EXPIRED);
+        Mockito.when(state.metrics()).thenReturn(br.com.archbase.controlplane.metrics.ControlPlaneMetrics.NOOP);
         return state;
     }
 

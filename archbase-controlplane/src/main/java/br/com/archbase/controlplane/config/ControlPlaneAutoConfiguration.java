@@ -6,6 +6,8 @@ import br.com.archbase.controlplane.access.RequiresEntitlement;
 import br.com.archbase.controlplane.access.RequiresSeat;
 import br.com.archbase.controlplane.access.RestrictedModeInterceptor;
 import br.com.archbase.controlplane.license.LicenseVerifier;
+import br.com.archbase.controlplane.metrics.ControlPlaneGauges;
+import br.com.archbase.controlplane.metrics.ControlPlaneMetrics;
 import br.com.archbase.controlplane.state.ControlPlaneState;
 import br.com.archbase.controlplane.state.ControlPlaneStateStore;
 import br.com.archbase.controlplane.access.ControlPlaneExceptionHandler;
@@ -23,6 +25,8 @@ import br.com.archbase.controlplane.token.JwksKeyStore;
 import br.com.archbase.controlplane.user.ControlPlaneUserResolver;
 import br.com.archbase.controlplane.user.UserLinkStore;
 import br.com.archbase.security.repository.UserJpaRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import org.aopalliance.intercept.MethodInterceptor;
 import org.springframework.aop.Advisor;
 import org.springframework.aop.support.ComposablePointcut;
@@ -130,16 +134,25 @@ public class ControlPlaneAutoConfiguration {
         return new ControlPlaneState(store, verifier, properties.getGracePeriod(), clock);
     }
 
+    @Bean
+    public ControlPlaneMetrics controlPlaneMetrics(ObjectProvider<MeterRegistry> registry) {
+        return new ControlPlaneMetrics(registry.getIfAvailable(CompositeMeterRegistry::new));
+    }
+
     /** Cria as tabelas (com {@code schema.mode=apply}), carrega o estado e liga a fachada {@code ControlPlane}. */
     @Bean
     public SmartInitializingSingleton controlPlaneStateInitializer(ControlPlaneStateStore store,
                                                                    ControlPlaneState state,
-                                                                   ControlPlaneProperties properties) {
+                                                                   ControlPlaneProperties properties,
+                                                                   ControlPlaneMetrics metrics,
+                                                                   JwksKeyStore keyStore) {
         return () -> {
             if (properties.getSchema().getMode() == ControlPlaneProperties.SchemaMode.APPLY) {
                 store.createTablesIfMissing();
             }
+            state.setMetrics(metrics);
             state.load(properties.getLicense().getPath());
+            ControlPlaneGauges.bind(metrics.registry(), state, store, keyStore);
             ControlPlane.bind(state);
         };
     }
@@ -226,6 +239,12 @@ public class ControlPlaneAutoConfiguration {
                     properties.getProduct(), productVersion(properties));
             mqtt.onConnect(reconnect -> publisher.publishIfChanged());
             return publisher;
+        }
+
+        @Bean
+        public SmartInitializingSingleton controlPlaneMqttGauges(ControlPlaneMqttClient mqtt,
+                                                                 ControlPlaneMetrics metrics) {
+            return () -> ControlPlaneGauges.bindMqtt(metrics.registry(), mqtt);
         }
 
         @Bean

@@ -50,6 +50,7 @@ public class Entitlements {
         long limit = value(key);
         boolean exceeded = used > limit;
         if (exceeded) {
+            state.metrics().usageExceeded(key);
             log.warn("controlplane.usage.exceeded tnt={} chave={} usado={} limite={}", tenantId, key, used, limit);
         }
         return new Usage(key, amount, used, limit, Math.max(0, limit - used), exceeded);

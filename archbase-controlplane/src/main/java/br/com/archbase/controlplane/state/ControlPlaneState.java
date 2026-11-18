@@ -39,6 +39,8 @@ public class ControlPlaneState {
     private final Clock clock;
     private final Map<String, TenantSnapshot> tenants = new ConcurrentHashMap<>();
     private volatile InstanceLicense license;
+    private volatile br.com.archbase.controlplane.metrics.ControlPlaneMetrics metrics =
+            br.com.archbase.controlplane.metrics.ControlPlaneMetrics.NOOP;
 
     public ControlPlaneState(ControlPlaneStateStore store, LicenseVerifier verifier, Duration gracePeriod,
                              Clock clock) {
@@ -153,5 +155,13 @@ public class ControlPlaneState {
 
     public Clock clock() {
         return clock;
+    }
+
+    public br.com.archbase.controlplane.metrics.ControlPlaneMetrics metrics() {
+        return metrics;
+    }
+
+    public void setMetrics(br.com.archbase.controlplane.metrics.ControlPlaneMetrics metrics) {
+        this.metrics = metrics == null ? br.com.archbase.controlplane.metrics.ControlPlaneMetrics.NOOP : metrics;
     }
 }

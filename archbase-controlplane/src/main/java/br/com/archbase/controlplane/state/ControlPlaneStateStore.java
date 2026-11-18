@@ -189,6 +189,12 @@ public class ControlPlaneStateStore {
         return sum == null ? 0 : sum;
     }
 
+    /** Quantas linhas de consumo ainda não foram reportadas. */
+    public long countUnreported() {
+        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM " + USAGE_TABLE + " WHERE REPORTADO = 0", Long.class);
+        return count == null ? 0 : count;
+    }
+
     /** Consumo ainda não reportado, linha a linha, para o heartbeat. */
     public List<UsageRow> unreportedRows(int limit) {
         return jdbc.query("SELECT ID, TENANT_ID, CHAVE, QUANTIDADE FROM " + USAGE_TABLE
