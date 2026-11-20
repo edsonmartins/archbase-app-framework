@@ -16,6 +16,7 @@ import org.aspectj.lang.annotation.Pointcut;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronizationAdapter;
@@ -52,6 +53,10 @@ public class ArchbaseStorageFieldAspect {
 
     @Autowired
     private EntityManagerFactory entityManagerFactory;
+
+    /** Tamanho máximo, em bytes decodificados, do conteúdo de uma data URL. Padrão: 20 MiB. */
+    @Value("${archbase.storage.data-url.max-bytes:20971520}")
+    private long maxDataUrlBytes = 20L * 1024 * 1024;
 
     private final Tika tika = new Tika();
     private final MimeTypes allTypes = MimeTypes.getDefaultMimeTypes();
@@ -386,6 +391,38 @@ public class ArchbaseStorageFieldAspect {
     }
 
     /**
+     * Confere o conteúdo base64 de uma data URL antes de entregá-lo a {@link Base64.Decoder}: tamanho dentro do
+     * limite, só o alfabeto padrão (sem quebra de linha nem espaço), comprimento múltiplo de 4 e {@code =} apenas
+     * como uma ou duas últimas posições.
+     * <p>
+     * O conteúdo vem do cliente. A conferência reduz a exposição ao CVE-2026-114938 (Java4Shell), em que entrada
+     * malformada — como padding fora do lugar — no decodificador intrínseco AVX-512 da JVM corrompe o heap. Reduz,
+     * não elimina: a correção é o JDK atualizado.
+     *
+     * @throws IllegalArgumentException se o conteúdo não for base64 canônico ou passar do limite
+     */
+    static void requireCanonicalBase64(String data, long maxDecodedBytes) {
+        int len = data.length();
+        if (len == 0 || len % 4 != 0) {
+            throw new IllegalArgumentException("Data URL inválida: base64 com comprimento inválido");
+        }
+        int padding = data.charAt(len - 1) == '=' ? (data.charAt(len - 2) == '=' ? 2 : 1) : 0;
+        long decodedBytes = (long) len / 4 * 3 - padding;
+        if (decodedBytes > maxDecodedBytes) {
+            throw new IllegalArgumentException("Data URL excede o tamanho máximo de " + maxDecodedBytes + " bytes");
+        }
+        int end = len - padding;
+        for (int i = 0; i < end; i++) {
+            char c = data.charAt(i);
+            boolean ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+                    || c == '+' || c == '/';
+            if (!ok) {
+                throw new IllegalArgumentException("Data URL inválida: caractere fora do alfabeto base64");
+            }
+        }
+    }
+
+    /**
      * Manipula URLs de dados decodificando o conteúdo base64 e fazendo upload do arquivo.
      */
     private String handleDataUrl(String dataUrl, String oldFileUrl) throws Exception {
@@ -401,6 +438,7 @@ public class ArchbaseStorageFieldAspect {
             contentType = metadata.substring(metadata.indexOf(":") + 1, metadata.indexOf(";"));
         }
 
+        requireCanonicalBase64(base64Data, maxDataUrlBytes);
         byte[] decodedBytes = Base64.getDecoder().decode(base64Data);
         String newFileUrl = uploadContent(decodedBytes, contentType);
 
