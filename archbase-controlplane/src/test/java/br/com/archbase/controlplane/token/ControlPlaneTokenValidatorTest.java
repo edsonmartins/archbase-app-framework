@@ -91,4 +91,22 @@ class ControlPlaneTokenValidatorTest {
         assertThat(v.looksLikeControlPlaneToken("nao-e-jwt")).isFalse();
         assertThat(v.looksLikeControlPlaneToken("%%%.e30.x")).isFalse();
     }
+
+    @Test
+    void recusaCabecalhoForaDaFormaAntesDeDecodificar() {
+        ControlPlaneTokenValidator v = validator(false);
+        // forma do gatilho publicado do CVE-2026-114938: bloco de 'A' seguido de um '=' solto
+        assertThat(v.looksLikeControlPlaneToken("A".repeat(64) + "=.e30.x")).isFalse();
+        // JWS não usa padding, mesmo quando o padding seria válido em base64
+        assertThat(v.looksLikeControlPlaneToken("eyJhbGciOiJFZERTQSJ9==.e30.x")).isFalse();
+        // alfabeto padrão (+ /) não é base64url
+        assertThat(v.looksLikeControlPlaneToken("eyJh+GciOiJFZERTQSJ9.e30.x")).isFalse();
+        // comprimento que nenhum base64 produz
+        assertThat(v.looksLikeControlPlaneToken("eyJhb.e30.x")).isFalse();
+        // cabeçalho grande demais
+        assertThat(v.looksLikeControlPlaneToken(
+                "A".repeat(ControlPlaneTokenValidator.MAX_ENCODED_HEADER_LENGTH + 4) + ".e30.x")).isFalse();
+        // {"alg":"EdDSA"} sem padding continua reconhecido
+        assertThat(v.looksLikeControlPlaneToken("eyJhbGciOiJFZERTQSJ9.e30.x")).isTrue();
+    }
 }

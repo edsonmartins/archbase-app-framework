@@ -61,12 +61,46 @@ public class ControlPlaneTokenValidator {
         if (dot <= 0 || token.indexOf('.', dot + 1) < 0) {
             return false;
         }
+        String encodedHeader = token.substring(0, dot);
+        if (!isCanonicalJwsSegment(encodedHeader)) {
+            return false;
+        }
         try {
-            String header = new String(Base64.getUrlDecoder().decode(token.substring(0, dot)), StandardCharsets.UTF_8);
+            String header = new String(Base64.getUrlDecoder().decode(encodedHeader), StandardCharsets.UTF_8);
             return ED_DSA_ALG.matcher(header).find();
         } catch (IllegalArgumentException e) {
             return false;
         }
+    }
+
+    /**
+     * Tamanho máximo do cabeçalho codificado. O cabeçalho real ({@code alg}, {@code typ}, {@code kid}) tem menos de
+     * 200 caracteres; o limite é folgado de propósito.
+     */
+    static final int MAX_ENCODED_HEADER_LENGTH = 1024;
+
+    /**
+     * Confere a forma do segmento antes de entregá-lo a {@link Base64.Decoder}: tamanho limitado, só o alfabeto
+     * base64url e sem padding — o JWS (RFC 7515 §2) nunca usa {@code =}.
+     * <p>
+     * Este método roda em toda requisição com {@code Authorization: Bearer}, antes de autenticar. A conferência
+     * reduz a exposição ao CVE-2026-114938 (Java4Shell), em que entrada malformada no decodificador intrínseco
+     * AVX-512 da JVM corrompe o heap. Reduz, não elimina: a correção é o JDK atualizado.
+     */
+    static boolean isCanonicalJwsSegment(String segment) {
+        int len = segment.length();
+        if (len == 0 || len > MAX_ENCODED_HEADER_LENGTH || len % 4 == 1) {
+            return false;
+        }
+        for (int i = 0; i < len; i++) {
+            char c = segment.charAt(i);
+            boolean ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+                    || c == '-' || c == '_';
+            if (!ok) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public TokenValidationResult validate(String token) {
