@@ -99,6 +99,16 @@ class OidcStartupValidatorTest {
     }
 
     @Test
+    @DisplayName("jit com tenant pelo header: recusa (o cliente escolheria o tenant onde criar)")
+    void jitComHeader() {
+        recusa(com("idp", p -> {
+            p.getTenant().setFixed(null);
+            p.getTenant().setHeader(true);
+            p.getUsers().setProvisioning(ArchbaseOidcProperties.Provisioning.JIT);
+        }), "JIT");
+    }
+
+    @Test
     @DisplayName("id de provedor fora do formato da coluna: recusa")
     void idInvalido() {
         recusa(com("Meu IdP", p -> { }), "id deve ter");

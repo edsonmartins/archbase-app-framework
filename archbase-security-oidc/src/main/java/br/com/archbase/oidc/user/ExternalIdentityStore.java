@@ -91,6 +91,28 @@ public class ExternalIdentityStore {
         }
     }
 
+    /** Um vínculo, para a API administrativa. */
+    public record Link(String providerId, String tenantId, String subject, String userId, Instant linkedAt) {
+    }
+
+    public List<Link> findByUser(String tenantId, String userId) {
+        return jdbc.query("SELECT PROVIDER_ID, TENANT_ID, SUBJECT, USER_ID, DH_VINCULO FROM " + TABLE
+                        + " WHERE TENANT_ID = ? AND USER_ID = ? ORDER BY PROVIDER_ID, SUBJECT",
+                (rs, i) -> new Link(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4),
+                        rs.getTimestamp(5).toInstant()),
+                tenantId, userId);
+    }
+
+    /** @return se havia vínculo para remover */
+    public boolean unlink(String providerId, String tenantId, String subject) {
+        int removed = jdbc.update("DELETE FROM " + TABLE + " WHERE PROVIDER_ID = ? AND TENANT_ID = ? AND SUBJECT = ?",
+                providerId, tenantId, subject);
+        if (removed > 0) {
+            log.info("oidc.user.unlinked provider={} tenant={}", providerId, tenantId);
+        }
+        return removed > 0;
+    }
+
     public void createTableIfMissing() {
         if (tableExists()) {
             return;

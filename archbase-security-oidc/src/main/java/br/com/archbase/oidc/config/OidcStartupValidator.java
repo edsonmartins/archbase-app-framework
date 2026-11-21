@@ -55,6 +55,7 @@ public final class OidcStartupValidator {
             }
             validateAlgorithms(at, provider, errors);
             validateTenant(at, provider, errors);
+            validateProvisioning(at, provider, errors);
             if (blank(provider.getClaims().getSubject())) {
                 errors.add(at + ".claims.subject: obrigatório");
             }
@@ -138,7 +139,20 @@ public final class OidcStartupValidator {
         }
     }
 
+    private static void validateProvisioning(String at, Provider provider, List<String> errors) {
+        if (provider.getUsers().getProvisioning() == ArchbaseOidcProperties.Provisioning.JIT
+                && provider.getTenant().isHeader()) {
+            errors.add(at + ".users.provisioning=JIT não combina com tenant.header=true — o cliente escolheria em "
+                    + "qual tenant criar o usuário");
+        }
+    }
+
     private static void warnings(String at, Provider provider) {
+        if (provider.getUsers().getProvisioning() == ArchbaseOidcProperties.Provisioning.JIT
+                && provider.getUsers().getJit().getStatus() == ArchbaseOidcProperties.JitStatus.ACTIVE) {
+            log.warn("{}.users.jit.status=ACTIVE: usuário criado no primeiro acesso entra sem aprovação. Ele nasce "
+                    + "sem permissões; o acesso real vem de grupos atribuídos ou do mapeamento de papéis.", at);
+        }
         if (provider.getUsers().getLinkByEmail() == LinkByEmail.TRUSTED_PROVIDER) {
             log.warn("{}.users.link-by-email=TRUSTED_PROVIDER: o primeiro acesso vincula pelo e-mail mesmo sem "
                     + "e-mail verificado. Só use se o IdP não deixar o usuário escolher um e-mail alheio.", at);

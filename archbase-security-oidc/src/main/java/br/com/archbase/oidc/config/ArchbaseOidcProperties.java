@@ -243,8 +243,22 @@ public class ArchbaseOidcProperties {
     }
 
     public static class Users {
+        private Provisioning provisioning = Provisioning.EXISTING_USER;
         private LinkByEmail linkByEmail = LinkByEmail.VERIFIED_ONLY;
         private LocalPassword localPassword = LocalPassword.KEEP;
+        private final Jit jit = new Jit();
+
+        public Provisioning getProvisioning() {
+            return provisioning;
+        }
+
+        public void setProvisioning(Provisioning provisioning) {
+            this.provisioning = provisioning;
+        }
+
+        public Jit getJit() {
+            return jit;
+        }
 
         public LinkByEmail getLinkByEmail() {
             return linkByEmail;
@@ -287,6 +301,34 @@ public class ArchbaseOidcProperties {
         public void setLocalTokenTtl(Duration localTokenTtl) {
             this.localTokenTtl = localTokenTtl;
         }
+    }
+
+    /** O que acontece no primeiro acesso de quem não tem cadastro local. */
+    public enum Provisioning {
+        /** Só entra quem já tem cadastro (vinculado pelo e-mail ou pelo administrador). Padrão. */
+        EXISTING_USER,
+        /** Cria o usuário local no primeiro acesso ({@code just in time}), no estado de {@code users.jit.status}. */
+        JIT
+    }
+
+    public static class Jit {
+        private JitStatus status = JitStatus.PENDING;
+
+        public JitStatus getStatus() {
+            return status;
+        }
+
+        public void setStatus(JitStatus status) {
+            this.status = status;
+        }
+    }
+
+    /** Estado do usuário criado no primeiro acesso. Nos dois casos ele nasce sem grupo e sem perfil: sem permissão. */
+    public enum JitStatus {
+        /** Inativo até um administrador ativar. Padrão: ninguém ganha acesso sem uma decisão humana. */
+        PENDING,
+        /** Ativo de imediato — para IdP corporativo de um único cliente, junto com o mapeamento de papéis. */
+        ACTIVE
     }
 
     /** Como o primeiro acesso encontra o usuário local quando ainda não há vínculo. */
