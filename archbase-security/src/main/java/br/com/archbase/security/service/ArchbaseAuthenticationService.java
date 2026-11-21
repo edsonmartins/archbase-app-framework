@@ -93,6 +93,17 @@ public class ArchbaseAuthenticationService {
     private ArchbaseTenantInfoResolver tenantInfoResolver;
 
     /**
+     * Contas cuja senha não é do Archbase (ex.: vinculadas a IdP externo com senha local desligada). Vazio = toda
+     * conta usa senha local, como sempre foi. Ver {@link br.com.archbase.security.spi.ArchbaseLocalCredentialPolicy}.
+     */
+    @Autowired(required = false)
+    private List<br.com.archbase.security.spi.ArchbaseLocalCredentialPolicy> localCredentialPolicies = List.of();
+
+    private boolean allowsLocalPassword(UserEntity user) {
+        return br.com.archbase.security.spi.ArchbaseLocalCredentialPolicy.allowsLocalPassword(localCredentialPolicies, user);
+    }
+
+    /**
      * Faz o pedido de reset responder igual para e-mail cadastrado e não cadastrado.
      *
      * <p>Desligado por padrão porque muda o contrato do endpoint: hoje ele responde 400 com
@@ -212,6 +223,13 @@ public class ArchbaseAuthenticationService {
 
             var user = repository.findByEmail(request.getEmail())
                     .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
+
+            // Senha local desligada para esta conta (credencial é de outro provedor). Cai no mesmo
+            // tratamento de senha errada: resposta idêntica, contagem e trilha — dizer "use o IdP"
+            // revelaria que a conta existe e é federada.
+            if (!allowsLocalPassword(user)) {
+                throw new BadCredentialsException("Senha local desabilitada para esta conta");
+            }
 
             // Segundo fator (MFA): senha conferiu, mas falta o TOTP. Não emite tokens ainda —
             // devolve um desafio; o cliente completa em POST /auth/mfa/verify.
@@ -575,7 +593,9 @@ public class ArchbaseAuthenticationService {
         revokeExistingTokens(user);
         // Coluna nula (base legada) é tratada como "pode alterar": o padrão do cadastro é true e
         // negar o reset por ausência de dado trancaria o usuário fora da conta.
-        if (!Boolean.FALSE.equals(user.getAllowPasswordChange())) {
+        // Conta cuja senha é de outro provedor segue o mesmo caminho de quem não pode trocar a senha,
+        // inclusive a resposta uniforme — é a mesma situação vista de fora.
+        if (!Boolean.FALSE.equals(user.getAllowPasswordChange()) && allowsLocalPassword(user)) {
             try {
                 String passwordResetToken = createPasswordResetToken(user.toDomain());
                 archbaseEmailService.sendResetPasswordEmail(email, passwordResetToken, user.getUsername(), user.getName());
@@ -654,6 +674,11 @@ public class ArchbaseAuthenticationService {
 
         if (token.isRevoked()) {
             throw new ArchbaseValidationException("Token de redefinição de senha inválido, favor utilizar o token mais recente.");
+        }
+
+        if (!allowsLocalPassword(user)) {
+            // Token emitido antes de a senha local ser desligada para esta conta.
+            throw new ArchbaseValidationException("A senha deste usuário é gerenciada por outro provedor de identidade.");
         }
 
         passwordStrengthPolicy.validate(request.getNewPassword());

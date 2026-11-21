@@ -1,16 +1,18 @@
 package br.com.archbase.security.service;
 
+import br.com.archbase.security.auth.ArchbaseCurrentUser;
 import br.com.archbase.security.auth.ChangePasswordRequest;
 import br.com.archbase.security.domain.entity.User;
 import br.com.archbase.security.password.ArchbasePasswordStrengthPolicy;
 import br.com.archbase.security.persistence.UserEntity;
 import br.com.archbase.security.repository.UserJpaRepository;
+import br.com.archbase.security.spi.ArchbaseLocalCredentialPolicy;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.security.Principal;
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -25,9 +27,18 @@ public class ArchbaseUserService {
     @org.springframework.beans.factory.annotation.Value(
             "${archbase.security.password-change.revoke-sessions:false}")
     private boolean revokeSessionsOnPasswordChange;
+
+    /** Vazio = toda conta pode usar senha local, como sempre foi. Ver {@link ArchbaseLocalCredentialPolicy}. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private List<ArchbaseLocalCredentialPolicy> localCredentialPolicies = List.of();
+
     public void changePassword(ChangePasswordRequest request, Principal connectedUser) {
 
-        var user = (UserEntity) ((UsernamePasswordAuthenticationToken) connectedUser).getPrincipal();
+        // Era um cast direto para UsernamePasswordAuthenticationToken: ClassCastException (500) para
+        // qualquer autenticação externa. Para login local e token de API o usuário é o mesmo de antes.
+        UserEntity user = ArchbaseCurrentUser.of(connectedUser)
+                .orElseThrow(() -> new IllegalStateException("Usuário não encontrado"));
+        requireLocalPassword(user);
 
         // verifique se a senha atual está correta
         if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
@@ -55,6 +66,7 @@ public class ArchbaseUserService {
         if (userEntity.isEmpty()){
             throw new IllegalStateException("Usuário não encontrado");
         }
+        requireLocalPassword(userEntity.get());
 
         // verifique se a senha atual está correta
         if (!passwordEncoder.matches(request.getCurrentPassword(), userEntity.get().getPassword())) {
@@ -74,6 +86,13 @@ public class ArchbaseUserService {
         repository.save(userEntity.get());
 
         revokeSessionsIfEnabled(userEntity.get());
+    }
+
+    /** Recusa a troca quando a senha deste usuário não é do Archbase (ex.: conta vinculada a IdP externo). */
+    private void requireLocalPassword(UserEntity user) {
+        if (!ArchbaseLocalCredentialPolicy.allowsLocalPassword(localCredentialPolicies, user)) {
+            throw new IllegalStateException("A senha deste usuário é gerenciada por outro provedor de identidade");
+        }
     }
 
     /**
