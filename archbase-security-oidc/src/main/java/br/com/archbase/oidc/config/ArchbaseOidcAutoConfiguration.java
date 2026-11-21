@@ -7,6 +7,11 @@ import br.com.archbase.oidc.provider.OidcProviderRegistry;
 import br.com.archbase.oidc.user.ExternalIdentityStore;
 import br.com.archbase.oidc.user.OidcIdentityLinker;
 import br.com.archbase.oidc.user.OidcLocalCredentialPolicy;
+import br.com.archbase.oidc.user.OidcRoleSynchronizer;
+import jakarta.persistence.EntityManagerFactory;
+import org.springframework.orm.jpa.SharedEntityManagerCreator;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import br.com.archbase.security.auth.external.ExternalBearerAuthenticator;
 import br.com.archbase.security.repository.UserJpaRepository;
 import br.com.archbase.security.usecase.UserUseCase;
@@ -78,8 +83,18 @@ public class ArchbaseOidcAutoConfiguration {
 
     @Bean
     @Order(ExternalBearerAuthenticator.ORDER_OIDC)
-    public OidcBearerAuthenticator oidcBearerAuthenticator(OidcProviderRegistry registry, OidcIdentityLinker linker) {
-        return new OidcBearerAuthenticator(registry, linker);
+    public OidcBearerAuthenticator oidcBearerAuthenticator(OidcProviderRegistry registry, OidcIdentityLinker linker,
+                                                           OidcRoleSynchronizer roles) {
+        return new OidcBearerAuthenticator(registry, linker, roles);
+    }
+
+    @Bean
+    public OidcRoleSynchronizer oidcRoleSynchronizer(ArchbaseOidcProperties properties, UserJpaRepository users,
+                                                     EntityManagerFactory entityManagerFactory,
+                                                     PlatformTransactionManager transactionManager) {
+        return new OidcRoleSynchronizer(properties, users,
+                SharedEntityManagerCreator.createSharedEntityManager(entityManagerFactory),
+                new TransactionTemplate(transactionManager));
     }
 
     @Bean

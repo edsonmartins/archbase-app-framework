@@ -71,6 +71,11 @@ public class ArchbaseOidcProperties {
         private final Claims claims = new Claims();
         private final Tenant tenant = new Tenant();
         private final Users users = new Users();
+        private final RoleMapping roleMapping = new RoleMapping();
+
+        public RoleMapping getRoleMapping() {
+            return roleMapping;
+        }
 
         public String getIssuer() {
             return issuer;
@@ -168,6 +173,20 @@ public class ArchbaseOidcProperties {
         /** Claim booleano de e-mail verificado; vazio = o IdP não informa. */
         private String emailVerified = "email_verified";
         private String name = "name";
+        /**
+         * Claims (ou caminhos) com os papéis/grupos do IdP — ex.: {@code realm_access.roles} (Keycloak), {@code roles}
+         * (Entra app roles), {@code groups} (Okta), {@code permissions} (Auth0). Listas de texto, texto único, ou
+         * listas de objetos com {@code name} (ArchGuard). Só são lidos com {@code role-mapping.sync} ligado.
+         */
+        private java.util.List<String> roles = new java.util.ArrayList<>();
+
+        public java.util.List<String> getRoles() {
+            return roles;
+        }
+
+        public void setRoles(java.util.List<String> roles) {
+            this.roles = roles;
+        }
 
         public String getSubject() {
             return subject;
@@ -301,6 +320,49 @@ public class ArchbaseOidcProperties {
         public void setLocalTokenTtl(Duration localTokenTtl) {
             this.localTokenTtl = localTokenTtl;
         }
+    }
+
+    /**
+     * Papéis do IdP → grupos locais. Só papéis listados em {@code map} contam; os demais são ignorados. Os cinco
+     * portões continuam lendo só o banco: o papel do token vira participação em grupo, nunca permissão direta, e
+     * nunca administrador.
+     * <p>
+     * Papel com caractere especial no nome ({@code /}, {@code :}, {@code .}) precisa de colchetes na chave — em
+     * {@code .properties}: {@code role-mapping.map.[cliente-a/financeiro]=Financeiro}; em YAML:
+     * {@code "[cliente-a/financeiro]": Financeiro}. Sem colchetes o Spring descarta esses caracteres da chave.
+     */
+    public static class RoleMapping {
+        private RoleSync sync = RoleSync.OFF;
+        /** Papel no IdP → nome do grupo local (no tenant do usuário). */
+        private Map<String, String> map = new LinkedHashMap<>();
+
+        public RoleSync getSync() {
+            return sync;
+        }
+
+        public void setSync(RoleSync sync) {
+            this.sync = sync;
+        }
+
+        public Map<String, String> getMap() {
+            return map;
+        }
+
+        public void setMap(Map<String, String> map) {
+            this.map = map;
+        }
+    }
+
+    public enum RoleSync {
+        /** Papéis do token não afetam nada. Padrão. */
+        OFF,
+        /** Inclui o usuário nos grupos mapeados dos papéis que o token traz. Nunca remove. */
+        ADD,
+        /**
+         * Espelha: inclui nos grupos dos papéis presentes e remove dos grupos <b>mapeados</b> cujo papel sumiu do token.
+         * Grupos fora do mapa (atribuídos à mão) nunca são tocados.
+         */
+        MIRROR
     }
 
     /** O que acontece no primeiro acesso de quem não tem cadastro local. */

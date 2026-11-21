@@ -6,6 +6,7 @@ import br.com.archbase.oidc.provider.OidcProviderRegistry;
 import br.com.archbase.oidc.token.ClaimReader;
 import br.com.archbase.oidc.token.UnverifiedJwt;
 import br.com.archbase.oidc.user.OidcIdentityLinker;
+import br.com.archbase.oidc.user.OidcRoleSynchronizer;
 import br.com.archbase.security.auth.external.ExternalAuthenticationRejectedException;
 import br.com.archbase.security.auth.external.ExternalBearerAuthenticator;
 import br.com.archbase.security.auth.external.ExternalTokenCheck;
@@ -45,10 +46,13 @@ public class OidcBearerAuthenticator implements ExternalBearerAuthenticator {
 
     private final OidcProviderRegistry registry;
     private final OidcIdentityLinker linker;
+    private final OidcRoleSynchronizer roles;
 
-    public OidcBearerAuthenticator(OidcProviderRegistry registry, OidcIdentityLinker linker) {
+    public OidcBearerAuthenticator(OidcProviderRegistry registry, OidcIdentityLinker linker,
+                                   OidcRoleSynchronizer roles) {
         this.registry = registry;
         this.linker = linker;
+        this.roles = roles;
     }
 
     @Override
@@ -125,6 +129,10 @@ public class OidcBearerAuthenticator implements ExternalBearerAuthenticator {
             return new ExternalAuthenticationRejectedException(403, USER_NOT_LINKED,
                     "Usuário autenticado pelo provedor, mas sem cadastro vinculado nesta aplicação");
         });
+        // Antes da checagem de conta ativa: o pendente de aprovação já fica com os grupos certos quando for ativado.
+        if (roles != null) {
+            user = roles.sync(user, identity);
+        }
         if (Boolean.TRUE.equals(user.getAccountDeactivated()) || Boolean.TRUE.equals(user.getAccountLocked())) {
             throw new ExternalAuthenticationRejectedException(403, USER_DISABLED, "Usuário inativo ou bloqueado");
         }
