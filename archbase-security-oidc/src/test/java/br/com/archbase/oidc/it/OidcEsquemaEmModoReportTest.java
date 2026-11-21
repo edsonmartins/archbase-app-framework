@@ -50,6 +50,7 @@ class OidcEsquemaEmModoReportTest {
     void naoCria() {
         assertThat(context.getBeansOfType(ExternalBearerAuthenticator.class)).hasSize(1);
         assertThat(store.tableExists()).isFalse();
+        assertThat(context.getBean(br.com.archbase.oidc.user.RevokedTokenStore.class).tableExists()).isFalse();
     }
 
     @Test

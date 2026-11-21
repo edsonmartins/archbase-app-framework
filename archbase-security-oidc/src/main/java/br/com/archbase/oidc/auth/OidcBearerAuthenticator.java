@@ -9,6 +9,7 @@ import br.com.archbase.oidc.token.ClaimReader;
 import br.com.archbase.oidc.token.UnverifiedJwt;
 import br.com.archbase.oidc.user.OidcIdentityLinker;
 import br.com.archbase.oidc.user.OidcRoleSynchronizer;
+import br.com.archbase.oidc.user.RevokedTokenStore;
 import br.com.archbase.security.auth.external.ExternalAuthenticationRejectedException;
 import br.com.archbase.security.auth.external.ExternalBearerAuthenticator;
 import br.com.archbase.security.auth.external.ExternalTokenCheck;
@@ -52,13 +53,16 @@ public class OidcBearerAuthenticator implements ExternalBearerAuthenticator {
     private final OidcIdentityLinker linker;
     private final OidcRoleSynchronizer roles;
     private final OidcIntrospector introspector;
+    private final RevokedTokenStore revoked;
 
     public OidcBearerAuthenticator(OidcProviderRegistry registry, OidcIdentityLinker linker,
-                                   OidcRoleSynchronizer roles, OidcIntrospector introspector) {
+                                   OidcRoleSynchronizer roles, OidcIntrospector introspector,
+                                   RevokedTokenStore revoked) {
         this.registry = registry;
         this.linker = linker;
         this.roles = roles;
         this.introspector = introspector;
+        this.revoked = revoked;
     }
 
     @Override
@@ -88,6 +92,11 @@ public class OidcBearerAuthenticator implements ExternalBearerAuthenticator {
             // Assinatura, algoritmo, kid desconhecido, JWKS fora do ar: o detalhe é do operador, não do cliente.
             log.warn("oidc.token.invalid provider={} cause={}", providerId, e.getMessage());
             return rejected(INVALID_TOKEN, "Token inválido");
+        }
+
+        // Logout feito nesta aplicação: vale antes da introspecção (mais barato) e mesmo sem ela.
+        if (revoked != null && revoked.isRevoked(token)) {
+            return rejected(TOKEN_REVOKED, "Token revogado");
         }
 
         // Só depois da assinatura: o IdP não é consultado com token forjado.
