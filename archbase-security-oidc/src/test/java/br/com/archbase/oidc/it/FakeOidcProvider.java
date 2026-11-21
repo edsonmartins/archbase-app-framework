@@ -39,6 +39,31 @@ public final class FakeOidcProvider implements AutoCloseable {
     private final Map<String, JWK> keys = new ConcurrentHashMap<>();
     private final Map<String, Boolean> published = new ConcurrentHashMap<>();
 
+    public static final String INTROSPECTION_CLIENT = "cliente-api";
+    public static final String INTROSPECTION_SECRET = "segredo-de-teste";
+    private final java.util.Set<String> revoked = ConcurrentHashMap.newKeySet();
+    private final java.util.concurrent.atomic.AtomicInteger introspectionCalls =
+            new java.util.concurrent.atomic.AtomicInteger();
+    private volatile boolean introspectionDown;
+
+    public void revoke(String token) {
+        revoked.add(token);
+    }
+
+    public void introspectionDown(boolean down) {
+        this.introspectionDown = down;
+    }
+
+    public int introspectionCalls() {
+        return introspectionCalls.get();
+    }
+
+    public void resetIntrospection() {
+        revoked.clear();
+        introspectionDown = false;
+        introspectionCalls.set(0);
+    }
+
     public FakeOidcProvider() {
         try {
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -49,7 +74,25 @@ public final class FakeOidcProvider implements AutoCloseable {
             String path = exchange.getRequestURI().getPath();
             String body;
             int status = 200;
-            if (path.endsWith("/jwks")) {
+            if (path.endsWith("/introspect")) {
+                introspectionCalls.incrementAndGet();
+                String auth = exchange.getRequestHeaders().getFirst("Authorization");
+                String form = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                String token = java.net.URLDecoder.decode(
+                        java.util.Arrays.stream(form.split("&")).filter(kv -> kv.startsWith("token="))
+                                .map(kv -> kv.substring(6)).findFirst().orElse(""), StandardCharsets.UTF_8);
+                if (introspectionDown) {
+                    status = 503;
+                    body = "";
+                } else if (!("Basic " + java.util.Base64.getEncoder().encodeToString(
+                        (INTROSPECTION_CLIENT + ":" + INTROSPECTION_SECRET).getBytes(StandardCharsets.UTF_8)))
+                        .equals(auth)) {
+                    status = 401;
+                    body = "{\"error\":\"invalid_client\"}";
+                } else {
+                    body = "{\"active\":" + !revoked.contains(token) + "}";
+                }
+            } else if (path.endsWith("/jwks")) {
                 body = jwks();
             } else if (path.endsWith("/.well-known/openid-configuration")) {
                 String issuer = baseUrl() + path.substring(0, path.length() - "/.well-known/openid-configuration".length());
@@ -136,6 +179,7 @@ public final class FakeOidcProvider implements AutoCloseable {
         private Token(String issuer) {
             claims.put("iss", issuer);
             claims.put("sub", "sub-padrao");
+            claims.put("jti", java.util.UUID.randomUUID().toString()); // tokens nunca idênticos (cache por token)
             claims.put("iat", Date.from(Instant.now()));
         }
 

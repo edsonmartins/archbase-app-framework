@@ -122,6 +122,29 @@ class OidcStartupValidatorTest {
     }
 
     @Test
+    @DisplayName("introspecção ligada sem uri, sem credencial, por http ou com cache longo: recusa")
+    void introspeccao() {
+        recusa(com("idp", p -> p.getIntrospection().setEnabled(true)), "introspection.uri");
+        recusa(com("idp", p -> {
+            p.getIntrospection().setEnabled(true);
+            p.getIntrospection().setUri("https://idp.example.com/introspect");
+        }), "client-id/client-secret");
+        recusa(com("idp", p -> {
+            p.getIntrospection().setEnabled(true);
+            p.getIntrospection().setUri("http://idp.example.com/introspect");
+            p.getIntrospection().setClientId("c");
+            p.getIntrospection().setClientSecret("s");
+        }), "https://");
+        recusa(com("idp", p -> {
+            p.getIntrospection().setEnabled(true);
+            p.getIntrospection().setUri("https://idp.example.com/introspect");
+            p.getIntrospection().setClientId("c");
+            p.getIntrospection().setClientSecret("s");
+            p.getIntrospection().setCacheTtl(java.time.Duration.ofHours(1));
+        }), "cache-ttl");
+    }
+
+    @Test
     @DisplayName("id de provedor fora do formato da coluna: recusa")
     void idInvalido() {
         recusa(com("Meu IdP", p -> { }), "id deve ter");

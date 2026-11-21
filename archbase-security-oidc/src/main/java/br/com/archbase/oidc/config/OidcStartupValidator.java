@@ -57,6 +57,7 @@ public final class OidcStartupValidator {
             validateTenant(at, provider, errors);
             validateProvisioning(at, provider, errors);
             validateRoleMapping(at, provider, errors);
+            validateIntrospection(at, provider, errors);
             if (blank(provider.getClaims().getSubject())) {
                 errors.add(at + ".claims.subject: obrigatório");
             }
@@ -137,6 +138,28 @@ public final class OidcStartupValidator {
         if (sources != 1) {
             errors.add(at + ".tenant: informe exatamente uma fonte — claim, fixed ou header=true "
                     + "(com issuer-pattern, a fonte é allowed-tenants e nenhuma outra)");
+        }
+    }
+
+    private static void validateIntrospection(String at, Provider provider, List<String> errors) {
+        ArchbaseOidcProperties.Introspection in = provider.getIntrospection();
+        if (!in.isEnabled()) {
+            return;
+        }
+        if (blank(in.getUri())) {
+            errors.add(at + ".introspection.uri: obrigatório com introspection.enabled=true");
+        } else if (!provider.isAllowInsecureHttp() && !in.getUri().startsWith("https://")) {
+            errors.add(at + ".introspection.uri: precisa ser https:// — o token e a credencial do cliente vão nela");
+        }
+        if (blank(in.getClientId()) || blank(in.getClientSecret())) {
+            errors.add(at + ".introspection.client-id/client-secret: obrigatórios (a RFC 7662 exige o cliente "
+                    + "autenticado)");
+        }
+        if (in.getCacheTtl() == null || in.getCacheTtl().isNegative() || in.getCacheTtl().compareTo(Duration.ofMinutes(10)) > 0) {
+            errors.add(at + ".introspection.cache-ttl: entre 0 e 10 minutos — acima disso a revogação deixa de ser útil");
+        }
+        if (in.getOnError() == ArchbaseOidcProperties.OnError.ALLOW) {
+            log.warn("{}.introspection.on-error=ALLOW: com o IdP fora do ar, token revogado continua valendo até o exp.", at);
         }
     }
 
