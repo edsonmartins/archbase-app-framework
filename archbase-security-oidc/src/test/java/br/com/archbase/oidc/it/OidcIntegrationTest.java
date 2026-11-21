@@ -100,6 +100,9 @@ class OidcIntegrationTest {
         r.add(p + "cabecalho.audiences[0]", () -> "api://default");
         r.add(p + "cabecalho.allow-insecure-http", () -> "true");
         r.add(p + "cabecalho.tenant.header", () -> "true");
+
+        r.add("archbase.security.oidc.exchange.enabled", () -> "true");
+        r.add("archbase.security.oidc.exchange.local-token-ttl", () -> "10m");
     }
 
     @AfterAll
@@ -381,6 +384,107 @@ class OidcIntegrationTest {
         void emissorDesconhecido() throws Exception {
             String token = IDP.token("https://idp-desconhecido.example.com").aud(ARCHGUARD_AUD).sign();
             assertThat(eu(token).getStatus()).isEqualTo(401);
+        }
+    }
+
+    // ═══════════════════════════ troca de token (fase 1c) ═══════════════════════════
+
+    @Nested
+    @DisplayName("troca de token: POST /api/v1/auth/oidc/exchange")
+    class TrocaDeToken {
+
+        @Test
+        @DisplayName("token válido vira sessão local curta, sem refresh, que autentica como o login próprio")
+        void troca() throws Exception {
+            MockHttpServletResponse r = trocar(archguard("sub-ana").sign(), null);
+
+            assertThat(r.getStatus()).isEqualTo(200);
+            JsonNode corpo = json.readTree(r.getContentAsString());
+            String access = corpo.get("access_token").asString();
+            assertThat(corpo.has("refresh_token") && !corpo.get("refresh_token").isNull()).isFalse();
+
+            JsonNode payload = json.readTree(java.util.Base64.getUrlDecoder().decode(access.split("\\.")[1]));
+            assertThat(payload.get("exp").asLong() - payload.get("iat").asLong()).isLessThanOrEqualTo(600);
+
+            MockHttpServletResponse eu = eu(access);
+            assertThat(eu.getStatus()).isEqualTo(200);
+            assertThat(json.readTree(eu.getContentAsString()).get("tipo").asString())
+                    .isEqualTo("UsernamePasswordAuthenticationToken");
+        }
+
+        @Test
+        @DisplayName("token inválido, ausente ou de emissor desconhecido: 401")
+        void invalido() throws Exception {
+            assertRecusa(trocar(archguard("sub-ana").aud("outra-app").sign(), null), 401, "INVALID_TOKEN");
+            assertRecusa(trocar(null, null), 401, "INVALID_TOKEN");
+            assertRecusa(trocar(IDP.token("https://desconhecido.example.com").aud(ARCHGUARD_AUD).sign(), null),
+                    401, "INVALID_TOKEN");
+        }
+
+        @Test
+        @DisplayName("usuário sem vínculo possível: 403 USER_NOT_LINKED, nenhuma sessão emitida")
+        void semVinculo() throws Exception {
+            assertRecusa(trocar(archguard("sub-ana").claim("email_verified", false).sign(), null), 403,
+                    "USER_NOT_LINKED");
+            assertThat(tokenRepository.count()).isZero();
+        }
+
+        @Test
+        @DisplayName("mesma regra de tenant do filtro: divergente 403, header obrigatório quando é a fonte")
+        void regraDeTenant() throws Exception {
+            assertRecusa(trocar(archguard("sub-ana").sign(), "outro-tenant"), 403, "TENANT_MISMATCH");
+
+            String okta = IDP.token(IDP.issuer("okta/oauth2/default")).aud("api://default")
+                    .claim("sub", "okta-ana").claim("email", EMAIL).claim("email_verified", true).sign();
+            assertRecusa(trocar(okta, null), 403, "TENANT_REQUIRED");
+            links.link("cabecalho", TENANT, "okta-ana", ana.getId());
+            assertThat(trocar(okta, TENANT).getStatus()).isEqualTo(200);
+        }
+
+        @Test
+        @DisplayName("usuário de sessão única: a troca encerra a sessão local anterior")
+        void sessaoUnica() throws Exception {
+            ana.setAllowMultipleLogins(false);
+            userRepository.save(ana);
+            String anterior = json.readTree(loginLocalSemPolitica(EMAIL).getContentAsString())
+                    .get("access_token").asString();
+            assertThat(eu(anterior).getStatus()).isEqualTo(200);
+
+            assertThat(trocar(keycloakAna(), null).getStatus()).isEqualTo(200);
+
+            assertThat(eu(anterior).getStatus()).isEqualTo(401);
+        }
+
+        @Test
+        @DisplayName("usuário com várias sessões permitidas: a sessão local anterior continua valendo")
+        void variasSessoes() throws Exception {
+            String anterior = json.readTree(loginLocalSemPolitica(EMAIL).getContentAsString())
+                    .get("access_token").asString();
+
+            assertThat(trocar(keycloakAna(), null).getStatus()).isEqualTo(200);
+
+            assertThat(eu(anterior).getStatus()).isEqualTo(200);
+        }
+
+        /** Keycloak tem local-password=keep: a senha local segue valendo para montar a sessão anterior. */
+        private String keycloakAna() {
+            return IDP.token(IDP.issuer("realms/empresa")).aud("archbase-api")
+                    .claim("sub", "kc-ana").claim("email", EMAIL).claim("email_verified", true).sign();
+        }
+
+        private MockHttpServletResponse loginLocalSemPolitica(String email) throws Exception {
+            MockHttpServletResponse r = loginLocal(email);
+            assertThat(r.getStatus()).as("login local de " + email).isEqualTo(200);
+            return r;
+        }
+
+        private MockHttpServletResponse trocar(String token, String tenantHeader) throws Exception {
+            var req = post("/api/v1/auth/oidc/exchange").contentType(MediaType.APPLICATION_JSON)
+                    .content(token == null ? "{}" : json.writeValueAsString(Map.of("token", token)));
+            if (tenantHeader != null) {
+                req.header("X-TENANT-ID", tenantHeader);
+            }
+            return mockMvc.perform(req).andReturn().getResponse();
         }
     }
 

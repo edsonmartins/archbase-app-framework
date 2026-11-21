@@ -42,11 +42,24 @@ class OidcEsquemaEmModoReportTest {
     ApplicationContext context;
     @Autowired
     ExternalIdentityStore store;
+    @Autowired
+    org.springframework.test.web.servlet.MockMvc mockMvc;
 
     @Test
     @DisplayName("módulo ativo, tabela ausente")
     void naoCria() {
         assertThat(context.getBeansOfType(ExternalBearerAuthenticator.class)).hasSize(1);
         assertThat(store.tableExists()).isFalse();
+    }
+
+    @Test
+    @DisplayName("troca de token desligada por padrão: o endpoint não existe")
+    void trocaDesligada() throws Exception {
+        int status = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .post("/api/v1/auth/oidc/exchange")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content("{\"token\":\"x\"}"))
+                .andReturn().getResponse().getStatus();
+        assertThat(status).isEqualTo(404);
+        assertThat(context.getBeansOfType(br.com.archbase.oidc.exchange.OidcTokenExchangeController.class)).isEmpty();
     }
 }

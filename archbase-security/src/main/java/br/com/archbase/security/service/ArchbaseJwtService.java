@@ -128,6 +128,18 @@ public class ArchbaseJwtService {
         return buildToken(claims, userDetails, jwtExpiration);
     }
 
+    /**
+     * Access token com validade própria, nunca maior que a configurada em {@code archbase.security.jwt.token-expiration}.
+     * Usado pela sessão emitida a partir de um IdP externo, que deve durar pouco: quem decide se ela continua é o IdP.
+     *
+     * @param expirationMillis validade desejada; {@code <= 0} usa a configurada
+     * @since 3.5.0
+     */
+    public TokenResult generateToken(UserDetails userDetails, long expirationMillis) {
+        long ttl = expirationMillis > 0 ? Math.min(expirationMillis, jwtExpiration) : jwtExpiration;
+        return buildToken(new HashMap<>(Map.of(TOKEN_USE_CLAIM, TOKEN_USE_ACCESS)), userDetails, ttl);
+    }
+
     public TokenResult generateRefreshToken(
             UserDetails userDetails
     ) {
