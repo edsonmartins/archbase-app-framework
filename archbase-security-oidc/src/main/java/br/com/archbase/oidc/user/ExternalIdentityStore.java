@@ -103,6 +103,15 @@ public class ExternalIdentityStore {
                 tenantId, userId);
     }
 
+    /** Todos os vínculos de um provedor num tenant (migração). */
+    public List<Link> findByProvider(String providerId, String tenantId) {
+        return jdbc.query("SELECT PROVIDER_ID, TENANT_ID, SUBJECT, USER_ID, DH_VINCULO FROM " + TABLE
+                        + " WHERE PROVIDER_ID = ? AND TENANT_ID = ?",
+                (rs, i) -> new Link(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4),
+                        rs.getTimestamp(5).toInstant()),
+                providerId, tenantId);
+    }
+
     /** Vínculos de um sujeito do provedor em todos os tenants (o aviso de logout do IdP não diz o tenant). */
     public List<Link> findBySubject(String providerId, String subject) {
         return jdbc.query("SELECT PROVIDER_ID, TENANT_ID, SUBJECT, USER_ID, DH_VINCULO FROM " + TABLE

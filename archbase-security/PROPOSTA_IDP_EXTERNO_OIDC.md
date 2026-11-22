@@ -379,7 +379,7 @@ proposta e afeta quem já consome o ArchGuard hoje.**
 | **1** | **1a — feita (2026-11-21):** mudanças compatíveis no core (seção 3) — política agregada, `ArchbaseCurrentUser`, `ArchbaseLocalCredentialPolicy`, `@Order`. **1b — feita (2026-11-21):** módulo `archbase-security-oidc`: propriedades + validação na subida, `OidcProviderRegistry` (Nimbus, JWKS explícito ou por descoberta, emissor por modelo `{tid}`), `OidcBearerAuthenticator`, `ClaimReader` (nome ou caminho), vínculo (`existing-user` + `link-by-email`, proteção contra segunda identidade com o mesmo e-mail), `local-password: disable-on-link`. **1c — feita (2026-11-21):** `POST /api/v1/auth/oidc/exchange` (desligado por padrão) + `ArchbaseAuthenticationService.issueExternalSession` no core (só acréscimo; o login por senha e o `authenticateWithoutPassword`, que revoga todas as sessões, não mudam): sessão local curta (`exchange.local-token-ttl`, padrão 15 min), **sem refresh token**, respeitando `allowMultipleLogins` | IdP falso RS256 (nos moldes do `FakeControlPlane`): iss/aud/exp/alg/kid, rotação, dois provedores + CP + JWT local no mesmo contexto, tenant por claim/header/mapa; **`@SpringBootTest` de boot com e sem o pacote**, com `ddl-auto=validate` |
 | **2** | **2a — feita (2026-11-21):** `users.provisioning=jit` (`jit.status` `pending` padrão / `active`; só com e-mail confiável; nunca duplica cadastro; usuário nasce sem senha local, sem poder redefinir, sem grupo e não admin; proibido com tenant pelo header) + API administrativa de vínculo `/api/v1/security/external-identities` (exige `isAdministrator`). **2b — feita (2026-11-21):** `role-mapping` (`add`/`mirror`) sobre `claims.roles`; claim ausente não muda nada. **2c — feita (2026-11-21):** introspecção RFC 7662 por provedor, depois da assinatura, cache por SHA-256 do token (`cache-ttl` padrão 30 s, nunca além do `exp`), `on-error` `deny` (503 `IDP_UNAVAILABLE`, padrão) / `allow`. **2d — feita (2026-11-21):** `POST /api/v1/auth/oidc/logout` revoga o token nesta aplicação (lista `SEGURANCA_TOKEN_EXTERNO_REVOGADO`, por hash, todas as instâncias) e devolve o `end_session_endpoint` (`logout.end-session-uri`) para o frontend fazer o RP-Initiated Logout no IdP | Sincronização de grupos; token revogado via introspecção |
 | **3** | **3a — feita no Archbase (2026-11-21):** `POST /api/v1/auth/oidc/backchannel-logout` (OIDC Back-Channel Logout 1.0), ligado por provedor com `logout.backchannel.enabled`. O `logout_token` é validado com as chaves do provedor: `iss`, `aud` (`logout.backchannel.audiences`, padrão `audiences`), `events`, sem `nonce`, `sub` ou `sid`, `iat` dentro de `max-age` (5 min); o `exp` é conferido quando vem. O aviso grava um corte em `SEGURANCA_LOGOUT_EXTERNO` (`sub` → tokens emitidos até o `iat` do aviso; `sid` → aquela sessão, e tokens sem `sid` do mesmo `sub` caem junto) e, com `revoke-local-sessions` (padrão), revoga as sessões locais dos usuários vinculados — é o que faz o logout do IdP alcançar a troca de token (4.2). **3a — ArchGuard (B5), feita (2026-11-22, archguard#2):** chave pelo custodiante, algoritmo do access token, `exp` e `typ: logout+jwt`, aviso antes de expirar o token no logout por access token, timeout de 5 s; depois do deploy, cadastrar `backchannelLogoutUri` nas aplicações. **3b:** `acr`/step-up quando o ArchGuard montar o v1. **3c:** suporte OIDC nativo no archbase-react (10.2) | Logout token assinado; aviso velho, sem `events`, com `nonce` ou de outro `aud` recusado |
-| **4** | **Migração entre IdPs** (pedido em 2026-11-21): rotina para trocar a origem da identidade sem recadastrar ninguém — ver 9.1 | Migração local→ArchGuard e Keycloak→ArchGuard em ambiente de teste, com relatório de dry-run conferido |
+| **4** | **Feita (2026-11-22):** migração entre IdPs — export, dry-run com `planHash`, execução tudo-ou-nada condicionada ao plano conferido e histórico por tenant (ver 9.1) | Local→provedor e vínculo pré-existente conferidos nos testes; plano que muda entre dry-run e execução não grava |
 
 ### 9.1 Migração entre IdPs (fase 4)
 
@@ -403,10 +403,35 @@ Etapas, cada uma reversível até a última:
    negar a senha local de quem está vinculado) e, por fim, recusar o JWT local (`acceptLegacyJwt=false`)
    ou remover o provedor de origem. Único passo que tira acesso; reverter é reconfigurar.
 
-Entrega prevista: um serviço `IdentityMigrationService` no módulo `archbase-security-oidc` com endpoint
-administrativo (dry-run e execução, ambos auditados na trilha de segurança) e o mesmo fluxo por linha
-de comando para quem prefere rodar fora da aplicação. Depende das fases 1b (vínculo) e 2 (tela de
-vínculo manual, para os casos sem correspondência).
+**Entregue (fase 4, 2026-11-22):** `IdentityMigrationService` no `archbase-security-oidc`, exposto em
+`/api/v1/security/identity-migration` (exige `isAdministrator`, sempre no tenant da requisição):
+
+| Endpoint | O que faz |
+|---|---|
+| `GET /export?providerId=` | Usuários do tenant (id, nome, e-mail, login, admin, inativo, `sub` já vinculado) — etapa 1, para importar no IdP de destino |
+| `POST /plan` | Dry-run — etapas 2 e 3. Entrada: `providerId`, `entries[]` de `{subject, email ou userId}` vindos do IdP de destino, `includeAdministrators`. Saída: ação por linha (`LINK`, `ALREADY_LINKED`, `SKIP` + motivo), resumo, usuários ativos sem correspondência, impacto do corte e `planHash` |
+| `POST /execute` | Refaz o plano e grava só se o `planHash` for o do relatório conferido (`409 PLAN_CHANGED` com o plano novo, se não for). Tudo ou nada, numa transação |
+| `GET /history` | Dry-runs e execuções do tenant (`SEGURANCA_MIGRACAO_IDENTIDADE`) |
+
+Regras do plano:
+- e-mail comparado sem caixa e sem espaços;
+- `userId` e e-mail na mesma linha têm de concordar;
+- `subject` ou usuário repetido no arquivo derruba **todas** as linhas envolvidas — não há desempate;
+- nunca sobrescreve vínculo existente (`SUBJECT_LINKED_TO_OTHER_USER`, `USER_LINKED_TO_OTHER_SUBJECT`);
+- administradores ficam de fora salvo `includeAdministrators=true`: com `disable-on-link`, o admin vinculado
+  perde a senha local, que é o acesso de emergência se o IdP cair. O plano conta à parte os administradores
+  que ficariam sem vínculo.
+
+Nada aqui tira acesso; o corte (etapa 5) continua sendo configuração, e o plano mostra quem ficaria sem
+entrar se ele fosse feito agora.
+
+O histórico é tabela própria, e não a trilha de segurança do core: o tipo de evento daquela trilha é enum
+com `CHECK` (PostgreSQL) / `ENUM` (MySQL) nos scripts de `deployment/sql`, e um tipo novo seria recusado — em
+silêncio, porque o logger engole a falha — em toda base já criada.
+
+Ficou de fora: empurrar os usuários para o IdP por SCIM (o export é a entrada para a importação de cada IdP)
+e um executável de linha de comando separado (a API é chamável por `curl`; o arquivo do IdP precisa virar o
+JSON de `entries`).
 
 Fora do plano por P1: migrar o Control Plane para o `OidcProviderRegistry`. Ele funciona e tem
 testes; mexer nele só se houver ganho concreto, em PR separado.

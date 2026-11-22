@@ -55,5 +55,8 @@ class OidcInerteSemProvedorTest {
                 .tableExists()).isFalse();
         assertThat(context.getBeansOfType(br.com.archbase.oidc.exchange.OidcBackchannelLogoutController.class))
                 .isEmpty();
+        assertThat(new br.com.archbase.oidc.migration.IdentityMigrationJournal(dataSource).tableExists()).isFalse();
+        assertThat(context.getBeansOfType(br.com.archbase.oidc.migration.IdentityMigrationController.class))
+                .isEmpty();
     }
 }

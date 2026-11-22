@@ -6,6 +6,9 @@ import br.com.archbase.oidc.exchange.OidcTokenExchangeController;
 import br.com.archbase.oidc.provider.OidcIntrospector;
 import br.com.archbase.oidc.provider.OidcProviderRegistry;
 import br.com.archbase.oidc.exchange.OidcBackchannelLogoutController;
+import br.com.archbase.oidc.migration.IdentityMigrationController;
+import br.com.archbase.oidc.migration.IdentityMigrationJournal;
+import br.com.archbase.oidc.migration.IdentityMigrationService;
 import br.com.archbase.oidc.user.ExternalIdentityStore;
 import br.com.archbase.oidc.user.ExternalLogoutStore;
 import br.com.archbase.security.repository.AccessTokenJpaRepository;
@@ -67,6 +70,7 @@ public class ArchbaseOidcAutoConfiguration {
     public SmartInitializingSingleton oidcSchemaInitializer(ExternalIdentityStore store,
                                                             RevokedTokenStore revokedTokens,
                                                             ExternalLogoutStore logouts,
+                                                            IdentityMigrationJournal migrations,
                                                             ArchbaseOidcProperties properties,
                                                             ObjectProvider<ArchbaseSecuritySchemaProperties> schema) {
         return () -> {
@@ -100,6 +104,14 @@ public class ArchbaseOidcAutoConfiguration {
                             ExternalLogoutStore.DDL);
                 } else {
                     logouts.createTableIfMissing();
+                }
+            }
+            if (!migrations.tableExists()) {
+                if (mode == ArchbaseSecuritySchemaProperties.Mode.REPORT) {
+                    log.warn("oidc.schema.missing table={} — crie com:\n{};", IdentityMigrationJournal.TABLE,
+                            IdentityMigrationJournal.DDL);
+                } else {
+                    migrations.createTableIfMissing();
                 }
             }
         };
@@ -173,6 +185,27 @@ public class ArchbaseOidcAutoConfiguration {
                                                                                UserJpaRepository users,
                                                                                ArchbaseOidcProperties properties) {
         return new ExternalIdentityAdminController(store, users, properties);
+    }
+
+    @Bean
+    public IdentityMigrationJournal oidcIdentityMigrationJournal(DataSource dataSource) {
+        return new IdentityMigrationJournal(dataSource);
+    }
+
+    @Bean
+    public IdentityMigrationService oidcIdentityMigrationService(UserJpaRepository users, ExternalIdentityStore store,
+                                                                 IdentityMigrationJournal journal,
+                                                                 ArchbaseOidcProperties properties,
+                                                                 PlatformTransactionManager transactionManager) {
+        return new IdentityMigrationService(users, store, journal, properties,
+                new TransactionTemplate(transactionManager));
+    }
+
+    @Bean
+    public IdentityMigrationController oidcIdentityMigrationController(IdentityMigrationService service,
+                                                                       IdentityMigrationJournal journal,
+                                                                       ArchbaseOidcProperties properties) {
+        return new IdentityMigrationController(service, journal, properties);
     }
 
     /** Troca de token por sessão local — só com {@code archbase.security.oidc.exchange.enabled=true}. */

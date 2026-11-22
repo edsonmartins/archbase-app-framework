@@ -52,6 +52,8 @@ class OidcEsquemaEmModoReportTest {
         assertThat(store.tableExists()).isFalse();
         assertThat(context.getBean(br.com.archbase.oidc.user.RevokedTokenStore.class).tableExists()).isFalse();
         assertThat(context.getBean(br.com.archbase.oidc.user.ExternalLogoutStore.class).tableExists()).isFalse();
+        assertThat(context.getBean(br.com.archbase.oidc.migration.IdentityMigrationJournal.class).tableExists())
+                .isFalse();
     }
 
     @Test
