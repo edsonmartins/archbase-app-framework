@@ -57,7 +57,7 @@ public class ArchbaseOidcProperties {
         /** Ao menos um precisa estar no {@code aud} do token. Obrigatório. */
         private List<String> audiences = new ArrayList<>();
 
-        /** Algoritmos aceitos. Só assimétricos (RS*, PS*, ES*, EdDSA). */
+        /** Algoritmos aceitos. Só assimétricos: RS256/384/512, PS256/384/512, ES256/384/512. */
         private List<String> algorithms = new ArrayList<>(List.of("RS256"));
 
         private Duration clockSkew = Duration.ofSeconds(30);

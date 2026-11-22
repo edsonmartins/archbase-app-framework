@@ -200,15 +200,13 @@ archbase:
             email: email
             email-verified: email_verified
             name: name
-            tenant: { claim: ..., fixed: ..., header: false }
             roles: [ ... ]                 # caminhos; string, array ou objeto[].name
-            scopes: scope                  # 'scope' (texto) ou 'scp' (array)
+          tenant: { claim: ..., fixed: ..., header: false }   # no provedor, NÃO dentro de claims
           users:
             provisioning: existing-user    # existing-user | jit (ver seção 10.1)
             link-by-email: verified-only   # verified-only | trusted-provider | never
-            jit: { status: pending, default-profile: , default-groups: [] }
+            jit: { status: pending }       # pending | active
             local-password: keep           # keep | disable-on-link
-            default-profile:
           role-mapping:                    # papel externo → grupo local
             sync: off                      # off | add | mirror
             map: { }
@@ -223,9 +221,11 @@ archbase:
               revoke-local-sessions: true  # derruba também a sessão da troca de token
 ```
 
-Regra de validação na subida (`archbase.security.hardening.validation=fail`): provedor sem `audiences`,
-com `algorithms` vazio, com `link-by-email` sem garantia de e-mail verificado, ou com issuer
-`http://` fora de perfil de desenvolvimento **não sobe**.
+Referência completa e conferida das propriedades: [`archbase-security-oidc/README.md`](../archbase-security-oidc/README.md).
+
+Regra de validação na subida (`OidcStartupValidator`, independente de `archbase.security.hardening.validation`):
+provedor sem `audiences`, com `algorithms` vazio ou simétrico, com fonte de tenant ausente ou duplicada, ou com
+emissor `http://` sem `allow-insecure-http` **não sobe**, e todos os erros saem listados de uma vez.
 
 ### Resolução de tenant — opções
 
@@ -255,22 +255,30 @@ com `algorithms` vazio, com `link-by-email` sem garantia de e-mail verificado, o
 
 ## 7. Exemplos de provedor
 
+Os blocos abaixo são os mesmos do README do módulo, validados por `ExemplosDocumentadosTest` (bind e
+`OidcStartupValidator`). A primeira versão desta seção punha `tenant` dentro de `claims` e tinha
+indentação inválida no Entra e no Okta — nenhum dos cinco subia.
+
 ### 7.1 ArchGuard (superfície legada Casdoor, a que está no ar)
 
 ```yaml
 archguard:
-  issuer: https://idp.empresa.com          # = 'origin' do ArchGuard; ver bloqueio B2
-  jwks-uri: https://idp.empresa.com/.well-known/archbase-app/jwks   # JWKS POR APLICAÇÃO
-  audiences: [ <clientId-da-aplicacao> ]
-  algorithms: [RS256]
-  required-claims: { tokenType: access-token }
-  claims:
-    subject: sub                           # user.Id (UUID do Casdoor)
-    email: email
-    email-verified: email_verified         # JWT-Standard emite
-    tenant: { claim: owner }               # organização do usuário
-    roles: [ ]                             # JWT-Standard NÃO emite papéis/grupos — ver abaixo
-  introspection: { enabled: true, uri: https://idp.empresa.com/api/login/oauth/introspect }
+  issuer: https://idp.empresa.com
+  jwks-uri: https://idp.empresa.com/.well-known/archbase-app/jwks
+  audiences: [ archbase-app-client-id ]
+  algorithms: [ RS256 ]
+  required-claims:
+    tokenType: access-token
+  tenant:
+    claim: owner                      # organização do usuário
+  introspection:
+    enabled: true
+    uri: https://idp.empresa.com/api/login/oauth/introspect
+    client-id: archbase-app-client-id
+    client-secret: ${ARCHGUARD_CLIENT_SECRET:troque}
+  logout:
+    backchannel:
+      enabled: true
 ```
 Aplicação no ArchGuard: **`tokenFormat: JWT-Standard`**, grants só `authorization_code` +
 `refresh_token` (+ `client_credentials` para serviço), `expireInHours` curto.
@@ -289,34 +297,40 @@ Quando o contrato v1 (ADR-0023) for montado, a migração é só configuração:
 ```yaml
 keycloak:
   issuer: https://sso.empresa.com/realms/empresa
-  audiences: [ archbase-api ]              # exige 'Audience mapper'; o padrão é 'account'
-  algorithms: [RS256]
+  audiences: [ archbase-api ]         # exige "Audience mapper"; o padrão do Keycloak é "account"
+  tenant:
+    fixed: empresa
   claims:
-    subject: sub
-    email: email
-    email-verified: email_verified
-    tenant: { fixed: empresa }             # ou um provedor por realm; ou claim de mapper
     roles: [ realm_access.roles, resource_access.archbase-api.roles ]
-  introspection: { enabled: false }        # disponível em /protocol/openid-connect/token/introspect
+  role-mapping:
+    sync: add
+    map:
+      financeiro: Financeiro
+      "[empresa/vendas]": Vendas      # chave com / . : precisa de colchetes
 ```
+Introspecção disponível em `/protocol/openid-connect/token/introspect`. O `aud` padrão do Keycloak é
+`account`: sem um *Audience mapper* para `archbase-api`, todo token é recusado.
 
 ### 7.3 Microsoft Entra ID
 
 ```yaml
 entra:
   issuer-pattern: https://login.microsoftonline.com/{tid}/v2.0
-  allowed-tenants: { "<tid-guid-cliente-a>": cliente-a, "<tid-guid-cliente-b>": cliente-b }
   jwks-uri: https://login.microsoftonline.com/common/discovery/v2.0/keys
-  audiences: [ "<application-id-guid>", "api://archbase-api" ]
-  algorithms: [RS256]
-  required-claims: { ver: "2.0" }          # manifest: accessTokenAcceptedVersion = 2
+  allowed-tenants:
+    "[11111111-2222-3333-4444-555555555555]": cliente-a
+    "[66666666-7777-8888-9999-000000000000]": cliente-b
+  audiences: [ "api://archbase-api" ]
+  required-claims:
+    ver: "2.0"                        # manifest: accessTokenAcceptedVersion = 2
   claims:
-    subject: oid                           # 'sub' é pairwise por aplicação; o estável é oid (+tid)
-    email: email                           # claim opcional; pode não vir
-  users: { link-by-email: never }          # sem email_verified; preferred_username/upn NÃO são chave confiável
-    tenant: { claim: tid }                 # traduzido por allowed-tenants
-    roles: [ roles ]                       # app roles; 'groups' vem como GUID e tem overage (>200)
+    subject: oid                      # "sub" é pairwise por aplicação; o estável é oid
+    roles: [ roles ]
+  users:
+    link-by-email: never              # Entra não emite email_verified
 ```
+Use *app roles* (`roles`), não `groups`: grupos vêm como GUID e, acima de 200, o token traz só um
+indicador de *overage*. Entra não oferece introspecção.
 Token emitido para o Microsoft Graph não é validável: o frontend precisa pedir token para o escopo
 da API (`api://archbase-api/.default`).
 
@@ -324,32 +338,33 @@ da API (`api://archbase-api/.default`).
 
 ```yaml
 auth0:
-  issuer: https://empresa.us.auth0.com/    # COM barra final
-  audiences: [ https://api.empresa.com ]   # sem 'audience' no login o access token não é JWT validável
-  algorithms: [RS256]
+  issuer: https://empresa.us.auth0.com/   # com barra final
+  audiences: [ https://api.empresa.com ]
+  tenant:
+    claim: org_id
   claims:
-    subject: sub                           # 'auth0|…', 'google-oauth2|…'
-    email: https://empresa.com/email       # custom claims exigem namespace (Actions)
-    tenant: { claim: org_id }              # recurso Organizations
-    roles: [ permissions, https://empresa.com/roles ]   # 'permissions' com RBAC da API ligado
+    email: https://empresa.com/email  # claim customizado exige namespace
+    roles: [ permissions ]
 ```
+Sem `audience` no pedido de login, o Auth0 emite access token opaco, não validável aqui. `permissions`
+exige RBAC ligado na API. Auth0 não oferece introspecção.
 
 ### 7.5 Okta
 
 ```yaml
 okta:
-  issuer: https://empresa.okta.com/oauth2/default    # custom authorization server — o org AS não serve
-  audiences: [ api://default ]
-  algorithms: [RS256]
+  issuer: https://empresa.okta.com/oauth2/default
+  audiences: [ "api://default" ]
+  tenant:
+    header: true                      # só entra quem já tem vínculo naquele tenant
   claims:
-    subject: uid                           # 'sub' costuma ser o login (e-mail) e pode mudar
-    email: sub
-  users: { link-by-email: never }
-    tenant: { header: true }
-    roles: [ groups ]                      # claim 'groups' precisa ser criado no AS, com filtro
-    scopes: scp                            # array, não string
-  introspection: { enabled: false }        # disponível em /oauth2/default/v1/introspect
+    subject: uid                      # "sub" costuma ser o login e pode mudar
+    roles: [ groups ]
+  users:
+    link-by-email: never
 ```
+Exige *custom authorization server* (o org AS não serve). O claim `groups` precisa ser criado no AS,
+com filtro. Introspecção em `/oauth2/default/v1/introspect`.
 
 > Detalhes de provedores de mercado mudam; os exemplos refletem a documentação conhecida em 2026 e
 > devem ser conferidos no ambiente real antes de virar documentação oficial.
