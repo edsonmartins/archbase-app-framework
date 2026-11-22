@@ -5,7 +5,10 @@ import br.com.archbase.oidc.auth.OidcBearerAuthenticator;
 import br.com.archbase.oidc.exchange.OidcTokenExchangeController;
 import br.com.archbase.oidc.provider.OidcIntrospector;
 import br.com.archbase.oidc.provider.OidcProviderRegistry;
+import br.com.archbase.oidc.exchange.OidcBackchannelLogoutController;
 import br.com.archbase.oidc.user.ExternalIdentityStore;
+import br.com.archbase.oidc.user.ExternalLogoutStore;
+import br.com.archbase.security.repository.AccessTokenJpaRepository;
 import br.com.archbase.oidc.user.OidcIdentityLinker;
 import br.com.archbase.oidc.user.OidcLocalCredentialPolicy;
 import br.com.archbase.oidc.user.OidcRoleSynchronizer;
@@ -63,6 +66,8 @@ public class ArchbaseOidcAutoConfiguration {
     @Bean
     public SmartInitializingSingleton oidcSchemaInitializer(ExternalIdentityStore store,
                                                             RevokedTokenStore revokedTokens,
+                                                            ExternalLogoutStore logouts,
+                                                            ArchbaseOidcProperties properties,
                                                             ObjectProvider<ArchbaseSecuritySchemaProperties> schema) {
         return () -> {
             ArchbaseSecuritySchemaProperties.Mode mode = schema.getIfAvailable(ArchbaseSecuritySchemaProperties::new)
@@ -86,6 +91,17 @@ public class ArchbaseOidcAutoConfiguration {
                     revokedTokens.createTableIfMissing();
                 }
             }
+            // Só quem liga o back-channel ganha a tabela de cortes.
+            boolean backchannel = properties.getProviders().values().stream()
+                    .anyMatch(p -> p.getLogout().getBackchannel().isEnabled());
+            if (backchannel && !logouts.tableExists()) {
+                if (mode == ArchbaseSecuritySchemaProperties.Mode.REPORT) {
+                    log.warn("oidc.schema.missing table={} — crie com:\n{};", ExternalLogoutStore.TABLE,
+                            ExternalLogoutStore.DDL);
+                } else {
+                    logouts.createTableIfMissing();
+                }
+            }
         };
     }
 
@@ -100,8 +116,25 @@ public class ArchbaseOidcAutoConfiguration {
     public OidcBearerAuthenticator oidcBearerAuthenticator(OidcProviderRegistry registry, OidcIdentityLinker linker,
                                                            OidcRoleSynchronizer roles,
                                                            OidcIntrospector introspector,
-                                                           RevokedTokenStore revokedTokens) {
-        return new OidcBearerAuthenticator(registry, linker, roles, introspector, revokedTokens);
+                                                           RevokedTokenStore revokedTokens,
+                                                           ExternalLogoutStore logouts) {
+        return new OidcBearerAuthenticator(registry, linker, roles, introspector, revokedTokens, logouts);
+    }
+
+    @Bean
+    public ExternalLogoutStore oidcExternalLogoutStore(DataSource dataSource) {
+        return new ExternalLogoutStore(dataSource, Clock.systemUTC());
+    }
+
+    /** Sempre registrado com o módulo ativo; recusa aviso de provedor sem {@code logout.backchannel.enabled}. */
+    @Bean
+    public OidcBackchannelLogoutController oidcBackchannelLogoutController(OidcProviderRegistry registry,
+                                                                           ExternalLogoutStore logouts,
+                                                                           ExternalIdentityStore links,
+                                                                           AccessTokenJpaRepository localTokens,
+                                                                           PlatformTransactionManager transactionManager) {
+        return new OidcBackchannelLogoutController(registry, logouts, links, localTokens,
+                new TransactionTemplate(transactionManager));
     }
 
     @Bean

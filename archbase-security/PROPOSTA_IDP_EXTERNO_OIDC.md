@@ -176,8 +176,8 @@ Emitida por `ArchbaseAuthenticationService.issueExternalSession`, método novo d
 
 Access token JWT vale até o `exp`. Por provedor, opcionalmente:
 - `introspection.enabled=true` com cache curto (ex.: 30 s) — ArchGuard, Keycloak e Okta têm; Auth0 e Entra não;
-- fase 3: endpoint de **back-channel logout** que recebe `logout_token` e mantém uma denylist por
-  `sub`/`sid` até o `exp`.
+- **back-channel logout** (fase 3a, feita): o IdP avisa por `logout_token` e o Archbase grava um corte por
+  `sub`/`sid`, válido por `token-lifetime`.
 
 Recomendação geral: TTL de access token **≤ 15 min** no IdP.
 
@@ -213,7 +213,14 @@ archbase:
             sync: off                      # off | add | mirror
             map: { }
           introspection: { enabled: false }
-          logout: { end-session-uri: }     # padrão = discovery
+          logout:
+            end-session-uri:               # padrão = discovery
+            backchannel:                   # aviso do IdP (fase 3a); desligado por padrão
+              enabled: false
+              audiences: []                # client_id no IdP; vazio = audiences
+              max-age: 5m                  # idade máxima do logout_token
+              token-lifetime: 24h          # cobre o access token mais longo do IdP
+              revoke-local-sessions: true  # derruba também a sessão da troca de token
 ```
 
 Regra de validação na subida (`archbase.security.hardening.validation=fail`): provedor sem `audiences`,
@@ -371,7 +378,7 @@ proposta e afeta quem já consome o ArchGuard hoje.**
 | **0** | Testes de regressão do filtro no core (JWT local, token de API, tenant por header/claim, Control Plane) **sem mudar código**. É a régua de P1. | Os testes passam antes e depois de cada fase |
 | **1** | **1a — feita (2026-11-21):** mudanças compatíveis no core (seção 3) — política agregada, `ArchbaseCurrentUser`, `ArchbaseLocalCredentialPolicy`, `@Order`. **1b — feita (2026-11-21):** módulo `archbase-security-oidc`: propriedades + validação na subida, `OidcProviderRegistry` (Nimbus, JWKS explícito ou por descoberta, emissor por modelo `{tid}`), `OidcBearerAuthenticator`, `ClaimReader` (nome ou caminho), vínculo (`existing-user` + `link-by-email`, proteção contra segunda identidade com o mesmo e-mail), `local-password: disable-on-link`. **1c — feita (2026-11-21):** `POST /api/v1/auth/oidc/exchange` (desligado por padrão) + `ArchbaseAuthenticationService.issueExternalSession` no core (só acréscimo; o login por senha e o `authenticateWithoutPassword`, que revoga todas as sessões, não mudam): sessão local curta (`exchange.local-token-ttl`, padrão 15 min), **sem refresh token**, respeitando `allowMultipleLogins` | IdP falso RS256 (nos moldes do `FakeControlPlane`): iss/aud/exp/alg/kid, rotação, dois provedores + CP + JWT local no mesmo contexto, tenant por claim/header/mapa; **`@SpringBootTest` de boot com e sem o pacote**, com `ddl-auto=validate` |
 | **2** | **2a — feita (2026-11-21):** `users.provisioning=jit` (`jit.status` `pending` padrão / `active`; só com e-mail confiável; nunca duplica cadastro; usuário nasce sem senha local, sem poder redefinir, sem grupo e não admin; proibido com tenant pelo header) + API administrativa de vínculo `/api/v1/security/external-identities` (exige `isAdministrator`). **2b — feita (2026-11-21):** `role-mapping` (`add`/`mirror`) sobre `claims.roles`; claim ausente não muda nada. **2c — feita (2026-11-21):** introspecção RFC 7662 por provedor, depois da assinatura, cache por SHA-256 do token (`cache-ttl` padrão 30 s, nunca além do `exp`), `on-error` `deny` (503 `IDP_UNAVAILABLE`, padrão) / `allow`. **2d — feita (2026-11-21):** `POST /api/v1/auth/oidc/logout` revoga o token nesta aplicação (lista `SEGURANCA_TOKEN_EXTERNO_REVOGADO`, por hash, todas as instâncias) e devolve o `end_session_endpoint` (`logout.end-session-uri`) para o frontend fazer o RP-Initiated Logout no IdP | Sincronização de grupos; token revogado via introspecção |
-| **3** | Back-channel logout + denylist; `acr`/step-up quando o ArchGuard montar o v1; suporte OIDC nativo no archbase-react (10.2) | Logout token assinado |
+| **3** | **3a — feita no Archbase (2026-11-21):** `POST /api/v1/auth/oidc/backchannel-logout` (OIDC Back-Channel Logout 1.0), ligado por provedor com `logout.backchannel.enabled`. O `logout_token` é validado com as chaves do provedor: `iss`, `aud` (`logout.backchannel.audiences`, padrão `audiences`), `events`, sem `nonce`, `sub` ou `sid`, `iat` dentro de `max-age` (5 min); o `exp` é conferido quando vem. O aviso grava um corte em `SEGURANCA_LOGOUT_EXTERNO` (`sub` → tokens emitidos até o `iat` do aviso; `sid` → aquela sessão, e tokens sem `sid` do mesmo `sub` caem junto) e, com `revoke-local-sessions` (padrão), revoga as sessões locais dos usuários vinculados — é o que faz o logout do IdP alcançar a troca de token (4.2). **3a — ArchGuard (B5), pendente de aprovação:** o envio do aviso precisa usar o custodiante de chaves. **3b:** `acr`/step-up quando o ArchGuard montar o v1. **3c:** suporte OIDC nativo no archbase-react (10.2) | Logout token assinado; aviso velho, sem `events`, com `nonce` ou de outro `aud` recusado |
 | **4** | **Migração entre IdPs** (pedido em 2026-11-21): rotina para trocar a origem da identidade sem recadastrar ninguém — ver 9.1 | Migração local→ArchGuard e Keycloak→ArchGuard em ambiente de teste, com relatório de dry-run conferido |
 
 ### 9.1 Migração entre IdPs (fase 4)

@@ -65,7 +65,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @DisplayName("IdP externo OIDC de ponta a ponta (fase 1b)")
 class OidcIntegrationTest {
 
-    static final FakeOidcProvider IDP = new FakeOidcProvider();
+    static final FakeOidcProvider IDP = new FakeOidcProvider().addRsaKey("rsa-fora", false);
 
     static final String TENANT = OidcTestApplication.TENANT;
     static final String ARCHGUARD_AUD = "app-archbase";
@@ -83,11 +83,14 @@ class OidcIntegrationTest {
         r.add(p + "archguard.tenant.claim", () -> "owner");
         r.add(p + "archguard.users.local-password", () -> "disable-on-link");
         r.add(p + "archguard.logout.end-session-uri", () -> IDP.issuer("archguard") + "/api/logout");
+        r.add(p + "archguard.logout.backchannel.enabled", () -> "true");
 
         r.add(p + "keycloak.issuer", () -> IDP.issuer("realms/empresa"));
         r.add(p + "keycloak.audiences[0]", () -> "archbase-api");
         r.add(p + "keycloak.allow-insecure-http", () -> "true");
         r.add(p + "keycloak.tenant.fixed", () -> TENANT);
+        r.add(p + "keycloak.logout.backchannel.enabled", () -> "true");
+        r.add(p + "keycloak.logout.backchannel.audiences[0]", () -> "archbase-web");
 
         r.add(p + "entra.issuer-pattern", () -> IDP.baseUrl() + "/{tid}/v2.0");
         r.add(p + "entra.jwks-uri", () -> IDP.jwksUri("common"));
@@ -186,6 +189,7 @@ class OidcIntegrationTest {
     void preparar() {
         jdbc.update("DELETE FROM " + ExternalIdentityStore.TABLE);
         jdbc.update("DELETE FROM " + br.com.archbase.oidc.user.RevokedTokenStore.TABLE);
+        jdbc.update("DELETE FROM " + br.com.archbase.oidc.user.ExternalLogoutStore.TABLE);
         tokenRepository.deleteAll();
         userRepository.deleteAll();
         groupRepository.deleteAll();
@@ -917,6 +921,124 @@ class OidcIntegrationTest {
                     .get("access_token").asString();
             assertRecusa(sair(local), 400, "NOT_AN_OIDC_SESSION");
             assertRecusa(sair(null), 400, "NOT_AN_OIDC_SESSION");
+        }
+    }
+
+    @Nested
+    @DisplayName("logout avisado pelo IdP: POST /api/v1/auth/oidc/backchannel-logout")
+    class BackchannelLogout {
+
+        private static final String EVENTO = "http://schemas.openid.net/event/backchannel-logout";
+
+        private FakeOidcProvider.Token aviso(String issuer, String aud, String sub, String sid) {
+            return IDP.token(issuer).aud(aud).withoutExp()
+                    .claim("events", Map.of(EVENTO, Map.of()))
+                    .claim("sub", sub).claim("sid", sid);
+        }
+
+        private FakeOidcProvider.Token avisoArchguard(String sub, String sid) {
+            return aviso(IDP.issuer("archguard"), ARCHGUARD_AUD, sub, sid);
+        }
+
+        private MockHttpServletResponse avisar(String logoutToken) throws Exception {
+            var req = post("/api/v1/auth/oidc/backchannel-logout")
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED);
+            if (logoutToken != null) {
+                req.param("logout_token", logoutToken);
+            }
+            return mockMvc.perform(req).andReturn().getResponse();
+        }
+
+        private void assertAvisoRecusado(MockHttpServletResponse r) throws Exception {
+            assertThat(r.getStatus()).isEqualTo(400);
+            assertThat(r.getHeader("Cache-Control")).contains("no-store");
+            assertThat(json.readTree(r.getContentAsString()).get("error").asString()).isEqualTo("invalid_request");
+        }
+
+        private FakeOidcProvider.Token emitidoHa(FakeOidcProvider.Token t, long segundos) {
+            return t.claim("iat", java.util.Date.from(Instant.now().minusSeconds(segundos)));
+        }
+
+        @Test
+        @DisplayName("só sub: tokens emitidos até o aviso caem; login depois do aviso entra")
+        void porSub() throws Exception {
+            String antes = emitidoHa(archguard("sub-ana"), 10).sign();
+            assertThat(eu(antes).getStatus()).isEqualTo(200);
+
+            MockHttpServletResponse r = avisar(avisoArchguard("sub-ana", null).sign());
+
+            assertThat(r.getStatus()).isEqualTo(200);
+            assertThat(r.getHeader("Cache-Control")).contains("no-store");
+            assertRecusa(eu(antes), 401, "TOKEN_REVOKED");
+            String depois = archguard("sub-ana").claim("iat", java.util.Date.from(Instant.now().plusSeconds(2)))
+                    .sign();
+            assertThat(eu(depois).getStatus()).isEqualTo(200);
+        }
+
+        @Test
+        @DisplayName("com sid: cai a sessão do sid e o token sem sid; outra sessão continua")
+        void porSid() throws Exception {
+            String s1 = emitidoHa(archguard("sub-ana"), 10).claim("sid", "s1").sign();
+            String s2 = emitidoHa(archguard("sub-ana"), 10).claim("sid", "s2").sign();
+            String semSid = emitidoHa(archguard("sub-ana"), 10).sign();
+            assertThat(eu(s1).getStatus()).isEqualTo(200);
+
+            assertThat(avisar(avisoArchguard("sub-ana", "s1").sign()).getStatus()).isEqualTo(200);
+
+            assertRecusa(eu(s1), 401, "TOKEN_REVOKED");
+            assertThat(eu(s2).getStatus()).isEqualTo(200);
+            assertRecusa(eu(semSid), 401, "TOKEN_REVOKED");
+        }
+
+        @Test
+        @DisplayName("revoga também a sessão local da troca de token e impede a troca com o token antigo")
+        void sessaoLocal() throws Exception {
+            String doIdp = emitidoHa(archguard("sub-ana"), 10).sign();
+            MockHttpServletResponse troca = mockMvc.perform(post("/api/v1/auth/oidc/exchange")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(json.writeValueAsString(Map.of("token", doIdp)))).andReturn().getResponse();
+            String local = json.readTree(troca.getContentAsString()).get("access_token").asString();
+            assertThat(eu(local).getStatus()).isEqualTo(200);
+
+            assertThat(avisar(avisoArchguard("sub-ana", null).sign()).getStatus()).isEqualTo(200);
+
+            assertThat(eu(local).getStatus()).isEqualTo(401);
+            MockHttpServletResponse denovo = mockMvc.perform(post("/api/v1/auth/oidc/exchange")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(json.writeValueAsString(Map.of("token", doIdp)))).andReturn().getResponse();
+            assertRecusa(denovo, 401, "TOKEN_REVOKED");
+        }
+
+        @Test
+        @DisplayName("aud do aviso é o client_id (logout.backchannel.audiences), não o aud do access token")
+        void audienciaPropria() throws Exception {
+            String kc = "realms/empresa";
+            assertAvisoRecusado(avisar(aviso(IDP.issuer(kc), "archbase-api", "kc-ana", null).sign()));
+            assertThat(avisar(aviso(IDP.issuer(kc), "archbase-web", "kc-ana", null).sign()).getStatus())
+                    .isEqualTo(200);
+        }
+
+        @Test
+        @DisplayName("aviso inválido: 400 invalid_request, nada muda")
+        void recusas() throws Exception {
+            String antes = emitidoHa(archguard("sub-ana"), 10).sign();
+
+            assertAvisoRecusado(avisar(null));
+            assertAvisoRecusado(avisar("nao-e-jwt"));
+            assertAvisoRecusado(avisar(archguard("sub-ana").sign()));                       // access token: sem events
+            assertAvisoRecusado(avisar(avisoArchguard("sub-ana", null).claim("nonce", "n").sign())); // ID token
+            assertAvisoRecusado(avisar(avisoArchguard("sub-ana", null).claim("events", Map.of("x", Map.of())).sign()));
+            assertAvisoRecusado(avisar(avisoArchguard(null, null).sign()));                 // sem sub nem sid
+            assertAvisoRecusado(avisar(emitidoHa(avisoArchguard("sub-ana", null), 600).sign())); // velho
+            assertAvisoRecusado(avisar(avisoArchguard("sub-ana", null).claim("iat",
+                    java.util.Date.from(Instant.now().plusSeconds(300))).sign()));          // futuro
+            assertAvisoRecusado(avisar(avisoArchguard("sub-ana", null)
+                    .claim("exp", java.util.Date.from(Instant.now().minusSeconds(120))).sign())); // expirado
+            assertAvisoRecusado(avisar(avisoArchguard("sub-ana", null).kid("rsa-fora").sign())); // chave não publicada
+            assertAvisoRecusado(avisar(aviso(IDP.issuer("jit"), "app-jit", "sub-ana", null).sign())); // desligado
+            assertAvisoRecusado(avisar(aviso(IDP.issuer("desconhecido"), "x", "sub-ana", null).sign()));
+
+            assertThat(eu(antes).getStatus()).as("nenhum aviso recusado derrubou a sessão").isEqualTo(200);
         }
     }
 

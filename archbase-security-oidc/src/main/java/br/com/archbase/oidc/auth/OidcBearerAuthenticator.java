@@ -9,6 +9,7 @@ import br.com.archbase.oidc.token.ClaimReader;
 import br.com.archbase.oidc.token.UnverifiedJwt;
 import br.com.archbase.oidc.user.OidcIdentityLinker;
 import br.com.archbase.oidc.user.OidcRoleSynchronizer;
+import br.com.archbase.oidc.user.ExternalLogoutStore;
 import br.com.archbase.oidc.user.RevokedTokenStore;
 import br.com.archbase.security.auth.external.ExternalAuthenticationRejectedException;
 import br.com.archbase.security.auth.external.ExternalBearerAuthenticator;
@@ -54,15 +55,23 @@ public class OidcBearerAuthenticator implements ExternalBearerAuthenticator {
     private final OidcRoleSynchronizer roles;
     private final OidcIntrospector introspector;
     private final RevokedTokenStore revoked;
+    private final ExternalLogoutStore logouts;
 
     public OidcBearerAuthenticator(OidcProviderRegistry registry, OidcIdentityLinker linker,
                                    OidcRoleSynchronizer roles, OidcIntrospector introspector,
                                    RevokedTokenStore revoked) {
+        this(registry, linker, roles, introspector, revoked, null);
+    }
+
+    public OidcBearerAuthenticator(OidcProviderRegistry registry, OidcIdentityLinker linker,
+                                   OidcRoleSynchronizer roles, OidcIntrospector introspector,
+                                   RevokedTokenStore revoked, ExternalLogoutStore logouts) {
         this.registry = registry;
         this.linker = linker;
         this.roles = roles;
         this.introspector = introspector;
         this.revoked = revoked;
+        this.logouts = logouts;
     }
 
     @Override
@@ -96,6 +105,12 @@ public class OidcBearerAuthenticator implements ExternalBearerAuthenticator {
 
         // Logout feito nesta aplicação: vale antes da introspecção (mais barato) e mesmo sem ela.
         if (revoked != null && revoked.isRevoked(token)) {
+            return rejected(TOKEN_REVOKED, "Token revogado");
+        }
+        // Logout avisado pelo IdP (back-channel): compara com o sub/sid brutos — são os que o aviso traz.
+        if (logouts != null && provider.getLogout().getBackchannel().isEnabled()
+                && logouts.isLoggedOut(providerId, jwt.getSubject(), jwt.getClaimAsString("sid"), jwt.getIssuedAt())) {
+            log.info("oidc.token.logged_out provider={}", providerId);
             return rejected(TOKEN_REVOKED, "Token revogado");
         }
 

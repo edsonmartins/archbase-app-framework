@@ -58,6 +58,7 @@ public final class OidcStartupValidator {
             validateProvisioning(at, provider, errors);
             validateRoleMapping(at, provider, errors);
             validateIntrospection(at, provider, errors);
+            validateBackchannel(at, provider, errors);
             if (blank(provider.getClaims().getSubject())) {
                 errors.add(at + ".claims.subject: obrigatório");
             }
@@ -161,6 +162,27 @@ public final class OidcStartupValidator {
         }
         if (in.getOnError() == ArchbaseOidcProperties.OnError.ALLOW) {
             log.warn("{}.introspection.on-error=ALLOW: com o IdP fora do ar, token revogado continua valendo até o exp.", at);
+        }
+    }
+
+    private static void validateBackchannel(String at, Provider provider, List<String> errors) {
+        ArchbaseOidcProperties.Backchannel bc = provider.getLogout().getBackchannel();
+        if (!bc.isEnabled()) {
+            return;
+        }
+        if (bc.getMaxAge() == null || bc.getMaxAge().isNegative() || bc.getMaxAge().isZero()
+                || bc.getMaxAge().compareTo(Duration.ofMinutes(15)) > 0) {
+            errors.add(at + ".logout.backchannel.max-age: entre 1 segundo e 15 minutos — aviso velho é replay");
+        }
+        if (bc.getTokenLifetime() == null || bc.getTokenLifetime().compareTo(Duration.ofMinutes(1)) < 0
+                || bc.getTokenLifetime().compareTo(Duration.ofDays(30)) > 0) {
+            errors.add(at + ".logout.backchannel.token-lifetime: entre 1 minuto e 30 dias — precisa cobrir a vida do "
+                    + "access token mais longo do IdP");
+        }
+        if (bc.isRevokeLocalSessions() && !"sub".equals(provider.getClaims().getSubject())) {
+            log.warn("{}.logout.backchannel.revoke-local-sessions: claims.subject={} — o aviso do IdP só traz o sub, "
+                    + "então as sessões locais deste provedor não podem ser encontradas e não serão revogadas.", at,
+                    provider.getClaims().getSubject());
         }
     }
 

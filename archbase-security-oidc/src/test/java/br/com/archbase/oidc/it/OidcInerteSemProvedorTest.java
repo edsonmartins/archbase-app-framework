@@ -51,5 +51,9 @@ class OidcInerteSemProvedorTest {
         assertThat(new ExternalIdentityStore(dataSource).tableExists()).isFalse();
         assertThat(new br.com.archbase.oidc.user.RevokedTokenStore(dataSource, java.time.Clock.systemUTC())
                 .tableExists()).isFalse();
+        assertThat(new br.com.archbase.oidc.user.ExternalLogoutStore(dataSource, java.time.Clock.systemUTC())
+                .tableExists()).isFalse();
+        assertThat(context.getBeansOfType(br.com.archbase.oidc.exchange.OidcBackchannelLogoutController.class))
+                .isEmpty();
     }
 }
