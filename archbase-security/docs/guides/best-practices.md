@@ -311,7 +311,7 @@ public void approveSalesOrder(String orderId) {
 }
 ```
 
-Isso só protege se a aplicação conferir que o usuário pertence à empresa do `X-COMPANY-ID` (ver 3.1).
+Isso só protege com `archbase.security.company.validation=enforce` e um `ArchbaseCompanyAccessResolver` (ver 3.1).
 
 #### Cenário: Multi-Projeto
 
@@ -666,42 +666,38 @@ O que o framework faz:
 - `archbase.app.tenant.fail-on-missing=true` recusa requisição sem tenant em vez de seguir com contexto vazio.
 - `ArchbaseTenantContext` guarda só **tenant e empresa**; não existe projeto no contexto.
 
-#### Empresa (`X-COMPANY-ID`): valide na aplicação
+#### Empresa (`X-COMPANY-ID`): ligue a conferência
 
-> **Atenção.** O `X-COMPANY-ID` é lido do cabeçalho (ou da query) e posto no contexto **sem conferir se
-> o usuário pertence àquela empresa**. Ele alimenta o `companyFilter` do Hibernate e o escopo de empresa
-> do `@HasPermission`. Um usuário com permissão sem escopo de empresa (`COMPANY_ID` nulo) que troque o
-> cabeçalho passa a ler os dados de outra empresa do mesmo tenant.
+> **Atenção.** Por padrão, o `X-COMPANY-ID` (cabeçalho ou query) vai para o contexto **sem conferir se o
+> usuário pertence àquela empresa**. Ele alimenta o `companyFilter` do Hibernate e o escopo de empresa do
+> `@HasPermission`: um usuário com permissão sem escopo de empresa que troque o cabeçalho lê os dados de outra
+> empresa do mesmo tenant.
 
-Se a aplicação usa empresa como fronteira de dados, confira o vínculo depois da autenticação. O vínculo
-usuário–empresa é do domínio da aplicação, então a consulta é sua:
+Se a aplicação usa empresa como fronteira de dados, registre um `ArchbaseCompanyAccessResolver` — o vínculo
+usuário–empresa é do seu domínio — e ligue a conferência:
 
 ```java
 @Component
 @RequiredArgsConstructor
-public class CompanyMembershipFilter extends OncePerRequestFilter {
+public class EmpresasDoUsuario implements ArchbaseCompanyAccessResolver {
 
     private final UserCompanyRepository memberships; // repositório da aplicação
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
-                                    FilterChain chain) throws ServletException, IOException {
-        String companyId = ArchbaseTenantContext.getCompanyId();
-        Optional<UserEntity> user = ArchbaseCurrentUser.of(
-                SecurityContextHolder.getContext().getAuthentication());
-        if (companyId != null && user.isPresent()
-                && !memberships.existsByUserIdAndCompanyId(user.get().getId(), companyId)) {
-            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Empresa não permitida");
-            return;
-        }
-        chain.doFilter(request, response);
+    public boolean canAccess(UserEntity user, String companyId) {
+        return memberships.existsByUserIdAndCompanyId(user.getId(), companyId);
     }
 }
 ```
 
-Como `@Component` sem `@Order`, o Spring Boot o registra como filtro de servlet com a menor
-precedência: ele roda **dentro** da cadeia do Spring Security, depois do filtro JWT, com tenant, empresa e
-usuário já no contexto. Não lhe dê precedência alta — antes da autenticação ainda não há usuário.
+```properties
+archbase.security.company.validation=warn      # mede: registra no log o que seria recusado
+# depois de conferir o log:
+archbase.security.company.validation=enforce   # 403 COMPANY_NOT_ALLOWED; anônimo tem a empresa descartada
+```
+
+O filtro de autenticação faz a conferência para JWT próprio, token de API e token de IdP externo. Detalhes em
+[`deployment/security-hardening.md`](../../../deployment/security-hardening.md#empresa-no-cabeçalho-x-company-id).
 
 ---
 
@@ -831,7 +827,7 @@ compatibilidade), um administrador de um tenant lê os eventos de todos — ligu
 
 ### Multi-Tenancy
 - Não escreva filtro de tenant: o tenant do token é a fonte de verdade
-- Valide na aplicação o vínculo do usuário com a empresa do `X-COMPANY-ID`
+- Com empresa como fronteira de dados, registre `ArchbaseCompanyAccessResolver` e ligue `company.validation`
 - Desligue `archbase.app.tenant.accept-query-param` e ligue `fail-on-missing` em produção
 - Use o `ArchbaseTenantAwareTaskDecorator` em executores criados à mão
 

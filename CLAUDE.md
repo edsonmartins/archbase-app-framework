@@ -336,6 +336,10 @@ archbase.security.public-paths.registration=true            # auto-cadastro anô
 archbase.security.public-paths.legacy-app-routes=true       # rotas de aplicação (deprecado)
 archbase.app.tenant.fail-on-missing=false                   # recusa acesso sem tenant no contexto
 archbase.app.tenant.accept-query-param=true                 # aceita X-TENANT-ID na query string
+# Confere o X-COMPANY-ID contra o usuário autenticado (off | warn | enforce). Exige um bean
+# ArchbaseCompanyAccessResolver: o vínculo usuário-empresa é do domínio da aplicação.
+# enforce: 403 COMPANY_NOT_ALLOWED; anônimo tem a empresa descartada. Sem resolver, não sobe.
+archbase.security.company.validation=off
 
 # Core único de autorização (ver archbase-security/MODELO_CORE_AUTORIZACAO.md)
 # Cinco portões: IDENTITY, SCOPE, RESTRICTION, LEVEL, GRANT. Os quatro primeiros só NEGAM;

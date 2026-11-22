@@ -33,6 +33,8 @@ public final class HardeningTestFixtures {
         ArchbaseSecurityHardeningValidator validator = new ArchbaseSecurityHardeningValidator();
         ReflectionTestUtils.setField(validator, "dataSource", dataSourceRetornando(contagemRetornada));
         ReflectionTestUtils.setField(validator, "roleResolvers", List.of());
+        ReflectionTestUtils.setField(validator, "companyAccessResolvers", List.of());
+        ReflectionTestUtils.setField(validator, "companyValidation", "off");
         ReflectionTestUtils.setField(validator, "applicationContext", null);
         ReflectionTestUtils.setField(validator, "validationMode", "fail");
         ReflectionTestUtils.setField(validator, "purgePlaintext", false);

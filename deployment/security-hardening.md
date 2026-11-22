@@ -47,6 +47,7 @@ mais abaixo; as marcadas com ⚠ exigem preparo antes de virar.
 | `archbase.security.client-ip.trust-forwarded-for` | `false` | `true` **só** atrás de proxy que sobrescreve o cabeçalho | Ver "Se você roda atrás de proxy" |
 | `archbase.app.tenant.fail-on-missing` | `false` | `true` | ⚠ todo acesso legítimo precisa carregar tenant |
 | `archbase.app.tenant.accept-query-param` | `true` | `false` | Tenant/empresa por query string |
+| `archbase.security.company.validation` | `off` | `enforce` | ⚠ exige bean `ArchbaseCompanyAccessResolver`; ligue `warn` antes |
 | `archbase.security.audit.enabled` | `false` | `true` | Trilha em `SEGURANCA_EVENTO`; `audit.retention-months=12` |
 | `archbase.security.audit.tenant-scoped` | `false` | `true` | Sem ele, admin de um tenant lê eventos de todos |
 | `archbase.security.token.cleanup.enabled` | `false` | `true` | Purga tokens expirados (`retention-days=30`); exige `@EnableScheduling` |
@@ -59,14 +60,41 @@ mais abaixo; as marcadas com ⚠ exigem preparo antes de virar.
 | `archbase.security.cors.*` | **obrigatórias** | origens explícitas | Nunca `*` com `allow-credentials=true` |
 | `archbase.analytics.secret-validation` | `warn` | `fail` | Só com `archbase-analytics` |
 
-### Ainda sem proteção: empresa no cabeçalho
+### Empresa no cabeçalho (`X-COMPANY-ID`)
 
-`X-COMPANY-ID` (cabeçalho ou query) é posto no contexto **sem conferir se o usuário pertence à
-empresa**. Ele alimenta o `companyFilter` do Hibernate e o escopo de empresa do `@HasPermission`:
-um usuário com permissão sem escopo de empresa que troque o cabeçalho lê os dados de outra empresa do
-mesmo tenant. Até o framework validar isso, aplicações que usam empresa como fronteira de dados
-precisam conferir o vínculo — exemplo em
-[best-practices.md §3.1](../archbase-security/docs/guides/best-practices.md#31-propagação-de-contexto).
+Até a 3.5.0, o `X-COMPANY-ID` (cabeçalho ou query) ia para o contexto **sem conferir se o usuário pertence à
+empresa**. Ele alimenta o `companyFilter` do Hibernate e o escopo de empresa do `@HasPermission`: um usuário com
+permissão sem escopo de empresa que troque o cabeçalho lê os dados de outra empresa do mesmo tenant.
+
+A conferência existe a partir da 3.5.0, desligada por padrão. Como o vínculo usuário–empresa é do domínio da
+aplicação, ela registra um `ArchbaseCompanyAccessResolver`:
+
+```java
+@Component
+public class EmpresasDoUsuario implements ArchbaseCompanyAccessResolver {
+    private final VinculoEmpresaRepository vinculos;
+
+    @Override
+    public boolean canAccess(UserEntity user, String companyId) {
+        return vinculos.existsByUsuarioIdAndEmpresaId(user.getId(), companyId);
+    }
+}
+```
+
+```properties
+# off (padrão) | warn | enforce
+archbase.security.company.validation=warn
+```
+
+| Modo | Autenticado, empresa permitida | Autenticado, empresa alheia | Anônimo (rota pública) |
+|---|---|---|---|
+| `off` | segue | segue (como antes) | segue com a empresa |
+| `warn` | segue | segue, com WARN no log | segue, com WARN |
+| `enforce` | segue | **403 `COMPANY_NOT_ALLOWED`** | empresa **descartada** do contexto |
+
+Vale para JWT próprio, token de API e token de IdP externo. Com `enforce`, principal que não é usuário local,
+resolver que lança exceção ou ausência de resolver contam como recusa — e sem resolver a aplicação não sobe.
+Ligue `warn` primeiro e confira o log antes de virar para `enforce`.
 
 ### IdP externo e Control Plane
 

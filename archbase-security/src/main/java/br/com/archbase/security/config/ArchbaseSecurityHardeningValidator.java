@@ -57,6 +57,12 @@ public class ArchbaseSecurityHardeningValidator {
     private List<ArchbaseRoleResolver> roleResolvers = List.of();
 
     @Autowired(required = false)
+    private List<br.com.archbase.security.spi.ArchbaseCompanyAccessResolver> companyAccessResolvers = List.of();
+
+    @Value("${archbase.security.company.validation:off}")
+    private String companyValidation;
+
+    @Autowired(required = false)
     private ApplicationContext applicationContext;
 
     /**
@@ -124,6 +130,7 @@ public class ArchbaseSecurityHardeningValidator {
 
         validarPurgePlaintext(bloqueios);
         validarResolverDeRoles(bloqueios);
+        validarConferenciaDeEmpresa(bloqueios, avisos);
         validarPoliticaDeEndpointsAdministrativos(bloqueios);
         validarStrictTokenUse(bloqueios);
         validarConflitoDeRotaDoLogout(bloqueios);
@@ -198,6 +205,33 @@ public class ArchbaseSecurityHardeningValidator {
                        O que fazer: implemente ArchbaseRoleResolver na aplicação (as roles de
                        @RequireRole são do seu domínio, o framework não tem como descobri-las) e
                        registre-o como @Component.""");
+        }
+    }
+
+    private void validarConferenciaDeEmpresa(List<String> bloqueios, List<String> avisos) {
+        String modo = companyValidation == null ? "off" : companyValidation.trim().toLowerCase();
+        boolean semResolver = companyAccessResolvers == null || companyAccessResolvers.isEmpty();
+        switch (modo) {
+            case "off" -> { }
+            case "warn" -> {
+                if (semResolver) {
+                    avisos.add("archbase.security.company.validation=warn sem bean ArchbaseCompanyAccessResolver: "
+                            + "toda requisição autenticada com X-COMPANY-ID será registrada como recusável.");
+                }
+            }
+            case "enforce" -> {
+                if (semResolver) {
+                    bloqueios.add("""
+                            archbase.security.company.validation=enforce, mas nenhum bean
+                               ArchbaseCompanyAccessResolver foi registrado. Toda requisição autenticada
+                               com X-COMPANY-ID passaria a ser recusada com 403 COMPANY_NOT_ALLOWED.
+                               O que fazer: implemente ArchbaseCompanyAccessResolver na aplicação (o
+                               vínculo usuário-empresa é do seu domínio) e registre-o como @Component.
+                               Para medir antes de recusar, use company.validation=warn.""");
+                }
+            }
+            default -> bloqueios.add("archbase.security.company.validation=" + companyValidation
+                    + ": valor desconhecido. Use off, warn ou enforce.");
         }
     }
 

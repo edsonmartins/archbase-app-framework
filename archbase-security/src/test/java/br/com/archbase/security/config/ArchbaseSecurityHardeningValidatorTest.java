@@ -75,6 +75,54 @@ class ArchbaseSecurityHardeningValidatorTest {
     }
 
     @Nested
+    @DisplayName("company.validation")
+    class ConferenciaDeEmpresa {
+
+        @Test
+        @DisplayName("enforce sem ArchbaseCompanyAccessResolver: não sobe — recusaria toda empresa")
+        void enforceSemResolver() {
+            var validator = validadorPadrao(0L);
+            ReflectionTestUtils.setField(validator, "companyValidation", "enforce");
+
+            assertThatThrownBy(validator::validate)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("company.validation=enforce")
+                    .hasMessageContaining("ArchbaseCompanyAccessResolver");
+        }
+
+        @Test
+        @DisplayName("enforce com resolver: sobe")
+        void enforceComResolver() {
+            var validator = validadorPadrao(0L);
+            ReflectionTestUtils.setField(validator, "companyValidation", "enforce");
+            ReflectionTestUtils.setField(validator, "companyAccessResolvers",
+                    List.of((br.com.archbase.security.spi.ArchbaseCompanyAccessResolver) (u, c) -> true));
+
+            assertThatCode(validator::validate).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("warn sem resolver: sobe (só avisa)")
+        void warnSemResolver() {
+            var validator = validadorPadrao(0L);
+            ReflectionTestUtils.setField(validator, "companyValidation", "warn");
+
+            assertThatCode(validator::validate).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("valor desconhecido: não sobe")
+        void valorDesconhecido() {
+            var validator = validadorPadrao(0L);
+            ReflectionTestUtils.setField(validator, "companyValidation", "strict");
+
+            assertThatThrownBy(validator::validate)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("valor desconhecido");
+        }
+    }
+
+    @Nested
     @DisplayName("no-resolver-policy=deny")
     class PoliticaDeRoles {
 

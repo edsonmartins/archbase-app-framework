@@ -2,15 +2,18 @@ package br.com.archbase.security.config;
 
 import br.com.archbase.ddd.context.ArchbaseTenantContext;
 import br.com.archbase.security.adapter.AccessTokenPersistenceAdapter;
+import br.com.archbase.security.auth.ArchbaseCurrentUser;
 import br.com.archbase.security.auth.external.ExternalAuthenticationPolicy;
 import br.com.archbase.security.auth.external.ExternalAuthenticationRejectedException;
 import br.com.archbase.security.auth.external.ExternalBearerAuthenticator;
 import br.com.archbase.security.auth.external.ExternalTokenCheck;
 import br.com.archbase.security.domain.entity.ApiToken;
+import br.com.archbase.security.persistence.UserEntity;
 import br.com.archbase.security.persistence.AccessTokenEntity;
 import br.com.archbase.security.repository.AccessTokenJpaRepository;
 import br.com.archbase.security.service.ApiTokenService;
 import br.com.archbase.security.service.ArchbaseJwtService;
+import br.com.archbase.security.spi.ArchbaseCompanyAccessResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -76,6 +79,33 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
      * construtor, para não mudar a assinatura de quem instancia o filtro. Vazio = comportamento de sempre.
      */
     private List<ExternalBearerAuthenticator> externalAuthenticators = List.of();
+
+    /**
+     * Conferência do {@code X-COMPANY-ID} contra o usuário autenticado: {@code off} (padrão, comportamento de
+     * sempre), {@code warn} (só registra) ou {@code enforce} (recusa com {@code 403 COMPANY_NOT_ALLOWED}).
+     *
+     * @since 3.5.0
+     */
+    @Value("${archbase.security.company.validation:off}")
+    private String companyValidation = COMPANY_VALIDATION_OFF;
+
+    static final String COMPANY_VALIDATION_OFF = "off";
+    static final String COMPANY_VALIDATION_WARN = "warn";
+    static final String COMPANY_VALIDATION_ENFORCE = "enforce";
+    public static final String COMPANY_NOT_ALLOWED = "COMPANY_NOT_ALLOWED";
+
+    private List<ArchbaseCompanyAccessResolver> companyAccessResolvers = List.of();
+
+    /** @since 3.5.0 */
+    @Autowired(required = false)
+    public void setCompanyAccessResolvers(List<ArchbaseCompanyAccessResolver> resolvers) {
+        this.companyAccessResolvers = resolvers == null ? List.of() : List.copyOf(resolvers);
+    }
+
+    /** Para testes e para quem instancia o filtro à mão. */
+    public void setCompanyValidation(String mode) {
+        this.companyValidation = mode == null ? COMPANY_VALIDATION_OFF : mode;
+    }
 
     /** Política efetiva dos provedores externos (já combinada); {@code null} = comportamento de sempre. */
     private ExternalAuthenticationPolicy externalPolicy;
@@ -151,7 +181,8 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
             String bearer = bearerJwt(authHeader, tokenParam);
             ExternalBearerAuthenticator external = findExternal(bearer);
             if (external != null) {
-                if (authenticateExternally(external, bearer, request, response)) {
+                if (authenticateExternally(external, bearer, request, response)
+                        && companyAllowed(request, response)) {
                     filterChain.doFilter(request, response);
                 }
                 return;
@@ -277,6 +308,10 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
                 ArchbaseTenantContext.setTenantId(tokenTenant);
             }
 
+            if (!companyAllowed(request, response)) {
+                return;
+            }
+
             filterChain.doFilter(request, response);
         } catch (ServletException | IOException e) {
             throw e;
@@ -288,6 +323,82 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
         } finally {
             ArchbaseTenantContext.clear();
         }
+    }
+
+    /**
+     * Confere o {@code X-COMPANY-ID} que já está no contexto contra o usuário autenticado, conforme
+     * {@code archbase.security.company.validation}. Roda depois da autenticação e do alinhamento do tenant, para os três
+     * caminhos (JWT próprio, token de API e token externo).
+     * <ul>
+     * <li>sem empresa no contexto, ou modo {@code off}: nada muda;</li>
+     * <li>sem usuário autenticado (rota pública): com {@code enforce} a empresa é descartada do contexto — ninguém
+     * para conferir, e o cabeçalho de um anônimo não pode escolher a empresa dos dados; com {@code warn}, só log;</li>
+     * <li>autenticado: o {@link ArchbaseCompanyAccessResolver} decide. Principal que não é {@link UserEntity}, falta de
+     * resolver ou exceção contam como recusa.</li>
+     * </ul>
+     *
+     * @return {@code true} se a requisição pode seguir; {@code false} se o 403 já foi escrito
+     */
+    boolean companyAllowed(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        String mode = companyValidation == null ? COMPANY_VALIDATION_OFF : companyValidation.trim().toLowerCase();
+        if (COMPANY_VALIDATION_OFF.equals(mode)) {
+            return true;
+        }
+        boolean enforce = COMPANY_VALIDATION_ENFORCE.equals(mode);
+        String companyId = ArchbaseTenantContext.getCompanyId();
+        if (companyId == null || companyId.isEmpty()) {
+            return true;
+        }
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            if (enforce) {
+                ArchbaseTenantContext.setCompanyId(null);
+                request.setAttribute(ArchbaseTenantContext.COMPANY_DISCARDED_ATTRIBUTE, Boolean.TRUE);
+                log.debug("X-COMPANY-ID descartado: requisição sem usuário autenticado ({} {})",
+                        request.getMethod(), request.getRequestURI());
+            } else {
+                log.warn("[company.validation=warn] X-COMPANY-ID={} em requisição sem usuário autenticado; com "
+                        + "enforce ele seria descartado. {} {}", companyId, request.getMethod(), request.getRequestURI());
+            }
+            return true;
+        }
+
+        Optional<UserEntity> user = ArchbaseCurrentUser.of(authentication);
+        String motivo = null;
+        if (user.isEmpty()) {
+            motivo = "principal não é um usuário local";
+        } else if (companyAccessResolvers.isEmpty()) {
+            motivo = "nenhum ArchbaseCompanyAccessResolver registrado";
+        } else {
+            try {
+                boolean permitido = false;
+                for (ArchbaseCompanyAccessResolver resolver : companyAccessResolvers) {
+                    if (resolver.canAccess(user.get(), companyId)) {
+                        permitido = true;
+                        break;
+                    }
+                }
+                if (!permitido) {
+                    motivo = "usuário sem acesso à empresa";
+                }
+            } catch (RuntimeException e) {
+                log.error("ArchbaseCompanyAccessResolver falhou: {}", e.getMessage(), e);
+                motivo = "falha ao conferir o acesso à empresa";
+            }
+        }
+        if (motivo == null) {
+            return true;
+        }
+        if (!enforce) {
+            log.warn("[company.validation=warn] X-COMPANY-ID={} seria recusado ({}): usuario={}, {} {}",
+                    companyId, motivo, authentication.getName(), request.getMethod(), request.getRequestURI());
+            return true;
+        }
+        log.warn("Acesso à empresa NEGADO ({}): usuario={}, X-COMPANY-ID={}, {} {}", motivo,
+                authentication.getName(), companyId, request.getMethod(), request.getRequestURI());
+        writeExternalError(response, HttpServletResponse.SC_FORBIDDEN, COMPANY_NOT_ALLOWED,
+                "X-COMPANY-ID não é uma empresa acessível a este usuário");
+        return false;
     }
 
     /** O JWT apresentado (Bearer ou {@code ?token=}), ou {@code null} se não houver ou se for token de API. */
