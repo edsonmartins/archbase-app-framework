@@ -4,6 +4,11 @@
 
 # Configuração do Módulo archbase-security
 
+> **Em revisão.** As propriedades `archbase.security.method.enabled` e `archbase.security.permission.cache.*`
+> citadas abaixo **não existem** no código (não há cache de permissões) e não têm efeito. A referência
+> completa e conferida das propriedades está no [`CLAUDE.md`](../../../CLAUDE.md#configuration-properties)
+> e em [`deployment/security-hardening.md`](../../../deployment/security-hardening.md) até a reescrita deste guia.
+
 ## Introdução
 
 Este documento descreve todas as propriedades de configuração disponíveis no módulo `archbase-security`, incluindo segurança, JWT, cache de permissões e multi-tenancy.
@@ -51,16 +56,15 @@ archbase.security.method.enabled=true
 # JWT (JSON Web Tokens)
 # ========================================
 
-# Chave secreta para assinatura de tokens (obrigatória)
-# IMPORTANTE: Use uma chave forte em produção (min. 256 bits base64)
-archbase.security.jwt.secret-key=your-secret-key-here-replace-in-production
+# As três são OBRIGATÓRIAS e não têm padrão: sem qualquer uma delas a aplicação não sobe.
 
-# Tempo de expiração do access token em milissegundos
-# Padrão: 86400000 (24 horas)
-archbase.security.jwt.token-expiration=86400000
+# Chave de assinatura (HS256): Base64 padrão que decodifique para >= 32 bytes
+archbase.security.jwt.secret-key=${JWT_SECRET}
 
-# Tempo de expiração do refresh token em milissegundos
-# Padrão: 604800000 (7 dias)
+# Expiração do access token, em milissegundos (ex.: 1 hora)
+archbase.security.jwt.token-expiration=3600000
+
+# Expiração do refresh token, em milissegundos (ex.: 7 dias)
 archbase.security.jwt.refresh-expiration=604800000
 ```
 
@@ -69,21 +73,20 @@ archbase.security.jwt.refresh-expiration=604800000
 **Descrição**: Chave secreta usada para assinar tokens JWT (HMAC SHA-256).
 
 **Requisitos**:
-- Mínimo 256 bits (32 bytes)
+- É **decodificada como Base64 padrão** (`Decoders.BASE64`): o alfabeto URL-safe (`-`, `_`) e texto livre
+  são recusados
+- Depois de decodificada, mínimo de 32 bytes (HS256) — cerca de 44 caracteres em Base64
 - Deve ser aleatória e única para cada ambiente
 - **NUNCA** commitar a chave de produção no código fonte
 
 **Geração de Chave Segura**:
 
 ```bash
-# Usando OpenSSL
-openssl rand -base64 32
+# Usando OpenSSL (48 bytes aleatórios)
+openssl rand -base64 48
 
-# Usando Python
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-
-# Resultado exemplo:
-# Kj7xYz2Qw9Lp4MnVbBcXfGhTrEwQaZsXdCvF
+# Usando Python (Base64 padrão; NÃO use secrets.token_urlsafe)
+python3 -c "import secrets, base64; print(base64.b64encode(secrets.token_bytes(48)).decode())"
 ```
 
 **Boas Práticas**:
@@ -94,8 +97,9 @@ archbase.security.jwt.secret-key=mypassword123
 # ✓ Bom (variável de ambiente)
 archbase.security.jwt.secret-key=${JWT_SECRET}
 
-# ✓ Melhor (com fallback para dev)
-archbase.security.jwt.secret-key=${JWT_SECRET:dev-secret-change-in-prod}
+# ✓ Dev: fallback só no profile de desenvolvimento, e também em Base64 válido
+# application-dev.properties
+archbase.security.jwt.secret-key=${JWT_SECRET:ZGV2LW9ubHkta2V5LW5vdC1mb3ItcHJvZHVjdGlvbi11c2UtMTIzNDU2Nzg5MA==}
 ```
 
 ### token-expiration
@@ -281,8 +285,8 @@ archbase.security.method.enabled=true
 # ========================================
 # JWT
 # ========================================
-# Chave fraca OK para dev (NÃO usar em produção)
-archbase.security.jwt.secret-key=dev-secret-key-1234567890abcdef
+# Chave fixa de dev (NÃO usar em produção) — Base64 válido de 46 bytes
+archbase.security.jwt.secret-key=ZGV2LW9ubHkta2V5LW5vdC1mb3ItcHJvZHVjdGlvbi11c2UtMTIzNDU2Nzg5MA==
 archbase.security.jwt.token-expiration=86400000
 archbase.security.jwt.refresh-expiration=604800000
 
@@ -381,7 +385,7 @@ spring.jpa.properties.hibernate.order_updates=true
 
 ```bash
 # JWT
-export JWT_SECRET="Kj7xYz2Qw9Lp4MnVbBcXfGhTrEwQaZsXdCvF"
+export JWT_SECRET="$(openssl rand -base64 48)"   # gere uma vez e guarde no gerenciador de segredos
 
 # Database
 export DATABASE_URL="jdbc:postgresql://prod-db.example.com:5432/myapp"
@@ -417,10 +421,9 @@ services:
 ### Checklist de Produção
 
 - [ ] `archbase.security.jwt.secret-key` vem de variável de ambiente
-- [ ] Chave JWT tem pelo menos 32 caracteres
+- [ ] Chave JWT é Base64 padrão e decodifica para pelo menos 32 bytes
 - [ ] `token-expiration` é ≤ 4 horas (14400000 ms)
 - [ ] `refresh-expiration` é 7-30 dias
-- [ ] Cache de permissões está habilitado
 - [ ] `spring.jpa.hibernate.ddl-auto=validate` (nunca `update` em produção)
 - [ ] `spring.jpa.show-sql=false`
 - [ ] Logging em nível INFO ou WARN
