@@ -8,6 +8,15 @@ public final class ArchbaseTenantContext {
     public static final String X_TENANT_ID = "X-TENANT-ID";
     public static final String X_COMPANY_ID = "X-COMPANY-ID";
 
+    /**
+     * Atributo da requisição marcado pelo filtro de segurança quando ele <b>descarta</b> o {@code X-COMPANY-ID}
+     * (conferência de empresa ligada e requisição sem usuário autenticado). Quem lê o cabeçalho depois do filtro —
+     * o interceptor do multitenancy — não deve recolocá-lo no contexto.
+     *
+     * @since 3.5.0
+     */
+    public static final String COMPANY_DISCARDED_ATTRIBUTE = "archbase.company.discarded";
+
     private ArchbaseTenantContext() {}
 
     private static final InheritableThreadLocal<String> currentTenant = new InheritableThreadLocal<>();

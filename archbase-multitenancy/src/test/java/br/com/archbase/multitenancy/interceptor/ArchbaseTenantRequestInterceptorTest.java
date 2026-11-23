@@ -39,6 +39,21 @@ class ArchbaseTenantRequestInterceptorTest {
     }
 
     @Test
+    @DisplayName("não recoloca a empresa que o filtro de segurança descartou")
+    void respeitaEmpresaDescartada() throws Exception {
+        HttpServletRequest request = requestWith(
+                Map.of(ArchbaseTenantRequestInterceptor.X_TENANT_ID, "tenant-a",
+                        ArchbaseTenantRequestInterceptor.X_COMPANY_ID, "company-1"),
+                Map.of());
+        when(request.getAttribute(ArchbaseTenantContext.COMPANY_DISCARDED_ATTRIBUTE)).thenReturn(Boolean.TRUE);
+
+        new ArchbaseTenantRequestInterceptor().preHandle(request, response, new Object());
+
+        assertThat(ArchbaseTenantContext.getTenantId()).isEqualTo("tenant-a");
+        assertThat(ArchbaseTenantContext.getCompanyId()).isNull();
+    }
+
+    @Test
     @DisplayName("o construtor sem argumento aceita query string — o default documentado é ligado")
     void defaultAceitaQueryString() throws Exception {
         // Regressão: a versão anterior lia esta opção de um @Value num objeto criado com `new`,

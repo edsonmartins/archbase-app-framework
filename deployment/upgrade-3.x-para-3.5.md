@@ -58,7 +58,9 @@ Estas valem ao atualizar, sem configuração. Confira se alguma atinge um fluxo 
 
 Proteções novas que entraram **desligadas** — o padrão reproduz o comportamento anterior — estão em
 [security-hardening.md](security-hardening.md), com a referência rápida do que ligar em produção. As da 3.3.0
-mais relevantes são `archbase.security.audit.tenant-scoped` e `archbase.analytics.secret-validation`.
+mais relevantes são `archbase.security.audit.tenant-scoped` e `archbase.analytics.secret-validation`. A 3.5.0
+acrescenta `archbase.security.company.validation`, que confere o `X-COMPANY-ID` contra o usuário — aplicações que
+usam empresa como fronteira de dados devem ligá-la.
 
 ## 3. Módulos novos (opt-in)
 
