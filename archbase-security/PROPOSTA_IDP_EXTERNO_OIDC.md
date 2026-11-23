@@ -354,9 +354,37 @@ proposta e afeta quem já consome o ArchGuard hoje.**
 | Fase | Entrega | Testes |
 |---|---|---|
 | **0** | Testes de regressão do filtro no core (JWT local, token de API, tenant por header/claim, Control Plane) **sem mudar código**. É a régua de P1. | Os testes passam antes e depois de cada fase |
-| **1** | Mudanças compatíveis no core (seção 3); módulo `archbase-security-oidc`: propriedades + validação na subida, `OidcProviderRegistry` (Nimbus), `OidcBearerAuthenticator`, `ClaimMapper`, vínculo (`existing-user` + `link-by-email`), `/auth/oidc/exchange` | IdP falso RS256 (nos moldes do `FakeControlPlane`): iss/aud/exp/alg/kid, rotação, dois provedores + CP + JWT local no mesmo contexto, tenant por claim/header/mapa; **`@SpringBootTest` de boot com e sem o pacote**, com `ddl-auto=validate` |
+| **1** | **1a — feita (2026-11-21):** mudanças compatíveis no core (seção 3) — política agregada, `ArchbaseCurrentUser`, `ArchbaseLocalCredentialPolicy`, `@Order`. **1b:** módulo `archbase-security-oidc`: propriedades + validação na subida, `OidcProviderRegistry` (Nimbus), `OidcBearerAuthenticator`, `ClaimMapper`, vínculo (`existing-user` + `link-by-email`), `/auth/oidc/exchange` | IdP falso RS256 (nos moldes do `FakeControlPlane`): iss/aud/exp/alg/kid, rotação, dois provedores + CP + JWT local no mesmo contexto, tenant por claim/header/mapa; **`@SpringBootTest` de boot com e sem o pacote**, com `ddl-auto=validate` |
 | **2** | `jit` (com `pending`); `role-mapping` (`add`/`mirror`); introspecção com cache; RP-initiated logout; tela de vínculo manual | Sincronização de grupos; token revogado via introspecção |
 | **3** | Back-channel logout + denylist; `acr`/step-up quando o ArchGuard montar o v1; suporte OIDC nativo no archbase-react (10.2) | Logout token assinado |
+| **4** | **Migração entre IdPs** (pedido em 2026-11-21): rotina para trocar a origem da identidade sem recadastrar ninguém — ver 9.1 | Migração local→ArchGuard e Keycloak→ArchGuard em ambiente de teste, com relatório de dry-run conferido |
+
+### 9.1 Migração entre IdPs (fase 4)
+
+Dois casos: **login local do Archbase → IdP externo** (ex.: hoje JWT próprio, amanhã ArchGuard) e
+**IdP externo → outro** (ex.: Keycloak → ArchGuard). Nos dois, o que muda é quem emite o token; o
+`UserEntity`, os perfis, grupos e permissões ficam onde estão.
+
+Etapas, cada uma reversível até a última:
+
+1. **Exportar identidades para o IdP de destino** — usuários locais (nome, e-mail, tenant) para o
+   ArchGuard via SCIM de entrada (`/scim/*`, que o ArchGuard já tem) ou API de importação do IdP.
+   Senha **não** migra: o IdP de destino força definição no primeiro acesso, ou federa com o de origem.
+2. **Pré-vincular** — gravar `(provedor, tenant, sub)` → `user_id` na tabela de vínculo **antes** do
+   primeiro login, a partir de um mapeamento: e-mail verificado (padrão), id externo, ou arquivo CSV
+   fornecido pelo operador. Sem isso, o primeiro acesso dependeria de `link-by-email` e de e-mail verificado.
+3. **Dry-run obrigatório** — relatório por tenant: vinculados, sem correspondência, ambíguos (mesmo
+   e-mail em dois usuários), administradores. Nada é gravado sem o relatório conferido.
+4. **Convivência** — os dois emissores aceitos ao mesmo tempo (já é o comportamento: JWT local +
+   provedor externo; para IdP→IdP, dois provedores configurados). O frontend migra no seu ritmo.
+5. **Corte** — por tenant: `local-password: disable-on-link` (a `ArchbaseLocalCredentialPolicy` passa a
+   negar a senha local de quem está vinculado) e, por fim, recusar o JWT local (`acceptLegacyJwt=false`)
+   ou remover o provedor de origem. Único passo que tira acesso; reverter é reconfigurar.
+
+Entrega prevista: um serviço `IdentityMigrationService` no módulo `archbase-security-oidc` com endpoint
+administrativo (dry-run e execução, ambos auditados na trilha de segurança) e o mesmo fluxo por linha
+de comando para quem prefere rodar fora da aplicação. Depende das fases 1b (vínculo) e 2 (tela de
+vínculo manual, para os casos sem correspondência).
 
 Fora do plano por P1: migrar o Control Plane para o `OidcProviderRegistry`. Ele funciona e tem
 testes; mexer nele só se houver ganho concreto, em PR separado.

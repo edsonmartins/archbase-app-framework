@@ -77,7 +77,7 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
      */
     private List<ExternalBearerAuthenticator> externalAuthenticators = List.of();
 
-    /** Política do provedor externo; {@code null} = comportamento de sempre. */
+    /** Política efetiva dos provedores externos (já combinada); {@code null} = comportamento de sempre. */
     private ExternalAuthenticationPolicy externalPolicy;
 
     @Autowired(required = false)
@@ -85,9 +85,48 @@ public class ArchbaseJwtAuthenticationFilter extends OncePerRequestFilter {
         this.externalAuthenticators = externalAuthenticators == null ? List.of() : List.copyOf(externalAuthenticators);
     }
 
+    /**
+     * Todas as políticas registradas, combinadas por {@link #combine}. Era um único bean injetado: com dois provedores
+     * externos (ex.: Control Plane e IdP OIDC) a injeção era ambígua e o contexto não subia. Com zero ou um bean o
+     * resultado é idêntico ao de antes.
+     *
+     * @since 3.5.0
+     */
     @Autowired(required = false)
+    public void setExternalPolicies(List<ExternalAuthenticationPolicy> policies) {
+        this.externalPolicy = combine(policies);
+    }
+
+    /** Define uma única política. Mantido por compatibilidade; o contexto injeta por {@link #setExternalPolicies}. */
     public void setExternalPolicy(ExternalAuthenticationPolicy externalPolicy) {
         this.externalPolicy = externalPolicy;
+    }
+
+    /**
+     * Combina políticas de forma conservadora: cada permissão só vale se <b>todas</b> concederem. Um provedor que
+     * recusa o JWT legado ou o tenant padrão não pode ser desfeito por outro que aceite.
+     *
+     * @return {@code null} sem políticas (comportamento de sempre); a própria política quando só há uma
+     */
+    static ExternalAuthenticationPolicy combine(List<ExternalAuthenticationPolicy> policies) {
+        if (policies == null || policies.isEmpty()) {
+            return null;
+        }
+        if (policies.size() == 1) {
+            return policies.get(0);
+        }
+        List<ExternalAuthenticationPolicy> all = List.copyOf(policies);
+        return new ExternalAuthenticationPolicy() {
+            @Override
+            public boolean acceptLegacyJwt() {
+                return all.stream().allMatch(ExternalAuthenticationPolicy::acceptLegacyJwt);
+            }
+
+            @Override
+            public boolean allowDefaultTenant() {
+                return all.stream().allMatch(ExternalAuthenticationPolicy::allowDefaultTenant);
+            }
+        };
     }
 
     public static final String X_TENANT_ID = "X-TENANT-ID";

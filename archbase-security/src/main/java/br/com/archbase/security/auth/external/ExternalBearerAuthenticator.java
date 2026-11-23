@@ -22,6 +22,18 @@ import org.springframework.security.core.Authentication;
 public interface ExternalBearerAuthenticator {
 
     /**
+     * Ordem ({@code @Order}) do autenticador do Control Plane. O filtro consulta os autenticadores nessa ordem e o
+     * primeiro que {@link #supports(String) reconhece} o token decide; declare a ordem para que ela não dependa do
+     * classpath.
+     *
+     * @since 3.5.0
+     */
+    int ORDER_CONTROL_PLANE = 100;
+
+    /** Ordem do autenticador de IdP OIDC ({@code archbase-security-oidc}). @since 3.5.0 */
+    int ORDER_OIDC = 200;
+
+    /**
      * Se este autenticador é o responsável pelo token. Deve ser barato e não validar assinatura (ex.: olhar o
      * {@code alg} do cabeçalho). Um token reconhecido e inválido deve ser recusado em {@link #check}, não ignorado
      * aqui — senão ele cai no fluxo legado.

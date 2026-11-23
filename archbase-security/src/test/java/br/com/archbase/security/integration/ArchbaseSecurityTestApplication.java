@@ -68,6 +68,38 @@ public class ArchbaseSecurityTestApplication {
                 .build();
     }
 
+    /**
+     * Duas políticas de provedor externo no mesmo contexto — o cenário de Control Plane + IdP OIDC. Até a 3.5.0 o
+     * filtro injetava um bean único e o contexto não subia. A segunda recusa o JWT legado, para o teste provar que a
+     * combinação é conservadora. Ligadas por propriedade pelo mesmo motivo do resolver acima.
+     */
+    @Bean
+    @ConditionalOnProperty(name = "teste.duas-politicas.enabled", havingValue = "true")
+    public br.com.archbase.security.auth.external.ExternalAuthenticationPolicy politicaQueAceitaTudo() {
+        return politica(true, true);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "teste.duas-politicas.enabled", havingValue = "true")
+    public br.com.archbase.security.auth.external.ExternalAuthenticationPolicy politicaQueRecusaJwtLegado() {
+        return politica(false, true);
+    }
+
+    private static br.com.archbase.security.auth.external.ExternalAuthenticationPolicy politica(
+            boolean aceitaLegado, boolean permiteTenantPadrao) {
+        return new br.com.archbase.security.auth.external.ExternalAuthenticationPolicy() {
+            @Override
+            public boolean acceptLegacyJwt() {
+                return aceitaLegado;
+            }
+
+            @Override
+            public boolean allowDefaultTenant() {
+                return permiteTenantPadrao;
+            }
+        };
+    }
+
     static class TestTenantResolver
             implements CurrentTenantIdentifierResolver<String>, HibernatePropertiesCustomizer {
         /**
