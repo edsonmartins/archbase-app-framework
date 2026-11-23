@@ -2,6 +2,8 @@ package br.com.archbase.oidc.auth;
 
 import br.com.archbase.ddd.context.ArchbaseTenantContext;
 import br.com.archbase.oidc.config.ArchbaseOidcProperties.Provider;
+import br.com.archbase.oidc.config.ArchbaseOidcProperties;
+import br.com.archbase.oidc.provider.OidcIntrospector;
 import br.com.archbase.oidc.provider.OidcProviderRegistry;
 import br.com.archbase.oidc.token.ClaimReader;
 import br.com.archbase.oidc.token.UnverifiedJwt;
@@ -41,18 +43,22 @@ public class OidcBearerAuthenticator implements ExternalBearerAuthenticator {
     public static final String USER_DISABLED = "USER_DISABLED";
     public static final String TOKEN_EXPIRED = "TOKEN_EXPIRED";
     public static final String INVALID_TOKEN = "INVALID_TOKEN";
+    public static final String TOKEN_REVOKED = "TOKEN_REVOKED";
+    public static final String IDP_UNAVAILABLE = "IDP_UNAVAILABLE";
 
     private static final Logger log = LoggerFactory.getLogger(OidcBearerAuthenticator.class);
 
     private final OidcProviderRegistry registry;
     private final OidcIdentityLinker linker;
     private final OidcRoleSynchronizer roles;
+    private final OidcIntrospector introspector;
 
     public OidcBearerAuthenticator(OidcProviderRegistry registry, OidcIdentityLinker linker,
-                                   OidcRoleSynchronizer roles) {
+                                   OidcRoleSynchronizer roles, OidcIntrospector introspector) {
         this.registry = registry;
         this.linker = linker;
         this.roles = roles;
+        this.introspector = introspector;
     }
 
     @Override
@@ -82,6 +88,20 @@ public class OidcBearerAuthenticator implements ExternalBearerAuthenticator {
             // Assinatura, algoritmo, kid desconhecido, JWKS fora do ar: o detalhe é do operador, não do cliente.
             log.warn("oidc.token.invalid provider={} cause={}", providerId, e.getMessage());
             return rejected(INVALID_TOKEN, "Token inválido");
+        }
+
+        // Só depois da assinatura: o IdP não é consultado com token forjado.
+        if (introspector != null && introspector.enabled(providerId)) {
+            OidcIntrospector.Status status = introspector.check(providerId, token, jwt.getExpiresAt());
+            if (status == OidcIntrospector.Status.INACTIVE) {
+                log.info("oidc.token.revoked provider={}", providerId);
+                return rejected(TOKEN_REVOKED, "Token revogado");
+            }
+            if (status == OidcIntrospector.Status.UNAVAILABLE
+                    && provider.getIntrospection().getOnError() == ArchbaseOidcProperties.OnError.DENY) {
+                return ExternalTokenCheck.rejected(503, IDP_UNAVAILABLE,
+                        "Não foi possível confirmar o token com o provedor de identidade");
+            }
         }
 
         Map<String, Object> claims = jwt.getClaims();

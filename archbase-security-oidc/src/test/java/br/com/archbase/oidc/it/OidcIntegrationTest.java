@@ -139,6 +139,19 @@ class OidcIntegrationTest {
         r.add(p + "espelho.role-mapping.map.financeiro", () -> "Financeiro");
         r.add(p + "espelho.role-mapping.map.vendas", () -> "Vendas");
 
+        for (String id : List.of("intro", "introaberta")) {
+            r.add(p + id + ".issuer", () -> IDP.issuer(id));
+            r.add(p + id + ".jwks-uri", () -> IDP.jwksUri(id));
+            r.add(p + id + ".audiences[0]", () -> "app-intro");
+            r.add(p + id + ".allow-insecure-http", () -> "true");
+            r.add(p + id + ".tenant.fixed", () -> TENANT);
+            r.add(p + id + ".introspection.enabled", () -> "true");
+            r.add(p + id + ".introspection.uri", () -> IDP.issuer(id) + "/introspect");
+            r.add(p + id + ".introspection.client-id", () -> FakeOidcProvider.INTROSPECTION_CLIENT);
+            r.add(p + id + ".introspection.client-secret", () -> FakeOidcProvider.INTROSPECTION_SECRET);
+        }
+        r.add(p + "introaberta.introspection.on-error", () -> "allow");
+
         r.add("archbase.security.oidc.exchange.enabled", () -> "true");
         r.add("archbase.security.oidc.exchange.local-token-ttl", () -> "10m");
     }
@@ -177,6 +190,7 @@ class OidcIntegrationTest {
         ana = userRepository.save(usuario(EMAIL));
         userRepository.save(usuario("bruno@empresa.com.br"));
         IDP.publish("rsa-1", true);
+        IDP.resetIntrospection();
     }
 
     // ═══════════════════════════ estilo ArchGuard ═══════════════════════════
@@ -769,6 +783,76 @@ class OidcIntegrationTest {
         void nuncaAdmin() throws Exception {
             eu(token("papeis").claim("roles", List.of("financeiro", "admin", "administrator")).sign());
             assertThat(userRepository.findById(ana.getId()).orElseThrow().getIsAdministrator()).isFalse();
+        }
+    }
+
+    // ═══════════════════════════ fase 2c: introspecção ═══════════════════════════
+
+    @Nested
+    @DisplayName("introspecção (RFC 7662): revogação antes do exp")
+    class Introspeccao {
+
+        private FakeOidcProvider.Token token(String provedor) {
+            return IDP.token(IDP.issuer(provedor)).aud("app-intro").claim("sub", "sub-ana-" + provedor)
+                    .claim("email", EMAIL).claim("email_verified", true);
+        }
+
+        @Test
+        @DisplayName("ativo: autentica, e a segunda requisição com o mesmo token usa o cache")
+        void ativoComCache() throws Exception {
+            String t = token("intro").sign();
+
+            assertThat(eu(t).getStatus()).isEqualTo(200);
+            assertThat(eu(t).getStatus()).isEqualTo(200);
+            assertThat(IDP.introspectionCalls()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("revogado no IdP: 401 TOKEN_REVOKED, mesmo com assinatura e exp válidos")
+        void revogado() throws Exception {
+            String t = token("intro").sign();
+            IDP.revoke(t);
+
+            MockHttpServletResponse r = eu(t);
+            assertRecusa(r, 401, "TOKEN_REVOKED");
+            assertThat(r.getHeader("WWW-Authenticate")).startsWith("Bearer");
+        }
+
+        @Test
+        @DisplayName("token forjado não chega ao IdP: a assinatura é conferida antes")
+        void forjadoNaoConsulta() throws Exception {
+            IDP.addRsaKey("rsa-forja", false);
+            assertRecusa(eu(token("intro").kid("rsa-forja").sign()), 401, "INVALID_TOKEN");
+            assertThat(IDP.introspectionCalls()).isZero();
+        }
+
+        @Test
+        @DisplayName("IdP fora do ar com on-error=deny (padrão): 503 IDP_UNAVAILABLE; a falha não fica em cache")
+        void foraDoArNega() throws Exception {
+            String t = token("intro").sign();
+            IDP.introspectionDown(true);
+            assertRecusa(eu(t), 503, "IDP_UNAVAILABLE");
+
+            IDP.introspectionDown(false);
+            assertThat(eu(t).getStatus()).isEqualTo(200);
+        }
+
+        @Test
+        @DisplayName("IdP fora do ar com on-error=allow: aceita pela assinatura")
+        void foraDoArPermite() throws Exception {
+            IDP.introspectionDown(true);
+            assertThat(eu(token("introaberta").sign()).getStatus()).isEqualTo(200);
+        }
+
+        @Test
+        @DisplayName("a troca de token também passa pela introspecção")
+        void trocaTambem() throws Exception {
+            String t = token("intro").sign();
+            IDP.revoke(t);
+            MockHttpServletResponse r = mockMvc.perform(post("/api/v1/auth/oidc/exchange")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(json.writeValueAsString(Map.of("token", t)))).andReturn().getResponse();
+            assertRecusa(r, 401, "TOKEN_REVOKED");
         }
     }
 

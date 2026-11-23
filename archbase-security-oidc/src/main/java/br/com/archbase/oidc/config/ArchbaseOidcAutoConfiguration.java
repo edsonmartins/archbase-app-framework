@@ -3,6 +3,7 @@ package br.com.archbase.oidc.config;
 import br.com.archbase.oidc.admin.ExternalIdentityAdminController;
 import br.com.archbase.oidc.auth.OidcBearerAuthenticator;
 import br.com.archbase.oidc.exchange.OidcTokenExchangeController;
+import br.com.archbase.oidc.provider.OidcIntrospector;
 import br.com.archbase.oidc.provider.OidcProviderRegistry;
 import br.com.archbase.oidc.user.ExternalIdentityStore;
 import br.com.archbase.oidc.user.OidcIdentityLinker;
@@ -84,8 +85,14 @@ public class ArchbaseOidcAutoConfiguration {
     @Bean
     @Order(ExternalBearerAuthenticator.ORDER_OIDC)
     public OidcBearerAuthenticator oidcBearerAuthenticator(OidcProviderRegistry registry, OidcIdentityLinker linker,
-                                                           OidcRoleSynchronizer roles) {
-        return new OidcBearerAuthenticator(registry, linker, roles);
+                                                           OidcRoleSynchronizer roles,
+                                                           OidcIntrospector introspector) {
+        return new OidcBearerAuthenticator(registry, linker, roles, introspector);
+    }
+
+    @Bean
+    public OidcIntrospector oidcIntrospector(ArchbaseOidcProperties properties) {
+        return new OidcIntrospector(properties, Clock.systemUTC());
     }
 
     @Bean

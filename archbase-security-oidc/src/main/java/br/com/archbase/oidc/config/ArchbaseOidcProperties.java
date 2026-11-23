@@ -72,9 +72,14 @@ public class ArchbaseOidcProperties {
         private final Tenant tenant = new Tenant();
         private final Users users = new Users();
         private final RoleMapping roleMapping = new RoleMapping();
+        private final Introspection introspection = new Introspection();
 
         public RoleMapping getRoleMapping() {
             return roleMapping;
+        }
+
+        public Introspection getIntrospection() {
+            return introspection;
         }
 
         public String getIssuer() {
@@ -351,6 +356,82 @@ public class ArchbaseOidcProperties {
         public void setMap(Map<String, String> map) {
             this.map = map;
         }
+    }
+
+    /**
+     * Introspecção (RFC 7662): pergunta ao IdP se o token ainda está ativo, para pegar revogação e logout antes do
+     * {@code exp}. Feita depois de a assinatura ser validada, com cache. Disponível no ArchGuard, Keycloak e Okta;
+     * Auth0 e Entra ID não oferecem.
+     */
+    public static class Introspection {
+        private boolean enabled = false;
+        /** Endpoint de introspecção do IdP. Obrigatório quando ligado. */
+        private String uri;
+        /** Credencial do cliente no IdP (HTTP Basic, como a RFC 7662 pede). Sem valor padrão. */
+        private String clientId;
+        private String clientSecret;
+        /** Quanto tempo a resposta vale — nunca além do {@code exp} do token. */
+        private Duration cacheTtl = Duration.ofSeconds(30);
+        /** O que fazer se o IdP não responder. */
+        private OnError onError = OnError.DENY;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getUri() {
+            return uri;
+        }
+
+        public void setUri(String uri) {
+            this.uri = uri;
+        }
+
+        public String getClientId() {
+            return clientId;
+        }
+
+        public void setClientId(String clientId) {
+            this.clientId = clientId;
+        }
+
+        public String getClientSecret() {
+            return clientSecret;
+        }
+
+        public void setClientSecret(String clientSecret) {
+            this.clientSecret = clientSecret;
+        }
+
+        public Duration getCacheTtl() {
+            return cacheTtl;
+        }
+
+        public void setCacheTtl(Duration cacheTtl) {
+            this.cacheTtl = cacheTtl;
+        }
+
+        public OnError getOnError() {
+            return onError;
+        }
+
+        public void setOnError(OnError onError) {
+            this.onError = onError;
+        }
+    }
+
+    public enum OnError {
+        /** IdP fora do ar: recusa ({@code 503 IDP_UNAVAILABLE}). Padrão — não aceitar o que não se pode verificar. */
+        DENY,
+        /**
+         * IdP fora do ar: aceita o token só pela assinatura. Prioriza disponibilidade sobre revogação imediata. Gera WARN
+         * na subida.
+         */
+        ALLOW
     }
 
     public enum RoleSync {
