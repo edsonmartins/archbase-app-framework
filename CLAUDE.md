@@ -59,29 +59,46 @@ Archbase is a multi-module Maven project built on Spring Boot 4.1.2 and Java 25.
 
 ### Module Organization
 
+The root `pom.xml` lists 40 modules. Opt-in modules create no bean unless the application adds the
+dependency **and** enables them.
+
 | Module | Purpose |
 |--------|---------|
-| `archbase-domain-driven-design` | Core DDD implementation with repositories, specifications, REST controllers |
-| `archbase-security` | JWT authentication, role-based permissions, API tokens, password reset |
-| `archbase-multitenancy` | Tenant context management, tenant-aware repositories |
-| `archbase-event-driven` | CQRS command/query buses, event publishing with handler annotations |
-| `archbase-query` | RSQL parser and converter for RESTful queries |
-| `archbase-workflow-process` | Workflow engine with sequential, parallel, conditional flows |
-| `archbase-plugin-manager` | Dynamic plugin loading with extension discovery |
-| `archbase-validation` | DDD-specific validation patterns |
-| `archbase-shared-kernel` | Common value objects (CPF, CNPJ, Email), converters |
-| `archbase-architecture` | Hexagonal, layered, and onion architecture patterns |
-| `archbase-hypersistence` | Advanced Hibernate types (JSON, arrays, ranges), optimized repositories |
-| `archbase-controlplane` | Control Plane integration: session token (Ed25519/JWKS), license, entitlements, seats, restricted mode, MQTT provisioning via `TenantProvisioner`, Micrometer metrics + vmalert rules (opt-in) |
+| `archbase-domain-driven-design-spec` | DDD contracts: `Repository`, `AggregateRoot`, entity bases, `ArchbaseSpecification`, `ArchbaseTenantContext` |
+| `archbase-domain-driven-design` | JPA implementation: `ArchbaseCommonJpaRepository`, `ArchbaseJpaRepository`, infrastructure |
+| `archbase-security` | JWT authentication, five-gate authorization core, API tokens, MFA, audit trail, password policy, schema initializer |
+| `archbase-security-oidc` | **Opt-in.** External IdP (ArchGuard, Keycloak, Entra ID, Auth0, Okta): bearer validation, token exchange, introspection, logout, back-channel logout, migration between IdPs (`archbase.security.oidc.*`) |
+| `archbase-controlplane` | **Opt-in.** Control Plane integration: session token (Ed25519/JWKS), license, entitlements, seats, restricted mode, MQTT provisioning via `TenantProvisioner`, Micrometer metrics + vmalert rules |
+| `archbase-multitenancy` | Tenant interceptor, service aspect, tenant-aware task decorator (column isolation with `@TenantId`) |
+| `archbase-query` | RSQL for JPA (`ArchbaseRSQLJPASupport`), row-level security filter |
+| `archbase-query-contract` | Adapter to `rsql-jpa-search` (`archbase.query.contract.enabled`) |
+| `archbase-event-driven-spec` / `archbase-event-driven` | CQRS contracts and annotations / command, query and event buses |
+| `archbase-workflow-process` | Workflow engine (`WorkFlowEngine`, `WorkFlowEngineBuilder`): sequential, parallel, conditional, repeat |
+| `archbase-plugin-manager` / `archbase-semver-implementation` | Dynamic plugin loading / semver resolution |
+| `archbase-validation` / `archbase-validation-ddd-model` | Validation / ArchUnit predicates for the DDD model |
+| `archbase-shared-kernel` / `archbase-value-objects` | Common value objects (CPF, CNPJ, Email, Telefone, Endereço) and converters |
+| `archbase-architecture` / `archbase-architecture-rules` | Hexagonal, layered and onion annotations / Taikai-ArchUnit rules |
+| `archbase-modular-monolith` | Module boundaries, integration events, health checks (`archbase.modulith.*`) |
+| `archbase-hypersistence` | Advanced Hibernate types (JSON, arrays, ranges), TSID, optimized repositories |
+| `archbase-analytics` | Audited proxy to the Cube semantic layer, saved queries (`archbase.analytics.*`) |
+| `archbase-offline-sync` | Batch sync protocol for offline clients |
+| `archbase-error-handling` | `@ControllerAdvice` with standardized error responses |
+| `archbase-logging` | Structured logging with correlation id |
+| `archbase-mapper` | `ArchbaseMapper` with auto-configuration |
+| `archbase-resource-logger` | REST request logging aspect (`@Logging`, `@NoLogging`) |
+| `archbase-test-utils` | Fixtures, builders and security helpers for tests |
+| `archbase-transformation`, `archbase-annotation-processor`, `archbase-codegen-maven-plugin` | Build-time tooling: ByteBuddy transformations, QueryDSL APT, repository/service generator |
+| Starters | `archbase-starter` (= core + security + multitenancy), `-core`, `-security`, `-multitenancy`, `-hypersistence`, `-flyway`, `-messaging` (no JPA/Security), `-analytics`, `-offline-sync` |
 
 ### Core Architecture Patterns
 
 1. **Domain-Driven Design (DDD)**
-   - Entities extend `DomainEntityBase` or `PersistenceEntityBase`
+   - JPA entities extend `PersistenceEntityBase` or `TenantPersistenceEntityBase` (not generic; `String` id)
+   - Domain model entities extend `DomainEntityBase<T>`, which declares `validate()`
    - Aggregate roots implement `AggregateRoot<T, ID>`
    - Value objects implement `ValueObject`
-   - Repositories extend `Repository<T, ID, N>` with QueryDSL and RSQL support
-   - Specification pattern with `ArchbaseSpecification<T>` for complex queries
+   - Repositories extend `ArchbaseCommonJpaRepository<T, ID, N>` (JPA + `JpaSpecificationExecutor`, QueryDSL, RSQL)
+   - `ArchbaseSpecification<T>` is an in-memory predicate (`isSatisfiedBy`); database filters use RSQL or JPA `Specification`
 
 2. **Multi-Tenancy**
    - Tenant context managed via `ArchbaseTenantContext` (thread-local)
@@ -90,11 +107,14 @@ Archbase is a multi-module Maven project built on Spring Boot 4.1.2 and Java 25.
    - Configuration: `archbase.multitenancy.enabled=true`
 
 3. **Security**
-   - JWT-based authentication with access and refresh tokens
-   - Permission system using `@HasPermission(action, resource, tenantId, companyId, projectId)`
-   - API token management for service-to-service communication
-   - Access scheduling and interval controls
-   - Custom security configuration via `CustomSecurityConfiguration` interface
+   - JWT-based authentication with access and refresh tokens (both persisted; `token_use` claim)
+   - Permission system using `@HasPermission(action, description, resource, ...)` evaluated by the
+     five-gate core (`archbase-security/ARQUITETURA.md`, `MODELO_CORE_AUTORIZACAO.md`)
+   - API tokens (`Bearer <uuid>`, stored as hash) for service-to-service communication
+   - Access schedule entities exist, but **the framework does not enforce them at login**; an
+     application that needs the restriction must validate it itself
+   - Custom security configuration via `CustomSecurityConfiguration` / `BaseArchbaseSecurityConfiguration`
+   - External bearer tokens through the `ExternalBearerAuthenticator` SPI (Control Plane, OIDC)
 
 4. **Event-Driven Architecture (CQRS)**
    - Commands dispatched via `CommandBus`
@@ -152,24 +172,22 @@ Archbase is a multi-module Maven project built on Spring Boot 4.1.2 and Java 25.
 1. **Entity Creation:**
 ```java
 @Entity
-@DomainEntity
-public class YourEntity extends PersistenceEntityBase<YourEntity, UUID> {
-    // For multi-tenant: extends TenantPersistenceEntityBase
-    @Override
-    public ValidationResult validate() {
-        return ValidationResult.success();
-    }
+@Table(name = "YOUR_ENTITY")
+public class YourEntity extends TenantPersistenceEntityBase {
+    // Without multi-tenancy: extends PersistenceEntityBase
+    // id is a String (UUID generated in the constructor); audit columns DH_CRIACAO, VERSAO etc. are inherited
 }
 ```
 
 2. **Repository Pattern:**
 ```java
-@DomainRepository
-public interface YourRepository extends Repository<YourEntity, UUID, Long> {
-    // N parameter is for numeric version type
+public interface YourRepository extends ArchbaseCommonJpaRepository<YourEntity, String, Long> {
+    // N parameter is the numeric revision type (Envers)
     // Custom queries using QueryDSL or RSQL
 }
 ```
+`ArchbaseJpaRepository<T, ID, N>` is the variant for domain aggregates: it requires
+`T extends AggregateRoot<T, ID>` and `ID extends Identifier`.
 
 3. **Security Annotations:**
 
@@ -207,13 +225,19 @@ public class YourEventHandler {
 }
 ```
 
-5. **Specification Pattern:**
+5. **Specification Pattern and RSQL:**
 ```java
-public class YourSpecification extends ArchbaseSpecification<YourEntity> {
-    public YourEntity someCondition() {
-        return new EqualSpecification<>("field", value);
+// In-memory business rule, composable with and()/or()/not()
+public class ActiveCustomer implements AbstractArchbaseSpecification<Customer> {
+    @Override
+    public boolean isSatisfiedBy(Customer candidate) {
+        return candidate.isActive();
     }
 }
+
+// Database filter from an RSQL string
+Specification<YourEntity> spec = ArchbaseRSQLJPASupport.toSpecification("name==John;age>18");
+Page<YourEntity> page = repository.findAll(spec, pageable);
 ```
 
 6. **JSON Column with Hypersistence:**
@@ -236,7 +260,7 @@ public class ProductEntity extends TenantPersistenceEntityBase<ProductEntity, St
 7. **Optimized Repository with Hypersistence:**
 ```java
 public interface ProductRepository
-    extends ArchbaseJpaRepository<ProductEntity, String, Long>,
+    extends ArchbaseCommonJpaRepository<ProductEntity, String, Long>,
             ArchbaseHypersistenceRepository<ProductEntity, String> {
 }
 
@@ -248,18 +272,37 @@ repository.update(existingEntity);  // No SELECT before UPDATE
 ### Configuration Properties
 
 ```properties
-# Multi-tenancy
+# Multi-tenancy (starter ligado por padrão)
 archbase.multitenancy.enabled=true
-archbase.multitenancy.scan-packages=your.package
+archbase.app.tenant.default.id=archbase
+archbase.multitenancy.async.propagate-security-context=true
 
-# Security
+# Security (starter ligado por padrão)
 archbase.security.enabled=true
-archbase.security.jwt.secret=your-secret
-archbase.security.jwt.expiration=86400000
-archbase.security.method.enabled=true
-archbase.security.permission.cache.enabled=true
+archbase.security.scan-packages=your.package               # varredura de @HasPermission
+# OBRIGATÓRIAS, sem default — sem elas a aplicação não sobe (placeholder não resolvido):
+archbase.security.jwt.secret-key=${JWT_SECRET}             # Base64 de >= 32 bytes (openssl rand -base64 48)
+archbase.security.jwt.token-expiration=3600000             # ms
+archbase.security.jwt.refresh-expiration=604800000         # ms
+archbase.security.whitelist=/api/v1/public/**              # rotas públicas, separadas por vírgula ("" = nenhuma)
+archbase.security.cors.allowed-origins=https://app.example.com
+archbase.security.cors.allowed-methods=GET,POST,PUT,PATCH,DELETE,OPTIONS
+archbase.security.cors.allowed-headers=*
+archbase.security.cors.allow-credentials=true
+# Chave AES do segredo MFA em repouso: Base64 de 16/24/32 bytes (openssl rand -base64 32).
+# Vazia, cifrar o segredo falha — ativar MFA não funciona.
+archbase.security.crypto.key=${ARCHBASE_CRYPTO_KEY}
+archbase.security.mfa.issuer=Archbase
 # Validade da senha em dias (0 = sem expiração periódica)
 archbase.security.password.expiration-days=0
+# Só considera permissões de ações ativas
+archbase.security.permission.require-active=false
+# Trilha de eventos de segurança e purga
+archbase.security.audit.enabled=false
+archbase.security.audit.retention-months=12
+# Limpeza de tokens expirados
+archbase.security.token.cleanup.enabled=false
+archbase.security.token.cleanup.retention-days=30
 
 # Esquema de segurança entregue pelo framework (ver deployment/esquema-de-seguranca.md)
 # Na subida, compara o mapeamento das entidades de segurança com o banco e cria o que falta.
@@ -287,10 +330,16 @@ archbase.security.password-change.revoke-sessions=false      # true = desloga ao
 archbase.security.logout.enabled=true
 archbase.security.logout.url=/api/v1/auth/logout
 archbase.security.public-paths.actuator=true
+archbase.security.public-paths.swagger=true                 # Swagger/OpenAPI público
+archbase.security.public-paths.static-files=true
 archbase.security.public-paths.registration=true            # auto-cadastro anônimo
 archbase.security.public-paths.legacy-app-routes=true       # rotas de aplicação (deprecado)
 archbase.app.tenant.fail-on-missing=false                   # recusa acesso sem tenant no contexto
 archbase.app.tenant.accept-query-param=true                 # aceita X-TENANT-ID na query string
+# Confere o X-COMPANY-ID contra o usuário autenticado (off | warn | enforce). Exige um bean
+# ArchbaseCompanyAccessResolver: o vínculo usuário-empresa é do domínio da aplicação.
+# enforce: 403 COMPANY_NOT_ALLOWED; anônimo tem a empresa descartada. Sem resolver, não sobe.
+archbase.security.company.validation=off
 
 # Core único de autorização (ver archbase-security/MODELO_CORE_AUTORIZACAO.md)
 # Cinco portões: IDENTITY, SCOPE, RESTRICTION, LEVEL, GRANT. Os quatro primeiros só NEGAM;
@@ -362,18 +411,19 @@ archbase.controlplane.product-version=
 archbase.controlplane.mqtt.uri=                             # vazio = canal MQTT desligado
 archbase.controlplane.heartbeat.interval=5m
 
+# IdP externo (archbase-security-oidc; ver archbase-security-oidc/README.md). Opt-in: sem ao menos
+# um provedor, nenhum bean é criado. Erros de configuração impedem a subida, todos listados de uma vez.
+# archbase.security.oidc.providers.<id>.issuer=https://idp.example.com/realms/x
+# archbase.security.oidc.providers.<id>.audiences=minha-api
+# archbase.security.oidc.providers.<id>.tenant.claim=tenant_id    # exatamente uma fonte de tenant
+archbase.security.oidc.exchange.enabled=false
+
 # RSQL
 archbase.rsql.enabled=true
-archbase.rsql.page.parameter=page
-archbase.rsql.size.parameter=size
+archbase.rsql.max-page-size=1000
 
-# Plugin Management
-archbase.plugin.manager.enabled=true
-archbase.plugin.manager.scan-packages=your.plugins.packages
-
-# Workflow Engine
-archbase.workflow.engine.enabled=true
-archbase.workflow.engine.execution.mode=sync
+# Plugin manager e workflow engine não têm propriedades: são configurados por código
+# (ArchbasePluginManager, WorkFlowEngineBuilder).
 
 # Hypersistence Utils
 archbase.hypersistence.enabled=true
@@ -385,7 +435,7 @@ archbase.hypersistence.repository.enhanced-methods-enabled=false
 
 ### Testing Approach
 
-- Unit tests use JUnit Jupiter 5.2.0
+- Unit tests use JUnit Jupiter 6 (from the Spring Boot 4.1.2 BOM)
 - Integration tests with `@SpringBootTest`
 - Repository tests with `@DataJpaTest`
 - Security tests with `@WithMockUser` or custom JWT tokens
@@ -394,8 +444,11 @@ archbase.hypersistence.repository.enhanced-methods-enabled=false
 ### Important Considerations
 
 1. **Tenant Context**: When multi-tenancy is enabled, always ensure tenant context is properly set before database operations. Background tasks require the async task decorator for context propagation.
-2. **Security**: All endpoints are secured by default; use `@PermitAll` for public endpoints
-3. **Entity Validation**: Entities must implement `validate()` method returning `ValidationResult`
+2. **Security**: All endpoints are secured by default (`anyRequest().authenticated()`). Public endpoints go in
+   `archbase.security.whitelist`. Only `prePostEnabled` method security is on: `@PermitAll`, `@RolesAllowed`
+   and `@Secured` are **ignored silently** and leave the endpoint protected only by the filter chain.
+3. **Entity Validation**: Domain entities (`DomainEntityBase`) implement `validate()` returning `ValidationResult`;
+   JPA persistence bases do not declare it
 4. **Event Ordering**: Events are processed asynchronously; don't rely on ordering unless using saga pattern
 5. **Repository Methods**: Prefer RSQL filters over custom queries for better API consistency
 6. **Handler Discovery**: Use `@HandlerScan` to enable auto-discovery of `@CommandHandler`, `@EventHandler`, and `@QueryHandler` annotated methods

@@ -21,6 +21,7 @@ import br.com.archbase.controlplane.mqtt.ControlPlaneMqttClient;
 import br.com.archbase.controlplane.provisioning.FeatureManifestProvider;
 import br.com.archbase.controlplane.provisioning.TenantProvisioner;
 import br.com.archbase.controlplane.token.ControlPlaneTokenValidator;
+import br.com.archbase.security.auth.external.ExternalBearerAuthenticator;
 import br.com.archbase.controlplane.token.JwksKeyStore;
 import br.com.archbase.controlplane.user.ControlPlaneUserResolver;
 import br.com.archbase.controlplane.user.UserLinkStore;
@@ -163,6 +164,7 @@ public class ControlPlaneAutoConfiguration {
     }
 
     @Bean
+    @org.springframework.core.annotation.Order(ExternalBearerAuthenticator.ORDER_CONTROL_PLANE)
     public ControlPlaneBearerAuthenticator controlPlaneBearerAuthenticator(ControlPlaneTokenValidator validator,
                                                                            ControlPlaneUserResolver userResolver,
                                                                            ControlPlaneProperties properties,

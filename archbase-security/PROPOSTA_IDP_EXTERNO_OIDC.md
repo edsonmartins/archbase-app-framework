@@ -145,12 +145,21 @@ Toda mudança no `archbase-security` tem de produzir **o mesmo resultado** para 
 O frontend (archbase-react) faz Authorization Code + PKCE direto com o IdP e chama a API com o
 access token do IdP. O Archbase só valida. Refresh, MFA, step-up e logout são do IdP.
 
-### 4.2 Troca de token (primeira entrega no archbase-react; ver 10.2)
+### 4.2 Troca de token (primeira entrega no archbase-react; ver 10.2) — implementada na 1c
 
-`POST /api/v1/auth/oidc/exchange` recebe o access token do IdP, valida pelo mesmo caminho e emite o
-**JWT local** do Archbase. Generaliza o `/login-social` existente (`ArchbaseAuthenticationController.java:411-461`).
-Serve para aplicações cujo frontend ainda depende do refresh/logout locais. Custo: a revogação no IdP
-só chega quando o JWT local expira. Desligado por padrão (`exchange.enabled=false`).
+`POST /api/v1/auth/oidc/exchange` com `{"token": "<access token do IdP>"}` no corpo. O token passa pela
+mesma validação e pela mesma regra de tenant que teria se fosse usado direto na API, e o retorno é uma
+sessão local do Archbase. Desligado por padrão (`archbase.security.oidc.exchange.enabled=true` liga).
+
+A sessão emitida é diferente da do login por senha, de propósito:
+
+- **curta** — `exchange.local-token-ttl` (padrão 15 min), nunca acima de `token-expiration`;
+- **sem refresh token** — quando vence, o frontend troca de novo com um token novo do IdP. Assim o IdP
+  continua decidindo: usuário desligado lá não renova aqui, sem precisar de revogação cruzada;
+- respeita `allowMultipleLogins` (sessão única encerra a anterior, como no login).
+
+Emitida por `ArchbaseAuthenticationService.issueExternalSession`, método novo do core. Não reaproveita
+`authenticateWithoutPassword` (do `/login-social`), que revoga **todas** as sessões do usuário a cada chamada.
 
 ### 4.3 Usuário federado nos endpoints locais
 
@@ -167,8 +176,8 @@ só chega quando o JWT local expira. Desligado por padrão (`exchange.enabled=fa
 
 Access token JWT vale até o `exp`. Por provedor, opcionalmente:
 - `introspection.enabled=true` com cache curto (ex.: 30 s) — ArchGuard, Keycloak e Okta têm; Auth0 e Entra não;
-- fase 3: endpoint de **back-channel logout** que recebe `logout_token` e mantém uma denylist por
-  `sub`/`sid` até o `exp`.
+- **back-channel logout** (fase 3a, feita): o IdP avisa por `logout_token` e o Archbase grava um corte por
+  `sub`/`sid`, válido por `token-lifetime`.
 
 Recomendação geral: TTL de access token **≤ 15 min** no IdP.
 
@@ -191,25 +200,32 @@ archbase:
             email: email
             email-verified: email_verified
             name: name
-            tenant: { claim: ..., fixed: ..., header: false }
             roles: [ ... ]                 # caminhos; string, array ou objeto[].name
-            scopes: scope                  # 'scope' (texto) ou 'scp' (array)
+          tenant: { claim: ..., fixed: ..., header: false }   # no provedor, NÃO dentro de claims
           users:
             provisioning: existing-user    # existing-user | jit (ver seção 10.1)
             link-by-email: verified-only   # verified-only | trusted-provider | never
-            jit: { status: pending, default-profile: , default-groups: [] }
+            jit: { status: pending }       # pending | active
             local-password: keep           # keep | disable-on-link
-            default-profile:
           role-mapping:                    # papel externo → grupo local
             sync: off                      # off | add | mirror
             map: { }
           introspection: { enabled: false }
-          logout: { end-session-uri: }     # padrão = discovery
+          logout:
+            end-session-uri:               # padrão = discovery
+            backchannel:                   # aviso do IdP (fase 3a); desligado por padrão
+              enabled: false
+              audiences: []                # client_id no IdP; vazio = audiences
+              max-age: 5m                  # idade máxima do logout_token
+              token-lifetime: 24h          # cobre o access token mais longo do IdP
+              revoke-local-sessions: true  # derruba também a sessão da troca de token
 ```
 
-Regra de validação na subida (`archbase.security.hardening.validation=fail`): provedor sem `audiences`,
-com `algorithms` vazio, com `link-by-email` sem garantia de e-mail verificado, ou com issuer
-`http://` fora de perfil de desenvolvimento **não sobe**.
+Referência completa e conferida das propriedades: [`archbase-security-oidc/README.md`](../archbase-security-oidc/README.md).
+
+Regra de validação na subida (`OidcStartupValidator`, independente de `archbase.security.hardening.validation`):
+provedor sem `audiences`, com `algorithms` vazio ou simétrico, com fonte de tenant ausente ou duplicada, ou com
+emissor `http://` sem `allow-insecure-http` **não sobe**, e todos os erros saem listados de uma vez.
 
 ### Resolução de tenant — opções
 
@@ -227,28 +243,42 @@ com `algorithms` vazio, com `link-by-email` sem garantia de e-mail verificado, o
 - **`role-mapping.sync=add|mirror`:** a cada autenticação (com cache), os papéis do token viram
   participação em grupos locais. `mirror` remove de grupos mapeados que sumiram do token. Os cinco
   portões continuam sem ler token.
+- **Claim de papéis ausente não é "nenhum papel"** (implementado na 2b): o Entra omite `groups` quando o
+  usuário tem grupos demais (*overage*), e alguns IdPs só emitem o claim sob um escopo. Tratar ausência como
+  lista vazia faria o `mirror` apagar os grupos da pessoa a cada login. Só uma lista presente — inclusive
+  vazia — decide.
+- Papel com `/`, `:` ou `.` no nome precisa de colchetes na chave: `role-mapping.map.[cliente-a/vendas]=Vendas`
+  (YAML: `"[cliente-a/vendas]": Vendas`); sem eles o Spring descarta esses caracteres.
 - Papéis do token **nunca** concedem diretamente (GRANT só vem do banco). Isso evita que um IdP mal
   configurado — ou um IdP de cliente no modo multi-tenant — conceda acesso no Archbase.
 - Administrador (`isAdministrator`) **não** é concedido por mapeamento; continua manual, sob o admin-guard.
 
 ## 7. Exemplos de provedor
 
+Os blocos abaixo são os mesmos do README do módulo, validados por `ExemplosDocumentadosTest` (bind e
+`OidcStartupValidator`). A primeira versão desta seção punha `tenant` dentro de `claims` e tinha
+indentação inválida no Entra e no Okta — nenhum dos cinco subia.
+
 ### 7.1 ArchGuard (superfície legada Casdoor, a que está no ar)
 
 ```yaml
 archguard:
-  issuer: https://idp.empresa.com          # = 'origin' do ArchGuard; ver bloqueio B2
-  jwks-uri: https://idp.empresa.com/.well-known/archbase-app/jwks   # JWKS POR APLICAÇÃO
-  audiences: [ <clientId-da-aplicacao> ]
-  algorithms: [RS256]
-  required-claims: { tokenType: access-token }
-  claims:
-    subject: sub                           # user.Id (UUID do Casdoor)
-    email: email
-    email-verified: email_verified         # JWT-Standard emite
-    tenant: { claim: owner }               # organização do usuário
-    roles: [ ]                             # JWT-Standard NÃO emite papéis/grupos — ver abaixo
-  introspection: { enabled: true, uri: https://idp.empresa.com/api/login/oauth/introspect }
+  issuer: https://idp.empresa.com
+  jwks-uri: https://idp.empresa.com/.well-known/archbase-app/jwks
+  audiences: [ archbase-app-client-id ]
+  algorithms: [ RS256 ]
+  required-claims:
+    tokenType: access-token
+  tenant:
+    claim: owner                      # organização do usuário
+  introspection:
+    enabled: true
+    uri: https://idp.empresa.com/api/login/oauth/introspect
+    client-id: archbase-app-client-id
+    client-secret: ${ARCHGUARD_CLIENT_SECRET:troque}
+  logout:
+    backchannel:
+      enabled: true
 ```
 Aplicação no ArchGuard: **`tokenFormat: JWT-Standard`**, grants só `authorization_code` +
 `refresh_token` (+ `client_credentials` para serviço), `expireInHours` curto.
@@ -267,34 +297,40 @@ Quando o contrato v1 (ADR-0023) for montado, a migração é só configuração:
 ```yaml
 keycloak:
   issuer: https://sso.empresa.com/realms/empresa
-  audiences: [ archbase-api ]              # exige 'Audience mapper'; o padrão é 'account'
-  algorithms: [RS256]
+  audiences: [ archbase-api ]         # exige "Audience mapper"; o padrão do Keycloak é "account"
+  tenant:
+    fixed: empresa
   claims:
-    subject: sub
-    email: email
-    email-verified: email_verified
-    tenant: { fixed: empresa }             # ou um provedor por realm; ou claim de mapper
     roles: [ realm_access.roles, resource_access.archbase-api.roles ]
-  introspection: { enabled: false }        # disponível em /protocol/openid-connect/token/introspect
+  role-mapping:
+    sync: add
+    map:
+      financeiro: Financeiro
+      "[empresa/vendas]": Vendas      # chave com / . : precisa de colchetes
 ```
+Introspecção disponível em `/protocol/openid-connect/token/introspect`. O `aud` padrão do Keycloak é
+`account`: sem um *Audience mapper* para `archbase-api`, todo token é recusado.
 
 ### 7.3 Microsoft Entra ID
 
 ```yaml
 entra:
   issuer-pattern: https://login.microsoftonline.com/{tid}/v2.0
-  allowed-tenants: { "<tid-guid-cliente-a>": cliente-a, "<tid-guid-cliente-b>": cliente-b }
   jwks-uri: https://login.microsoftonline.com/common/discovery/v2.0/keys
-  audiences: [ "<application-id-guid>", "api://archbase-api" ]
-  algorithms: [RS256]
-  required-claims: { ver: "2.0" }          # manifest: accessTokenAcceptedVersion = 2
+  allowed-tenants:
+    "[11111111-2222-3333-4444-555555555555]": cliente-a
+    "[66666666-7777-8888-9999-000000000000]": cliente-b
+  audiences: [ "api://archbase-api" ]
+  required-claims:
+    ver: "2.0"                        # manifest: accessTokenAcceptedVersion = 2
   claims:
-    subject: oid                           # 'sub' é pairwise por aplicação; o estável é oid (+tid)
-    email: email                           # claim opcional; pode não vir
-  users: { link-by-email: never }          # sem email_verified; preferred_username/upn NÃO são chave confiável
-    tenant: { claim: tid }                 # traduzido por allowed-tenants
-    roles: [ roles ]                       # app roles; 'groups' vem como GUID e tem overage (>200)
+    subject: oid                      # "sub" é pairwise por aplicação; o estável é oid
+    roles: [ roles ]
+  users:
+    link-by-email: never              # Entra não emite email_verified
 ```
+Use *app roles* (`roles`), não `groups`: grupos vêm como GUID e, acima de 200, o token traz só um
+indicador de *overage*. Entra não oferece introspecção.
 Token emitido para o Microsoft Graph não é validável: o frontend precisa pedir token para o escopo
 da API (`api://archbase-api/.default`).
 
@@ -302,32 +338,33 @@ da API (`api://archbase-api/.default`).
 
 ```yaml
 auth0:
-  issuer: https://empresa.us.auth0.com/    # COM barra final
-  audiences: [ https://api.empresa.com ]   # sem 'audience' no login o access token não é JWT validável
-  algorithms: [RS256]
+  issuer: https://empresa.us.auth0.com/   # com barra final
+  audiences: [ https://api.empresa.com ]
+  tenant:
+    claim: org_id
   claims:
-    subject: sub                           # 'auth0|…', 'google-oauth2|…'
-    email: https://empresa.com/email       # custom claims exigem namespace (Actions)
-    tenant: { claim: org_id }              # recurso Organizations
-    roles: [ permissions, https://empresa.com/roles ]   # 'permissions' com RBAC da API ligado
+    email: https://empresa.com/email  # claim customizado exige namespace
+    roles: [ permissions ]
 ```
+Sem `audience` no pedido de login, o Auth0 emite access token opaco, não validável aqui. `permissions`
+exige RBAC ligado na API. Auth0 não oferece introspecção.
 
 ### 7.5 Okta
 
 ```yaml
 okta:
-  issuer: https://empresa.okta.com/oauth2/default    # custom authorization server — o org AS não serve
-  audiences: [ api://default ]
-  algorithms: [RS256]
+  issuer: https://empresa.okta.com/oauth2/default
+  audiences: [ "api://default" ]
+  tenant:
+    header: true                      # só entra quem já tem vínculo naquele tenant
   claims:
-    subject: uid                           # 'sub' costuma ser o login (e-mail) e pode mudar
-    email: sub
-  users: { link-by-email: never }
-    tenant: { header: true }
-    roles: [ groups ]                      # claim 'groups' precisa ser criado no AS, com filtro
-    scopes: scp                            # array, não string
-  introspection: { enabled: false }        # disponível em /oauth2/default/v1/introspect
+    subject: uid                      # "sub" costuma ser o login e pode mudar
+    roles: [ groups ]
+  users:
+    link-by-email: never
 ```
+Exige *custom authorization server* (o org AS não serve). O claim `groups` precisa ser criado no AS,
+com filtro. Introspecção em `/oauth2/default/v1/introspect`.
 
 > Detalhes de provedores de mercado mudam; os exemplos refletem a documentação conhecida em 2026 e
 > devem ser conferidos no ambiente real antes de virar documentação oficial.
@@ -343,7 +380,7 @@ proposta e afeta quem já consome o ArchGuard hoje.**
 | B2 | `origin` vazio em `conf/app.conf:30` → `iss` montado a partir do cabeçalho **Host**. | `object/wellknown_oidc_discovery.go:82-104` | Issuer instável/forjável por Host; discovery e token podem divergir atrás de proxy. | Configurar `origin`; no Archbase o issuer é sempre fixo na configuração. |
 | B3 | Em `JWT-Custom`, o refresh token sai com `tokenType: access-token`, mesma chave e mesmo `aud`. | `object/token_jwt.go:395-396,597-600` | Refresh token aceito como access token. | Usar `JWT-Standard`; manter `required-claims.tokenType`. |
 | B4 | TTL padrão de 168 h; sem endpoint de revogação (RFC 7009). | `object/init.go:243`; `routers/router.go` | Token roubado vale 7 dias. | `expireInHours` curto; introspecção ligada. |
-| B5 | Back-channel logout lê `cert.PrivateKey` direto e falha em silêncio com a chave no OpenBao. | `object/token_logout.go:73-79,115-118` | Logout não propaga. | Corrigir antes da fase 3. |
+| B5 | Back-channel logout lê `cert.PrivateKey` direto e falha em silêncio com a chave no OpenBao. | `object/token_logout.go:73-79,115-118` | Logout não propaga. | **Corrigido em archguard#2** (ROADMAP 0.5), com mais 4 falhas do mesmo envio. |
 | B6 | JWKS global publica certificados de todas as organizações. | `object/wellknown_oidc_discovery.go:203-237` | Aceitar token assinado por certificado de outra organização. | Usar a JWKS **por aplicação**. |
 | B7 | PKCE não é obrigatório; `password`/`implicit` ativos se a aplicação habilitar. | `object/token_oauth_util.go` (~`:192-214`); `token_oauth.go:74-79` | — | Configurar a aplicação Archbase só com os grants da seção 7.1. |
 | B8 | Contrato v1 (`org`, `mid`, `acr`, `amr`, `sid`) existe mas não está montado; a API de contexto de sessão usa `identity.subject`, diferente do `sub` legado. | ADR-0023; `internal/http/service_context.go`; `internal/domain/identity.go:150` | Step-up/MFA (`acr`) indisponível; API de contexto inutilizável com token legado. | Mapeamento configurável agora; migrar quando o v1 for montado. |
@@ -354,9 +391,62 @@ proposta e afeta quem já consome o ArchGuard hoje.**
 | Fase | Entrega | Testes |
 |---|---|---|
 | **0** | Testes de regressão do filtro no core (JWT local, token de API, tenant por header/claim, Control Plane) **sem mudar código**. É a régua de P1. | Os testes passam antes e depois de cada fase |
-| **1** | Mudanças compatíveis no core (seção 3); módulo `archbase-security-oidc`: propriedades + validação na subida, `OidcProviderRegistry` (Nimbus), `OidcBearerAuthenticator`, `ClaimMapper`, vínculo (`existing-user` + `link-by-email`), `/auth/oidc/exchange` | IdP falso RS256 (nos moldes do `FakeControlPlane`): iss/aud/exp/alg/kid, rotação, dois provedores + CP + JWT local no mesmo contexto, tenant por claim/header/mapa; **`@SpringBootTest` de boot com e sem o pacote**, com `ddl-auto=validate` |
-| **2** | `jit` (com `pending`); `role-mapping` (`add`/`mirror`); introspecção com cache; RP-initiated logout; tela de vínculo manual | Sincronização de grupos; token revogado via introspecção |
-| **3** | Back-channel logout + denylist; `acr`/step-up quando o ArchGuard montar o v1; suporte OIDC nativo no archbase-react (10.2) | Logout token assinado |
+| **1** | **1a — feita (2026-11-21):** mudanças compatíveis no core (seção 3) — política agregada, `ArchbaseCurrentUser`, `ArchbaseLocalCredentialPolicy`, `@Order`. **1b — feita (2026-11-21):** módulo `archbase-security-oidc`: propriedades + validação na subida, `OidcProviderRegistry` (Nimbus, JWKS explícito ou por descoberta, emissor por modelo `{tid}`), `OidcBearerAuthenticator`, `ClaimReader` (nome ou caminho), vínculo (`existing-user` + `link-by-email`, proteção contra segunda identidade com o mesmo e-mail), `local-password: disable-on-link`. **1c — feita (2026-11-21):** `POST /api/v1/auth/oidc/exchange` (desligado por padrão) + `ArchbaseAuthenticationService.issueExternalSession` no core (só acréscimo; o login por senha e o `authenticateWithoutPassword`, que revoga todas as sessões, não mudam): sessão local curta (`exchange.local-token-ttl`, padrão 15 min), **sem refresh token**, respeitando `allowMultipleLogins` | IdP falso RS256 (nos moldes do `FakeControlPlane`): iss/aud/exp/alg/kid, rotação, dois provedores + CP + JWT local no mesmo contexto, tenant por claim/header/mapa; **`@SpringBootTest` de boot com e sem o pacote**, com `ddl-auto=validate` |
+| **2** | **2a — feita (2026-11-21):** `users.provisioning=jit` (`jit.status` `pending` padrão / `active`; só com e-mail confiável; nunca duplica cadastro; usuário nasce sem senha local, sem poder redefinir, sem grupo e não admin; proibido com tenant pelo header) + API administrativa de vínculo `/api/v1/security/external-identities` (exige `isAdministrator`). **2b — feita (2026-11-21):** `role-mapping` (`add`/`mirror`) sobre `claims.roles`; claim ausente não muda nada. **2c — feita (2026-11-21):** introspecção RFC 7662 por provedor, depois da assinatura, cache por SHA-256 do token (`cache-ttl` padrão 30 s, nunca além do `exp`), `on-error` `deny` (503 `IDP_UNAVAILABLE`, padrão) / `allow`. **2d — feita (2026-11-21):** `POST /api/v1/auth/oidc/logout` revoga o token nesta aplicação (lista `SEGURANCA_TOKEN_EXTERNO_REVOGADO`, por hash, todas as instâncias) e devolve o `end_session_endpoint` (`logout.end-session-uri`) para o frontend fazer o RP-Initiated Logout no IdP | Sincronização de grupos; token revogado via introspecção |
+| **3** | **3a — feita no Archbase (2026-11-21):** `POST /api/v1/auth/oidc/backchannel-logout` (OIDC Back-Channel Logout 1.0), ligado por provedor com `logout.backchannel.enabled`. O `logout_token` é validado com as chaves do provedor: `iss`, `aud` (`logout.backchannel.audiences`, padrão `audiences`), `events`, sem `nonce`, `sub` ou `sid`, `iat` dentro de `max-age` (5 min); o `exp` é conferido quando vem. O aviso grava um corte em `SEGURANCA_LOGOUT_EXTERNO` (`sub` → tokens emitidos até o `iat` do aviso; `sid` → aquela sessão, e tokens sem `sid` do mesmo `sub` caem junto) e, com `revoke-local-sessions` (padrão), revoga as sessões locais dos usuários vinculados — é o que faz o logout do IdP alcançar a troca de token (4.2). **3a — ArchGuard (B5), feita (2026-11-22, archguard#2):** chave pelo custodiante, algoritmo do access token, `exp` e `typ: logout+jwt`, aviso antes de expirar o token no logout por access token, timeout de 5 s; depois do deploy, cadastrar `backchannelLogoutUri` nas aplicações. **3b:** `acr`/step-up quando o ArchGuard montar o v1. **3c:** suporte OIDC nativo no archbase-react (10.2) | Logout token assinado; aviso velho, sem `events`, com `nonce` ou de outro `aud` recusado |
+| **4** | **Feita (2026-11-22):** migração entre IdPs — export, dry-run com `planHash`, execução tudo-ou-nada condicionada ao plano conferido e histórico por tenant (ver 9.1) | Local→provedor e vínculo pré-existente conferidos nos testes; plano que muda entre dry-run e execução não grava |
+
+### 9.1 Migração entre IdPs (fase 4)
+
+Dois casos: **login local do Archbase → IdP externo** (ex.: hoje JWT próprio, amanhã ArchGuard) e
+**IdP externo → outro** (ex.: Keycloak → ArchGuard). Nos dois, o que muda é quem emite o token; o
+`UserEntity`, os perfis, grupos e permissões ficam onde estão.
+
+Etapas, cada uma reversível até a última:
+
+1. **Exportar identidades para o IdP de destino** — usuários locais (nome, e-mail, tenant) para o
+   ArchGuard via SCIM de entrada (`/scim/*`, que o ArchGuard já tem) ou API de importação do IdP.
+   Senha **não** migra: o IdP de destino força definição no primeiro acesso, ou federa com o de origem.
+2. **Pré-vincular** — gravar `(provedor, tenant, sub)` → `user_id` na tabela de vínculo **antes** do
+   primeiro login, a partir de um mapeamento: e-mail verificado (padrão), id externo, ou arquivo CSV
+   fornecido pelo operador. Sem isso, o primeiro acesso dependeria de `link-by-email` e de e-mail verificado.
+3. **Dry-run obrigatório** — relatório por tenant: vinculados, sem correspondência, ambíguos (mesmo
+   e-mail em dois usuários), administradores. Nada é gravado sem o relatório conferido.
+4. **Convivência** — os dois emissores aceitos ao mesmo tempo (já é o comportamento: JWT local +
+   provedor externo; para IdP→IdP, dois provedores configurados). O frontend migra no seu ritmo.
+5. **Corte** — por tenant: `local-password: disable-on-link` (a `ArchbaseLocalCredentialPolicy` passa a
+   negar a senha local de quem está vinculado) e, por fim, recusar o JWT local (`acceptLegacyJwt=false`)
+   ou remover o provedor de origem. Único passo que tira acesso; reverter é reconfigurar.
+
+**Entregue (fase 4, 2026-11-22):** `IdentityMigrationService` no `archbase-security-oidc`, exposto em
+`/api/v1/security/identity-migration` (exige `isAdministrator`, sempre no tenant da requisição):
+
+| Endpoint | O que faz |
+|---|---|
+| `GET /export?providerId=` | Usuários do tenant (id, nome, e-mail, login, admin, inativo, `sub` já vinculado) — etapa 1, para importar no IdP de destino |
+| `POST /plan` | Dry-run — etapas 2 e 3. Entrada: `providerId`, `entries[]` de `{subject, email ou userId}` vindos do IdP de destino, `includeAdministrators`. Saída: ação por linha (`LINK`, `ALREADY_LINKED`, `SKIP` + motivo), resumo, usuários ativos sem correspondência, impacto do corte e `planHash` |
+| `POST /execute` | Refaz o plano e grava só se o `planHash` for o do relatório conferido (`409 PLAN_CHANGED` com o plano novo, se não for). Tudo ou nada, numa transação |
+| `GET /history` | Dry-runs e execuções do tenant (`SEGURANCA_MIGRACAO_IDENTIDADE`) |
+
+Regras do plano:
+- e-mail comparado sem caixa e sem espaços;
+- `userId` e e-mail na mesma linha têm de concordar;
+- `subject` ou usuário repetido no arquivo derruba **todas** as linhas envolvidas — não há desempate;
+- nunca sobrescreve vínculo existente (`SUBJECT_LINKED_TO_OTHER_USER`, `USER_LINKED_TO_OTHER_SUBJECT`);
+- administradores ficam de fora salvo `includeAdministrators=true`: com `disable-on-link`, o admin vinculado
+  perde a senha local, que é o acesso de emergência se o IdP cair. O plano conta à parte os administradores
+  que ficariam sem vínculo.
+
+Nada aqui tira acesso; o corte (etapa 5) continua sendo configuração, e o plano mostra quem ficaria sem
+entrar se ele fosse feito agora.
+
+O histórico é tabela própria, e não a trilha de segurança do core: o tipo de evento daquela trilha é enum
+com `CHECK` (PostgreSQL) / `ENUM` (MySQL) nos scripts de `deployment/sql`, e um tipo novo seria recusado — em
+silêncio, porque o logger engole a falha — em toda base já criada.
+
+Ficou de fora: empurrar os usuários para o IdP por SCIM (o export é a entrada para a importação de cada IdP)
+e um executável de linha de comando separado (a API é chamável por `curl`; o arquivo do IdP precisa virar o
+JSON de `entries`).
 
 Fora do plano por P1: migrar o Control Plane para o `OidcProviderRegistry`. Ele funciona e tem
 testes; mexer nele só se houver ganho concreto, em PR separado.
@@ -413,9 +503,10 @@ o "nOAuth"). Por isso `link-by-email` tem três valores:
 1. **Fase 1: B no archbase-react, A já pronto no backend.** O mesmo validador atende os dois, então
    o backend sai completo; o frontend muda o mínimo. Clientes de API, integrações e serviços (que
    não usam o archbase-react) já usam A desde o primeiro dia.
-2. **Mitigar o contra de B:** JWT local emitido pela troca com vida curta (sugestão: 15 min,
-   `exchange.local-token-ttl`), e o refresh local revalida o vínculo — usuário desvinculado ou
-   desativado não renova.
+2. **Mitigar o contra de B:** JWT local emitido pela troca com vida curta (15 min,
+   `exchange.local-token-ttl`) e **sem refresh token** — renovar exige um token novo do IdP, então
+   usuário desligado no IdP não renova. *(Implementado assim na 1c; a ideia inicial de revalidar o
+   vínculo no refresh local foi trocada por não emitir refresh.)*
 3. **Fase 3: A no archbase-react**, como opção por aplicação, quando o ArchGuard tiver o v1
    (`acr`, `sid`, rotação de refresh) — é quando A passa a entregar mais que B.
 4. **C:** descartado enquanto P1 valer.

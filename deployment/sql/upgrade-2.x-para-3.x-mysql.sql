@@ -60,7 +60,7 @@ SET @ddl = (SELECT IF(COUNT(*) = 0,
     WHERE table_schema = DATABASE() AND table_name = 'seguranca_acao' AND column_name = 'minimum_level');
 PREPARE s FROM @ddl; EXECUTE s; DEALLOCATE PREPARE s;
 
--- Permissão: ALLOW ou DENY. Nulo continua valendo como concessão.
+-- Permissão: GRANT ou DENY. Nulo continua valendo como concessão.
 SET @ddl = (SELECT IF(COUNT(*) = 0,
     'ALTER TABLE seguranca_permissao ADD COLUMN effect varchar(10) NULL', 'DO 0')
     FROM information_schema.columns
@@ -84,3 +84,48 @@ PREPARE s FROM @ddl; EXECUTE s; DEALLOCATE PREPARE s;
 -- A coluna token deixou de ser obrigatória na entidade. É o que permite, mais adiante, apagar o
 -- valor em claro sem violar a restrição. MODIFY é idempotente.
 ALTER TABLE seguranca_token_api MODIFY token varchar(255) NULL;
+
+-- ---------------------------------------------------------------------------------------------
+-- Adições posteriores à 3.0 (3.1.20 e 3.4). Necessárias para quem vai do 2.x direto para 3.4+.
+-- ---------------------------------------------------------------------------------------------
+
+-- Usuário: matrícula do funcionário (3.1.20). Opcional e sem índice único.
+SET @ddl = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE seguranca ADD COLUMN employee_id varchar(60) NULL', 'DO 0')
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE() AND table_name = 'seguranca' AND column_name = 'employee_id');
+PREPARE s FROM @ddl; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- Ação: rótulo curto da capacidade (3.4). Nulo = usa a descrição.
+SET @ddl = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE seguranca_acao ADD COLUMN rotulo varchar(120) NULL', 'DO 0')
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE() AND table_name = 'seguranca_acao' AND column_name = 'rotulo');
+PREPARE s FROM @ddl; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- Dependências entre capacidades (3.4). Informativa: a decisão de acesso não lê esta tabela.
+CREATE TABLE IF NOT EXISTS seguranca_acao_dependencia (
+    id_dependencia         varchar(40)  not null,
+    cd_dependencia         varchar(40),
+    tenant_id              varchar(40),
+    id_acao                varchar(40)  not null,
+    capacidade_requerida   varchar(200) not null,
+    id_acao_requerida      varchar(40),
+    declarada_por          varchar(20)  not null,
+    versao                 bigint,
+    dh_criacao             datetime(6),
+    usuario_criou          varchar(255),
+    dh_atualizacao         datetime(6),
+    ultimo_usuario_alterou varchar(255),
+    constraint pk_seguranca_acao_dependencia primary key (id_dependencia),
+    constraint uk_seguranca_acao_dependencia unique (tenant_id, id_acao, capacidade_requerida),
+    constraint fk_seguranca_acao_dependencia_acao
+        foreign key (id_acao) references seguranca_acao (id_acao),
+    constraint fk_seguranca_acao_dependencia_requerida
+        foreign key (id_acao_requerida) references seguranca_acao (id_acao)
+);
+-- O índice de id_acao é criado pelo MySQL junto com a FK.
+
+-- As tabelas seguranca_evento e seguranca_revisao (trilha e revisões) vêm de
+-- auditoria-seguranca-mysql.sql. Com ddl-auto=validate elas são exigidas mesmo com a trilha
+-- desligada: rode aquele script também.

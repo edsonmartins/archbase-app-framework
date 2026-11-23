@@ -1,5 +1,6 @@
 package br.com.archbase.security.adapter;
 
+import br.com.archbase.security.auth.ArchbaseCurrentUser;
 import br.com.archbase.security.domain.entity.User;
 import br.com.archbase.security.persistence.UserEntity;
 import br.com.archbase.security.repository.UserJpaRepository;
@@ -25,7 +26,10 @@ public class SecurityAdapter implements GetSecurityData {
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new ArchbaseValidationException("Usuário não autenticado.");
         }
-        UserEntity principal = (UserEntity) authentication.getPrincipal();
+        // Era um cast direto: ClassCastException para autenticação externa sem usuário local
+        // (ex.: sessão do Control Plane sem vínculo). Agora é a mesma "não encontrado" de sempre.
+        UserEntity principal = ArchbaseCurrentUser.of(authentication)
+                .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado."));
         Optional<UserEntity> byId = userJpaRepository.findById(principal.getId());
         return byId.orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado.")).toDomain();
     }

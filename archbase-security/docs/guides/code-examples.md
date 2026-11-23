@@ -1301,539 +1301,92 @@ class SecurityConfigTest {
 
 ## 4. Trabalho com API Tokens
 
-Este exemplo demonstra como criar, gerenciar e validar API tokens para integração service-to-service e automação.
+O token de API é do framework: use o `ApiTokenService` / `ApiTokenController`. **Não reimplemente** o
+serviço nem o filtro — o filtro do Archbase só reconhece o formato que o próprio serviço gera, e uma
+versão caseira que grave o valor em claro ou use outro cabeçalho fica incompatível e menos segura.
 
-### 4.1 Service de Gerenciamento de API Tokens
+### 4.1 Como o token funciona
 
-```java
-package com.example.security.service;
+| Aspecto | Comportamento |
+|---------|---------------|
+| Formato | UUID aleatório |
+| Armazenamento | Só o hash SHA-256 (`TOKEN_HASH`). Com `archbase.security.api-token.hash-enabled=false` o valor também fica em claro, para telas que o listam |
+| Exibição | O valor aparece **uma única vez**, na resposta da criação (e no e-mail de ativação) |
+| Ciclo de vida | Criado inativo → ativado → válido até `DH_EXPIRACAO` ou revogação |
+| Validade | Aceito só se ativado, não revogado e não expirado |
+| Tenant | O tenant do token vira o tenant da requisição; `X-TENANT-ID` diferente dá 403 |
 
-import br.com.archbase.ddd.domain.annotations.DomainService;
-import br.com.archbase.validation.exception.ArchbaseValidationException;
-import br.com.archbase.security.persistence.ApiTokenEntity;
-import br.com.archbase.security.persistence.UserEntity;
-import br.com.archbase.security.repository.ApiTokenJpaRepository;
-import br.com.archbase.security.repository.UserJpaRepository;
-import com.example.security.dto.ApiTokenDto;
-import com.example.security.dto.CreateApiTokenRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+### 4.2 Endpoints
 
-import java.security.SecureRandom;
-import java.time.LocalDateTime;
-import java.util.Base64;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.stream.Collectors;
+Os endpoints de gestão são administrativos (`@ArchbaseSecurityAdminEndpoint(resource = "API_TOKEN")`):
+seguem `archbase.security.admin-endpoints.policy`.
 
-/**
- * Service para gerenciamento de API Tokens.
- *
- * API Tokens são usados para:
- * - Autenticação service-to-service
- * - Integração com sistemas externos
- * - Automações e scripts
- * - CI/CD pipelines
- */
-@Service
-@DomainService
-public class ApiTokenService {
+```http
+POST /api/v1/apiToken/create?email=integracao@empresa.com&expirationDate=2027-12-31T23:59:59&name=erp&description=Integração ERP
+Authorization: Bearer <jwt do administrador>
 
-    private static final Logger logger =
-        LoggerFactory.getLogger(ApiTokenService.class);
+→ 200 { "id": "...", "token": "3f6c1b2e-...", ... }     # guarde o token agora; não há como recuperá-lo
 
-    @Autowired
-    private ApiTokenJpaRepository apiTokenRepository;
-
-    @Autowired
-    private UserJpaRepository userRepository;
-
-    /**
-     * Cria um novo token de API para integração externa.
-     *
-     * O token é gerado com criptografia segura (SecureRandom) e
-     * inicia em estado desativado por segurança.
-     *
-     * @param request Dados para criação do token
-     * @return DTO do token criado (com token em texto plano)
-     */
-    @Transactional
-    public ApiTokenDto createApiToken(CreateApiTokenRequest request) {
-        logger.info("Criando API token: name={}, userId={}",
-            request.getName(), request.getUserId());
-
-        // Validar dados de entrada
-        validateCreateRequest(request);
-
-        // Buscar usuário associado
-        UserEntity user = userRepository.findById(request.getUserId())
-            .orElseThrow(() -> new ArchbaseValidationException(
-                "Usuário não encontrado: " + request.getUserId()));
-
-        // Validar que usuário não está desativado
-        if (user.getAccountDeactivated()) {
-            throw new ArchbaseValidationException(
-                "Não é possível criar token para usuário desativado");
-        }
-
-        // Gerar token seguro
-        String token = generateSecureToken();
-        String tokenHash = hashToken(token);
-
-        // Calcular data de expiração
-        LocalDateTime expirationDate = calculateExpirationDate(
-            request.getExpirationDays()
-        );
-
-        // Criar entidade de token
-        ApiTokenEntity apiToken = ApiTokenEntity.builder()
-            .id(UUID.randomUUID().toString())
-            .code("API_TOKEN_" + generateShortId())
-            .name(request.getName())
-            .description(request.getDescription())
-            .user(user)
-            .token(tokenHash)  // Armazenar hash, não texto plano
-            .activated(false)  // Deve ser ativado explicitamente
-            .revoked(false)
-            .expirationDate(expirationDate)
-            .tenantId(user.getTenantId())
-            .createEntityDate(LocalDateTime.now())
-            .createdByUser(user.getId())
-            .build();
-
-        apiTokenRepository.save(apiToken);
-
-        logger.info("API token criado: id={}, expirationDate={}",
-            apiToken.getId(), expirationDate);
-
-        // Retornar DTO com token em texto plano (única vez)
-        ApiTokenDto dto = apiToken.toDto();
-        dto.setToken(token);  // Token original (não hash)
-        dto.setWarning("IMPORTANTE: Guarde este token em local seguro. " +
-            "Ele não será exibido novamente.");
-
-        return dto;
-    }
-
-    /**
-     * Lista todos os tokens de um usuário.
-     */
-    @Transactional(readOnly = true)
-    public List<ApiTokenDto> listUserTokens(String userId) {
-        List<ApiTokenEntity> tokens = apiTokenRepository
-            .findAllByUserId(userId);
-
-        return tokens.stream()
-            .map(ApiTokenEntity::toDto)
-            .collect(Collectors.toList());
-    }
-
-    /**
-     * Ativa um token de API para uso.
-     *
-     * Por segurança, tokens são criados desativados e devem ser
-     * ativados explicitamente após criação.
-     */
-    @Transactional
-    public void activateApiToken(String tokenId) {
-        logger.info("Ativando API token: id={}", tokenId);
-
-        ApiTokenEntity apiToken = apiTokenRepository.findById(tokenId)
-            .orElseThrow(() -> new ArchbaseValidationException(
-                "Token não encontrado"));
-
-        // Validações
-        if (apiToken.getRevoked()) {
-            throw new ArchbaseValidationException(
-                "Token foi revogado e não pode ser ativado");
-        }
-
-        if (LocalDateTime.now().isAfter(apiToken.getExpirationDate())) {
-            throw new ArchbaseValidationException(
-                "Token expirado não pode ser ativado");
-        }
-
-        // Ativar token
-        apiToken.setActivated(true);
-        apiToken.setUpdateEntityDate(LocalDateTime.now());
-        apiTokenRepository.save(apiToken);
-
-        logger.info("API token ativado: id={}", tokenId);
-    }
-
-    /**
-     * Desativa um token de API.
-     */
-    @Transactional
-    public void deactivateApiToken(String tokenId) {
-        logger.info("Desativando API token: id={}", tokenId);
-
-        ApiTokenEntity apiToken = apiTokenRepository.findById(tokenId)
-            .orElseThrow(() -> new ArchbaseValidationException(
-                "Token não encontrado"));
-
-        apiToken.setActivated(false);
-        apiToken.setUpdateEntityDate(LocalDateTime.now());
-        apiTokenRepository.save(apiToken);
-
-        logger.info("API token desativado: id={}", tokenId);
-    }
-
-    /**
-     * Revoga um token de API permanentemente.
-     *
-     * Tokens revogados não podem ser reativados.
-     */
-    @Transactional
-    public void revokeApiToken(String tokenId) {
-        logger.warn("Revogando API token: id={}", tokenId);
-
-        ApiTokenEntity apiToken = apiTokenRepository.findById(tokenId)
-            .orElseThrow(() -> new ArchbaseValidationException(
-                "Token não encontrado"));
-
-        apiToken.setRevoked(true);
-        apiToken.setActivated(false);
-        apiToken.setUpdateEntityDate(LocalDateTime.now());
-        apiTokenRepository.save(apiToken);
-
-        logger.warn("API token revogado: id={}", tokenId);
-    }
-
-    /**
-     * Valida um token de API.
-     *
-     * Verifica:
-     * - Token existe
-     * - Não está revogado
-     * - Está ativado
-     * - Não está expirado
-     *
-     * @param token Token em texto plano
-     * @return true se válido, false caso contrário
-     */
-    public boolean validateApiToken(String token) {
-        String tokenHash = hashToken(token);
-        Optional<ApiTokenEntity> apiTokenOpt =
-            apiTokenRepository.findByToken(tokenHash);
-
-        if (apiTokenOpt.isEmpty()) {
-            logger.warn("Tentativa de uso de token inválido");
-            return false;
-        }
-
-        ApiTokenEntity apiToken = apiTokenOpt.get();
-
-        // Verificar revogação
-        if (apiToken.getRevoked()) {
-            logger.warn("Tentativa de uso de token revogado: id={}",
-                apiToken.getId());
-            return false;
-        }
-
-        // Verificar ativação
-        if (!apiToken.getActivated()) {
-            logger.warn("Tentativa de uso de token desativado: id={}",
-                apiToken.getId());
-            return false;
-        }
-
-        // Verificar expiração
-        if (LocalDateTime.now().isAfter(apiToken.getExpirationDate())) {
-            logger.warn("Tentativa de uso de token expirado: id={}",
-                apiToken.getId());
-            return false;
-        }
-
-        // Token válido
-        logger.debug("Token validado com sucesso: id={}", apiToken.getId());
-        return true;
-    }
-
-    /**
-     * Busca usuário associado a um token.
-     */
-    public Optional<UserEntity> getUserByToken(String token) {
-        String tokenHash = hashToken(token);
-        return apiTokenRepository.findByToken(tokenHash)
-            .map(ApiTokenEntity::getUser);
-    }
-
-    /**
-     * Revoga todos os tokens de um usuário.
-     *
-     * Útil quando conta é comprometida ou usuário é desativado.
-     */
-    @Transactional
-    public void revokeAllUserTokens(String userId) {
-        logger.warn("Revogando todos os tokens do usuário: userId={}",
-            userId);
-
-        List<ApiTokenEntity> tokens = apiTokenRepository
-            .findAllByUserId(userId);
-
-        tokens.forEach(token -> {
-            token.setRevoked(true);
-            token.setActivated(false);
-            token.setUpdateEntityDate(LocalDateTime.now());
-        });
-
-        apiTokenRepository.saveAll(tokens);
-
-        logger.warn("Tokens revogados: count={}", tokens.size());
-    }
-
-    /**
-     * Gera token seguro usando SecureRandom.
-     *
-     * Formato: 64 bytes aleatórios -> Base64 URL-safe
-     * Resultado: ~86 caracteres
-     */
-    private String generateSecureToken() {
-        SecureRandom random = new SecureRandom();
-        byte[] bytes = new byte[64];
-        random.nextBytes(bytes);
-        return Base64.getUrlEncoder()
-            .withoutPadding()
-            .encodeToString(bytes);
-    }
-
-    /**
-     * Hash do token para armazenamento seguro.
-     *
-     * Nunca armazene tokens em texto plano no banco de dados.
-     */
-    private String hashToken(String token) {
-        // TODO: Implementar hash apropriado (SHA-256)
-        // Por enquanto, retorna o token (NÃO USAR EM PRODUÇÃO)
-        return token;
-    }
-
-    /**
-     * Gera ID curto para código do token.
-     */
-    private String generateShortId() {
-        return UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-    }
-
-    /**
-     * Calcula data de expiração baseada em dias.
-     */
-    private LocalDateTime calculateExpirationDate(Integer expirationDays) {
-        if (expirationDays == null || expirationDays <= 0) {
-            expirationDays = 365;  // Padrão: 1 ano
-        }
-        return LocalDateTime.now().plusDays(expirationDays);
-    }
-
-    /**
-     * Valida requisição de criação de token.
-     */
-    private void validateCreateRequest(CreateApiTokenRequest request) {
-        if (request.getName() == null || request.getName().isBlank()) {
-            throw new ArchbaseValidationException(
-                "Nome do token é obrigatório");
-        }
-
-        if (request.getUserId() == null || request.getUserId().isBlank()) {
-            throw new ArchbaseValidationException(
-                "ID do usuário é obrigatório");
-        }
-    }
-}
+GET  /api/v1/apiToken/activate?token=<uuid>&tenantId=<tenant>    # link do e-mail; anônimo por desenho
+POST /api/v1/apiToken/revoke?token=<uuid>
 ```
 
-### 4.2 Cliente de API Externo
+A criação envia o e-mail de ativação pelo `ArchbaseEmailService` da aplicação. Sem implementação, o
+envio falha com WARN no log, mas o token é criado e devolvido mesmo assim; ative-o pelo endpoint.
 
-```java
-package com.example.integration.client;
+### 4.3 Uso pelo cliente
 
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
-import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestTemplate;
-
-/**
- * Cliente para chamar API externa usando API Token.
- *
- * Exemplo de uso de API Token para integração service-to-service.
- */
-@Component
-public class ExternalApiClient {
-
-    @Value("${external.api.base-url}")
-    private String baseUrl;
-
-    @Value("${external.api.token}")
-    private String apiToken;
-
-    private final RestTemplate restTemplate;
-
-    public ExternalApiClient() {
-        this.restTemplate = new RestTemplate();
-    }
-
-    /**
-     * Exemplo de chamada GET com API Token.
-     */
-    public String getData(String endpoint) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "ApiToken " + apiToken);
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
-        HttpEntity<String> entity = new HttpEntity<>(headers);
-
-        ResponseEntity<String> response = restTemplate.exchange(
-            baseUrl + endpoint,
-            HttpMethod.GET,
-            entity,
-            String.class
-        );
-
-        return response.getBody();
-    }
-
-    /**
-     * Exemplo de chamada POST com API Token.
-     */
-    public <T> T postData(String endpoint, Object requestBody,
-            Class<T> responseType) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "ApiToken " + apiToken);
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
-        HttpEntity<Object> entity = new HttpEntity<>(requestBody, headers);
-
-        ResponseEntity<T> response = restTemplate.exchange(
-            baseUrl + endpoint,
-            HttpMethod.POST,
-            entity,
-            responseType
-        );
-
-        return response.getBody();
-    }
-}
-```
-
-### 4.3 Filtro de Autenticação por API Token
-
-```java
-package com.example.security.filter;
-
-import br.com.archbase.security.persistence.UserEntity;
-import com.example.security.service.ApiTokenService;
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
-import org.springframework.stereotype.Component;
-import org.springframework.web.filter.OncePerRequestFilter;
-
-import java.io.IOException;
-import java.util.Optional;
-
-/**
- * Filtro para autenticação via API Token.
- *
- * Processa header "Authorization: ApiToken <token>" e autentica
- * usuário associado se token for válido.
- */
-@Component
-public class ApiTokenAuthenticationFilter extends OncePerRequestFilter {
-
-    @Autowired
-    private ApiTokenService apiTokenService;
-
-    @Override
-    protected void doFilterInternal(
-            HttpServletRequest request,
-            HttpServletResponse response,
-            FilterChain filterChain) throws ServletException, IOException {
-
-        // Extrair header Authorization
-        String authHeader = request.getHeader("Authorization");
-
-        if (authHeader != null && authHeader.startsWith("ApiToken ")) {
-            String token = authHeader.substring(9);  // Remover "ApiToken "
-
-            // Validar token
-            if (apiTokenService.validateApiToken(token)) {
-                // Buscar usuário associado
-                Optional<UserEntity> userOpt =
-                    apiTokenService.getUserByToken(token);
-
-                if (userOpt.isPresent()) {
-                    UserDetails userDetails = userOpt.get();
-
-                    // Criar authentication token
-                    UsernamePasswordAuthenticationToken authToken =
-                        new UsernamePasswordAuthenticationToken(
-                            userDetails,
-                            null,
-                            userDetails.getAuthorities()
-                        );
-
-                    authToken.setDetails(
-                        new WebAuthenticationDetailsSource()
-                            .buildDetails(request)
-                    );
-
-                    // Definir no contexto de segurança
-                    SecurityContextHolder.getContext()
-                        .setAuthentication(authToken);
-                }
-            }
-        }
-
-        filterChain.doFilter(request, response);
-    }
-}
-```
-
-### 4.4 Dicas de Implementação
-
-**Armazenamento Seguro de Tokens**:
 ```bash
-# Use variáveis de ambiente ou secrets manager
-export EXTERNAL_API_TOKEN="<seu-token-aqui>"
-
-# Ou AWS Secrets Manager
-aws secretsmanager get-secret-value \
-  --secret-id external-api-token \
-  --query SecretString \
-  --output text
+curl -H "Authorization: Bearer 3f6c1b2e-..." https://api.empresa.com/api/v1/pedidos
 ```
 
-**Rotação de Tokens**:
-```java
-@Scheduled(cron = "0 0 1 * * ?")  // Todo dia às 1h
-public void rotateExpiredTokens() {
-    LocalDateTime cutoffDate = LocalDateTime.now().minusDays(30);
-    List<ApiTokenEntity> expiredTokens = apiTokenRepository
-        .findExpiredTokensOlderThan(cutoffDate);
+O UUID cru no cabeçalho (`Authorization: 3f6c1b2e-...`) também é aceito. Qualquer outro esquema
+(`ApiToken <x>`, `Token <x>`) é recusado como "formato não reconhecido".
 
-    expiredTokens.forEach(token -> {
-        logger.info("Revogando token expirado: id={}", token.getId());
-        apiTokenService.revokeApiToken(token.getId());
-    });
+```java
+RestClient client = RestClient.builder()
+        .baseUrl("https://api.empresa.com")
+        .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + System.getenv("ARCHBASE_API_TOKEN"))
+        .build();
+```
+
+### 4.4 Uso programático
+
+```java
+@Service
+@RequiredArgsConstructor
+public class IntegracaoSetup {
+
+    private final ApiTokenService apiTokens;
+
+    public String criarTokenDoErp() {
+        ApiTokenDto dto = apiTokens.createToken("integracao@empresa.com",
+                LocalDateTime.now().plusYears(1), "erp", "Integração ERP");
+        apiTokens.activateToken(dto.getToken(), ArchbaseTenantContext.getTenantId());
+        return dto.getToken();   // exiba/armazene agora: o banco só guarda o hash
+    }
 }
 ```
+
+### 4.5 Bases antigas
+
+Tokens criados antes do hash ficam em claro. Com `archbase.security.api-token.hash-migration-enabled=true`
+(padrão), a subida calcula o hash dos que não têm. `archbase.security.api-token.purge-plaintext=true` apaga
+os valores em claro — **irreversível**; ligue só depois de confirmar que nenhuma tela depende deles.
 
 ---
 
 ## 5. Configuração de Horários de Acesso
 
-Este exemplo demonstra como configurar e gerenciar horários de acesso para usuários, implementando restrições temporais de login.
+> **O framework não aplica horário de acesso.** As entidades (`AccessScheduleEntity`, `AccessIntervalEntity`)
+> e o campo `unlimitedAccessHours` do usuário existem e têm CRUD, mas nenhum código do Archbase os consulta
+> no login nem nas requisições. Cadastrar um horário **não restringe nada** por si só.
+>
+> Se a aplicação precisa da restrição, ela mesma tem de validar — como nos exemplos abaixo, que são código
+> **da aplicação**, não do framework. Lembre que o login não é o único ponto: um token emitido dentro do
+> horário continua válido depois dele, até expirar.
+
+Este exemplo demonstra como a aplicação pode configurar horários e implementar a restrição temporal de login.
 
 ### 5.1 Service de Gerenciamento de Horários
 

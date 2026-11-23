@@ -295,33 +295,29 @@ addUsersToGroup(salesTeam, Arrays.asList(user1, user2, user3));
 
 Use os parâmetros `tenantId`, `companyId` e `projectId` para permissões contextuais.
 
+Os valores da anotação são **literais**: `"#context.companyId"` não é SpEL, é comparado como texto e
+nunca casa. O uso normal é deixar `companyId` vazio — a verificação usa a empresa do contexto
+(`X-COMPANY-ID`) e casa com permissões cujo `COMPANY_ID` é aquela empresa ou nulo. O estreitamento fica na
+**permissão concedida**, não na anotação.
+
 #### Cenário: Multi-Empresa
 
 ```java
-// Gerente pode aprovar pedidos apenas na própria empresa
-@HasPermission(
-    action = APPROVE,
-    resource = SALES_ORDER,
-    companyId = "#context.companyId"  // Apenas sua empresa
-)
-public void approveSalesOrder(String orderId, SecurityContext context) {
+// Gerente aprova pedidos só na empresa para a qual recebeu a permissão:
+// conceda APPROVE em SALES_ORDER com COMPANY_ID = <empresa do gerente>
+@HasPermission(action = "APPROVE", resource = "SALES_ORDER", description = "Aprovar pedido de venda")
+public void approveSalesOrder(String orderId) {
     // Implementação
 }
 ```
+
+Isso só protege com `archbase.security.company.validation=enforce` e um `ArchbaseCompanyAccessResolver` (ver 3.1).
 
 #### Cenário: Multi-Projeto
 
-```java
-// Desenvolvedor pode modificar código apenas no projeto atribuído
-@HasPermission(
-    action = UPDATE,
-    resource = SOURCE_CODE,
-    projectId = "#context.projectId"  // Apenas seu projeto
-)
-public void updateSourceCode(String fileId, SecurityContext context) {
-    // Implementação
-}
-```
+Não há projeto no contexto. `projectId` na anotação é um valor fixo, útil apenas quando o método é de um
+projeto conhecido em tempo de compilação. Para "o projeto da URL", use `@PreAuthorize` com um bean que
+consulte o domínio.
 
 ---
 
@@ -359,8 +355,8 @@ if (environment.equals("dev")) {
 
 ```bash
 # .env (NÃO commitado, listado em .gitignore)
-JWT_SECRET=Kj7xYz2Qw9Lp4MnVbBcXfGhTrEwQaZsXdCvFgBnMlKjHgFdSaQwErTyUiOpPaSdF
-DATABASE_PASSWORD=another-very-secure-password-here
+JWT_SECRET=<saída de: openssl rand -base64 48>
+DATABASE_PASSWORD=<senha forte>
 ```
 
 ```properties
@@ -369,91 +365,29 @@ archbase.security.jwt.secret-key=${JWT_SECRET}
 spring.datasource.password=${DATABASE_PASSWORD}
 ```
 
-**2. Use serviços de gerenciamento de secrets**:
+**2. Use serviços de gerenciamento de secrets** pela integração de configuração do Spring
+(`spring.config.import` com Spring Cloud AWS, Azure ou Vault), de modo que o segredo chegue como a
+propriedade `archbase.security.jwt.secret-key`. Um `@Bean String jwtSecret()` não serve: o
+`ArchbaseJwtService` lê a propriedade com `@Value`, não um bean.
 
-```java
-// AWS Secrets Manager
-@Configuration
-public class AwsSecretsConfig {
-
-    @Bean
-    public String jwtSecret() {
-        SecretsManagerClient client = SecretsManagerClient.create();
-        GetSecretValueRequest request = GetSecretValueRequest.builder()
-            .secretId("prod/archbase/jwt-secret")
-            .build();
-
-        GetSecretValueResponse response = client.getSecretValue(request);
-        return response.secretString();
-    }
-}
-```
-
-```java
-// Azure Key Vault
-@Configuration
-public class AzureKeyVaultConfig {
-
-    @Bean
-    public String jwtSecret() {
-        SecretClient client = new SecretClientBuilder()
-            .vaultUrl("https://myvault.vault.azure.net/")
-            .credential(new DefaultAzureCredentialBuilder().build())
-            .buildClient();
-
-        KeyVaultSecret secret = client.getSecret("jwt-secret");
-        return secret.getValue();
-    }
-}
-```
-
-**3. Gere chaves fortes** (mínimo 256 bits):
+**3. Gere chaves no formato certo.** A chave é **decodificada como Base64 padrão** e precisa dar pelo
+menos 32 bytes (HS256):
 
 ```bash
-# OpenSSL (recomendado)
-openssl rand -base64 32
-
-# Python
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+# OpenSSL (recomendado): 48 bytes aleatórios em Base64
+openssl rand -base64 48
 
 # Node.js
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-
-# Resultado exemplo:
-# Kj7xYz2Qw9Lp4MnVbBcXfGhTrEwQaZsXdCvF
+node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"
 ```
 
-**4. Rotacione chaves periodicamente**:
+Não use `secrets.token_urlsafe()` do Python nem texto livre: o alfabeto URL-safe (`-`, `_`) é recusado
+pelo decoder, e uma string curta dá menos de 32 bytes depois de decodificada. Em ambos os casos a
+emissão de token falha.
 
-```java
-@Service
-public class KeyRotationService {
-
-    // Suporta múltiplas chaves para transição suave
-    private final List<String> activeKeys;
-
-    public String getCurrentKey() {
-        return activeKeys.get(0);  // Chave mais recente
-    }
-
-    public List<String> getValidationKeys() {
-        return activeKeys;  // Valida com todas as chaves ativas
-    }
-
-    @Scheduled(cron = "0 0 0 1 * ?")  // Todo primeiro dia do mês
-    public void rotateKeys() {
-        String newKey = generateNewKey();
-        activeKeys.add(0, newKey);
-
-        // Manter apenas últimas 2 chaves
-        if (activeKeys.size() > 2) {
-            activeKeys.remove(activeKeys.size() - 1);
-        }
-
-        updateKeyInSecretsManager(newKey);
-    }
-}
-```
+**4. Rotação de chave.** O framework valida com **uma** chave. Trocar `secret-key` invalida todos os
+tokens emitidos, e os usuários precisam entrar de novo. Planeje a troca para uma janela de manutenção;
+não existe validação com várias chaves ativas.
 
 ---
 
@@ -632,10 +566,12 @@ public class SwaggerConfigProd {
 
 **Opção 2**: Proteger com autenticação
 
-```java
-.requestMatchers("/swagger-ui/**", "/v3/api-docs/**")
-    .hasRole("ADMIN")  // Apenas admins podem acessar
+```properties
+# Tira o Swagger da lista pública: passa a exigir autenticação (padrão: true = público)
+archbase.security.public-paths.swagger=false
 ```
+
+Não use `.hasRole("ADMIN")` numa cadeia própria: `getAuthorities()` do usuário é vazio e a regra nega sempre.
 
 ---
 
@@ -716,259 +652,73 @@ http.headers(headers -> headers
 
 ### 3.1 Propagação de Contexto
 
-O contexto de tenant deve ser propagado corretamente em toda a aplicação.
+**Não escreva um filtro de tenant próprio.** O `ArchbaseJwtAuthenticationFilter` já define e limpa o
+`ArchbaseTenantContext` em toda requisição, e um filtro anterior a ele que lesse `X-TENANT-ID` do cliente
+abriria troca de tenant por cabeçalho forjado.
 
-#### Filtro de Contexto
+O que o framework faz:
 
-**Sempre** defina e limpe o contexto adequadamente:
+- **O tenant do token é a fonte de verdade.** Depois de autenticar, o contexto é alinhado ao tenant do
+  token. Um `X-TENANT-ID` diferente é recusado com **403** (log `Acesso cross-tenant NEGADO`); com token de
+  IdP externo, o corpo traz `TENANT_MISMATCH`.
+- **Sem token** (rota pública), vale o `X-TENANT-ID` — e, com `archbase.app.tenant.accept-query-param=true`
+  (padrão), também o parâmetro de query. Desligue o parâmetro em produção.
+- `archbase.app.tenant.fail-on-missing=true` recusa requisição sem tenant em vez de seguir com contexto vazio.
+- `ArchbaseTenantContext` guarda só **tenant e empresa**; não existe projeto no contexto.
 
-```java
-@Component
-@Order(Ordered.HIGHEST_PRECEDENCE)
-public class TenantContextFilter implements Filter {
+#### Empresa (`X-COMPANY-ID`): ligue a conferência
 
-    private static final Logger log = LoggerFactory.getLogger(TenantContextFilter.class);
+> **Atenção.** Por padrão, o `X-COMPANY-ID` (cabeçalho ou query) vai para o contexto **sem conferir se o
+> usuário pertence àquela empresa**. Ele alimenta o `companyFilter` do Hibernate e o escopo de empresa do
+> `@HasPermission`: um usuário com permissão sem escopo de empresa que troque o cabeçalho lê os dados de outra
+> empresa do mesmo tenant.
 
-    @Override
-    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
-            throws IOException, ServletException {
-        HttpServletRequest httpRequest = (HttpServletRequest) request;
-
-        try {
-            // Extrair contexto de headers ou token JWT
-            String tenantId = extractTenantId(httpRequest);
-            String companyId = extractCompanyId(httpRequest);
-            String projectId = extractProjectId(httpRequest);
-
-            // Validar contexto
-            if (tenantId == null) {
-                throw new SecurityException("Tenant ID obrigatório");
-            }
-
-            // Definir contexto
-            ArchbaseTenantContext.setTenantId(tenantId);
-            ArchbaseTenantContext.setCompanyId(companyId);
-            ArchbaseTenantContext.setProjectId(projectId);
-
-            log.debug("Contexto definido: tenant={}, company={}, project={}",
-                tenantId, companyId, projectId);
-
-            chain.doFilter(request, response);
-        } finally {
-            // SEMPRE limpar contexto no finally
-            ArchbaseTenantContext.clear();
-            log.debug("Contexto limpo");
-        }
-    }
-
-    private String extractTenantId(HttpServletRequest request) {
-        // Prioridade 1: Header HTTP
-        String tenantId = request.getHeader("X-Tenant-ID");
-
-        if (tenantId != null) {
-            return tenantId;
-        }
-
-        // Prioridade 2: Token JWT
-        String token = extractJwtToken(request);
-        if (token != null) {
-            return extractTenantFromToken(token);
-        }
-
-        // Prioridade 3: Parâmetro de query (apenas para casos específicos)
-        return request.getParameter("tenantId");
-    }
-
-    private String extractCompanyId(HttpServletRequest request) {
-        String companyId = request.getHeader("X-Company-ID");
-        if (companyId != null) {
-            return companyId;
-        }
-
-        String token = extractJwtToken(request);
-        if (token != null) {
-            return extractCompanyFromToken(token);
-        }
-
-        return null;
-    }
-
-    private String extractProjectId(HttpServletRequest request) {
-        return request.getHeader("X-Project-ID");
-    }
-}
-```
-
----
-
-### 3.2 Validação de Tenant
-
-Valide que o usuário autenticado pertence ao tenant requisitado.
-
-#### Validator Service
+Se a aplicação usa empresa como fronteira de dados, registre um `ArchbaseCompanyAccessResolver` — o vínculo
+usuário–empresa é do seu domínio — e ligue a conferência:
 
 ```java
 @Component
-public class TenantValidator {
+@RequiredArgsConstructor
+public class EmpresasDoUsuario implements ArchbaseCompanyAccessResolver {
 
-    @Autowired
-    private UserRepository userRepository;
+    private final UserCompanyRepository memberships; // repositório da aplicação
 
-    /**
-     * Valida se usuário pertence ao tenant requisitado
-     */
-    public void validateUserBelongsToTenant(String userId, String requestedTenantId) {
-        UserEntity user = userRepository.findById(userId)
-            .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
-
-        if (!user.getTenantId().equals(requestedTenantId)) {
-            throw new SecurityException(
-                String.format("Usuário %s não pertence ao tenant %s", userId, requestedTenantId)
-            );
-        }
-    }
-
-    /**
-     * Valida se usuário tem acesso à empresa requisitada
-     */
-    public void validateUserHasAccessToCompany(String userId, String companyId) {
-        UserEntity user = userRepository.findById(userId)
-            .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
-
-        // Verificar se usuário pertence à empresa
-        boolean hasAccess = user.getCompanies().stream()
-            .anyMatch(company -> company.getId().equals(companyId));
-
-        if (!hasAccess) {
-            throw new SecurityException(
-                String.format("Usuário %s não tem acesso à empresa %s", userId, companyId)
-            );
-        }
-    }
-
-    /**
-     * Valida contexto completo
-     */
-    public void validateContext(String userId, String tenantId, String companyId) {
-        validateUserBelongsToTenant(userId, tenantId);
-
-        if (companyId != null) {
-            validateUserHasAccessToCompany(userId, companyId);
-        }
+    @Override
+    public boolean canAccess(UserEntity user, String companyId) {
+        return memberships.existsByUserIdAndCompanyId(user.getId(), companyId);
     }
 }
 ```
 
-#### Uso em Controllers
-
-```java
-@RestController
-@RequestMapping("/api/v1/orders")
-public class OrderController {
-
-    @Autowired
-    private TenantValidator tenantValidator;
-
-    @GetMapping
-    public List<OrderDTO> getOrders(@AuthenticationPrincipal UserDetails userDetails) {
-        String tenantId = ArchbaseTenantContext.getTenantId();
-        String companyId = ArchbaseTenantContext.getCompanyId();
-
-        // Validar contexto
-        tenantValidator.validateContext(userDetails.getUsername(), tenantId, companyId);
-
-        // Buscar pedidos (automaticamente filtrados por tenant)
-        return orderService.findAll();
-    }
-}
+```properties
+archbase.security.company.validation=warn      # mede: registra no log o que seria recusado
+# depois de conferir o log:
+archbase.security.company.validation=enforce   # 403 COMPANY_NOT_ALLOWED; anônimo tem a empresa descartada
 ```
+
+O filtro de autenticação faz a conferência para JWT próprio, token de API e token de IdP externo. Detalhes em
+[`deployment/security-hardening.md`](../../../deployment/security-hardening.md#empresa-no-cabeçalho-x-company-id).
 
 ---
 
-### 3.3 Operações Assíncronas
+### 3.2 Operações Assíncronas
 
-Use decorators para propagar contexto para threads assíncronas.
+Não é preciso escrever `TaskDecorator`. O `archbase-starter-multitenancy` registra o
+`ArchbaseTenantAwareTaskDecorator` (se não houver outro `TaskDecorator`), e o executor auto-configurado do
+Spring Boot o aplica. Ele copia tenant, empresa e o `SecurityContext` na submissão e **restaura** o estado
+anterior da thread do pool no fim.
 
-#### Task Decorator
-
-```java
-public class TenantAwareTaskDecorator implements TaskDecorator {
-
-    @Override
-    public Runnable decorate(Runnable runnable) {
-        // Capturar contexto da thread atual
-        String tenantId = ArchbaseTenantContext.getTenantId();
-        String companyId = ArchbaseTenantContext.getCompanyId();
-        String projectId = ArchbaseTenantContext.getProjectId();
-
-        // Retornar Runnable que propaga o contexto
-        return () -> {
-            try {
-                // Restaurar contexto na nova thread
-                ArchbaseTenantContext.setTenantId(tenantId);
-                ArchbaseTenantContext.setCompanyId(companyId);
-                ArchbaseTenantContext.setProjectId(projectId);
-
-                // Executar tarefa
-                runnable.run();
-            } finally {
-                // Limpar contexto
-                ArchbaseTenantContext.clear();
-            }
-        };
-    }
-}
-```
-
-#### Configuração Async
+- `archbase.multitenancy.async.propagate-security-context=false` deixa de copiar o usuário autenticado.
+- Executor criado à mão precisa do decorator explicitamente:
 
 ```java
-@Configuration
-@EnableAsync
-public class AsyncConfig implements AsyncConfigurer {
-
-    @Override
-    public Executor getAsyncExecutor() {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(5);
-        executor.setMaxPoolSize(10);
-        executor.setQueueCapacity(100);
-        executor.setThreadNamePrefix("async-");
-
-        // Configurar decorator para propagar contexto
-        executor.setTaskDecorator(new TenantAwareTaskDecorator());
-
-        executor.initialize();
-        return executor;
-    }
-
-    @Override
-    public AsyncUncaughtExceptionHandler getAsyncUncaughtExceptionHandler() {
-        return (ex, method, params) -> {
-            String tenantId = ArchbaseTenantContext.getTenantId();
-            log.error("Erro em execução assíncrona [tenant={}]: {}", tenantId, ex.getMessage(), ex);
-        };
-    }
-}
+ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+executor.setTaskDecorator(new ArchbaseTenantAwareTaskDecorator());
+executor.initialize();
 ```
 
-#### Uso com @Async
-
-```java
-@Service
-public class NotificationService {
-
-    @Async
-    public void sendNotification(String userId, String message) {
-        // Contexto de tenant automaticamente propagado
-        String tenantId = ArchbaseTenantContext.getTenantId();
-
-        log.info("Enviando notificação para usuário {} no tenant {}", userId, tenantId);
-
-        // Implementação...
-    }
-}
-```
+- Tarefa `@Scheduled` não tem requisição: defina o tenant você mesmo, para cada tenant processado, e limpe
+  no `finally`.
 
 ---
 
@@ -1013,266 +763,49 @@ archbase.security.jwt.refresh-expiration=604800000   # 7 dias
 
 ### 4.2 Revogação de Tokens
 
-Sempre revogue tokens em situações de segurança.
+O framework já revoga nos casos comuns. Use os mecanismos dele em vez de reescrever o serviço:
 
-#### Service de Revogação
+| Situação | Como |
+|----------|------|
+| Logout | `POST /api/v1/auth/logout` (`archbase.security.logout.enabled=true`, padrão) revoga o token da requisição |
+| Troca de senha | `archbase.security.password-change.revoke-sessions=true` revoga todas as sessões do usuário (padrão `false`) |
+| Novo login sem multilogin | Se o usuário não tem `BO_PERMITE_MULTIPLICOS_LOGINS`, as sessões anteriores são revogadas |
+| Atividade suspeita, desativação | Chame `AccessTokenJpaRepository.revokeAllTokensOfUser(userId)` dentro de uma transação |
+| Um token específico | `AccessTokenJpaRepository.revokeTokenByValue(token)` |
 
-```java
-@Service
-public class TokenRevocationService {
-
-    @Autowired
-    private AccessTokenJpaRepository tokenRepository;
-
-    /**
-     * Revoga todos os tokens de um usuário
-     */
-    @Transactional
-    public void revokeAllUserTokens(String userId) {
-        List<AccessTokenEntity> tokens = tokenRepository.findAllValidTokenByUserId(userId);
-
-        tokens.forEach(token -> {
-            token.setRevoked(true);
-            token.setExpired(true);
-        });
-
-        tokenRepository.saveAll(tokens);
-
-        log.warn("Todos os tokens do usuário {} foram revogados", userId);
-    }
-
-    /**
-     * Revoga um token específico
-     */
-    @Transactional
-    public void revokeToken(String tokenValue) {
-        AccessTokenEntity token = tokenRepository.findByToken(tokenValue)
-            .orElseThrow(() -> new RuntimeException("Token não encontrado"));
-
-        token.setRevoked(true);
-        tokenRepository.save(token);
-
-        log.info("Token revogado: {}", tokenValue);
-    }
-
-    /**
-     * Revoga todos os tokens exceto o atual
-     */
-    @Transactional
-    public void revokeOtherTokens(String userId, String currentToken) {
-        List<AccessTokenEntity> tokens = tokenRepository.findAllValidTokenByUserId(userId);
-
-        tokens.stream()
-            .filter(token -> !token.getToken().equals(currentToken))
-            .forEach(token -> {
-                token.setRevoked(true);
-                token.setExpired(true);
-            });
-
-        tokenRepository.saveAll(tokens);
-
-        log.info("Outros tokens do usuário {} foram revogados", userId);
-    }
-}
-```
-
-#### Cenários de Revogação
-
-```java
-@Service
-public class SecurityEventService {
-
-    @Autowired
-    private TokenRevocationService revocationService;
-
-    /**
-     * Logout: revoga token atual
-     */
-    public void handleLogout(String userId, String token) {
-        revocationService.revokeToken(token);
-    }
-
-    /**
-     * Mudança de senha: revoga todos os tokens
-     */
-    public void handlePasswordChange(String userId) {
-        revocationService.revokeAllUserTokens(userId);
-    }
-
-    /**
-     * Atividade suspeita: revoga todos os tokens
-     */
-    public void handleSuspiciousActivity(String userId) {
-        revocationService.revokeAllUserTokens(userId);
-
-        // Bloquear conta temporariamente
-        userService.lockAccount(userId);
-
-        // Notificar usuário
-        notificationService.sendSecurityAlert(userId);
-    }
-
-    /**
-     * Desativação de conta: revoga todos os tokens
-     */
-    public void handleAccountDeactivation(String userId) {
-        revocationService.revokeAllUserTokens(userId);
-        userService.deactivateAccount(userId);
-    }
-
-    /**
-     * Troca de dispositivo: revoga tokens antigos
-     */
-    public void handleDeviceChange(String userId, String newToken) {
-        revocationService.revokeOtherTokens(userId, newToken);
-    }
-}
-```
+`revokeAllTokensOfUser` e `revokeTokenByValue` são consultas nativas em lote: não carregue os tokens e
+salve um a um. Ao desativar um usuário, revogue também os tokens dele: não conte com a desativação
+sozinha para encerrar sessões abertas.
 
 ---
 
 ### 4.3 Limpeza de Tokens Expirados
 
-Implemente jobs periódicos para limpar tokens antigos e manter performance do banco.
+Ligue o job do framework em vez de escrever um:
 
-#### Job de Limpeza
-
-```java
-@Component
-public class TokenCleanupJob {
-
-    private static final Logger log = LoggerFactory.getLogger(TokenCleanupJob.class);
-
-    @Autowired
-    private AccessTokenJpaRepository tokenRepository;
-
-    /**
-     * Executa limpeza diariamente às 2h da manhã
-     */
-    @Scheduled(cron = "0 0 2 * * ?")
-    @Transactional
-    public void cleanupExpiredTokens() {
-        log.info("Iniciando limpeza de tokens expirados");
-
-        // Remover tokens expirados há mais de 30 dias
-        LocalDateTime cutoffDate = LocalDateTime.now().minusDays(30);
-        int deleted = tokenRepository.deleteExpiredTokensOlderThan(cutoffDate);
-
-        log.info("Limpeza concluída: {} tokens expirados removidos", deleted);
-    }
-
-    /**
-     * Limpeza adicional de tokens revogados
-     */
-    @Scheduled(cron = "0 0 3 * * ?")
-    @Transactional
-    public void cleanupRevokedTokens() {
-        log.info("Iniciando limpeza de tokens revogados");
-
-        // Remover tokens revogados há mais de 7 dias
-        LocalDateTime cutoffDate = LocalDateTime.now().minusDays(7);
-        int deleted = tokenRepository.deleteRevokedTokensOlderThan(cutoffDate);
-
-        log.info("Limpeza concluída: {} tokens revogados removidos", deleted);
-    }
-}
+```properties
+archbase.security.token.cleanup.enabled=true
+archbase.security.token.cleanup.cron=0 0 1 * * ?      # padrão: 1h da manhã
+archbase.security.token.cleanup.retention-days=30
 ```
 
-#### Repository Methods
-
-```java
-@Repository
-public interface AccessTokenJpaRepository extends JpaRepository<AccessTokenEntity, String> {
-
-    @Modifying
-    @Query("DELETE FROM AccessTokenEntity t WHERE t.expired = true AND t.updatedAt < :cutoffDate")
-    int deleteExpiredTokensOlderThan(@Param("cutoffDate") LocalDateTime cutoffDate);
-
-    @Modifying
-    @Query("DELETE FROM AccessTokenEntity t WHERE t.revoked = true AND t.updatedAt < :cutoffDate")
-    int deleteRevokedTokensOlderThan(@Param("cutoffDate") LocalDateTime cutoffDate);
-}
-```
+A aplicação precisa ter `@EnableScheduling`.
 
 ---
 
-### 4.4 Auditoria de Tokens
+### 4.4 Auditoria
 
-Mantenha logs de criação, uso e revogação de tokens para auditoria de segurança.
+A trilha de eventos de segurança do framework registra `LOGIN`, `LOGIN_FALHOU`, `LOGOUT`, `ACESSO_NEGADO`
+e `SIMULACAO` na tabela `SEGURANCA_EVENTO`:
 
-#### Aspect para Auditoria
-
-```java
-@Aspect
-@Component
-public class TokenAuditAspect {
-
-    private static final Logger log = LoggerFactory.getLogger(TokenAuditAspect.class);
-
-    @Autowired
-    private AuditLogRepository auditRepository;
-
-    /**
-     * Audita criação de tokens
-     */
-    @AfterReturning(
-        pointcut = "execution(* br.com.archbase.security.service.ArchbaseAuthenticationService.authenticate(..))",
-        returning = "response"
-    )
-    public void auditTokenCreation(AuthenticationResponse response) {
-        UserEntity user = response.getUser();
-
-        log.info("Token criado: usuário={}, email={}, expiração={}",
-            user.getId(),
-            user.getEmail(),
-            response.getExpirationTime());
-
-        auditRepository.save(AuditLog.builder()
-            .action("TOKEN_CREATED")
-            .userId(user.getId())
-            .tenantId(user.getTenantId())
-            .details(String.format("Token criado com expiração em %s", response.getExpirationTime()))
-            .timestamp(LocalDateTime.now())
-            .build());
-    }
-
-    /**
-     * Audita revogação de tokens
-     */
-    @AfterReturning("execution(* TokenRevocationService.revokeAllUserTokens(..))")
-    public void auditTokenRevocation(JoinPoint joinPoint) {
-        String userId = (String) joinPoint.getArgs()[0];
-
-        log.warn("Todos os tokens revogados: usuário={}", userId);
-
-        auditRepository.save(AuditLog.builder()
-            .action("TOKENS_REVOKED")
-            .userId(userId)
-            .severity("HIGH")
-            .details("Todos os tokens do usuário foram revogados")
-            .timestamp(LocalDateTime.now())
-            .build());
-    }
-
-    /**
-     * Audita falhas de validação de tokens
-     */
-    @AfterThrowing(
-        pointcut = "execution(* JwtService.validateToken(..))",
-        throwing = "exception"
-    )
-    public void auditTokenValidationFailure(JoinPoint joinPoint, Exception exception) {
-        log.error("Falha na validação de token: {}", exception.getMessage());
-
-        auditRepository.save(AuditLog.builder()
-            .action("TOKEN_VALIDATION_FAILED")
-            .severity("MEDIUM")
-            .details(exception.getMessage())
-            .timestamp(LocalDateTime.now())
-            .build());
-    }
-}
+```properties
+archbase.security.audit.enabled=true
+archbase.security.audit.tenant-scoped=true     # leitura restrita ao tenant de quem consulta
+archbase.security.audit.retention-months=12
 ```
+
+A consulta é `GET /api/v1/security/audit/events`. Com `audit.tenant-scoped=false` (padrão, por
+compatibilidade), um administrador de um tenant lê os eventos de todos — ligue-o.
 
 ---
 
@@ -1282,29 +815,27 @@ public class TokenAuditAspect {
 - Use nomenclatura clara (UPPER_SNAKE_CASE para recursos)
 - Mantenha granularidade equilibrada
 - Componha permissões em perfis e grupos
-- Use permissões contextuais (tenantId, companyId, projectId)
+- Estreite por empresa na permissão concedida, não na anotação
 
 ### Configuração de Segurança
 - Nunca hardcode secrets
 - Use variáveis de ambiente ou gerenciadores de secrets
-- Gere chaves fortes (mínimo 256 bits)
+- Gere a chave JWT com `openssl rand -base64 48` (Base64 padrão, >= 32 bytes)
 - Configure CORS restritivo em produção
 - Force HTTPS em produção
 - Seja explícito sobre endpoints públicos
 
 ### Multi-Tenancy
-- Sempre defina e limpe contexto corretamente
-- Use filtros com finally blocks
-- Valide que usuário pertence ao tenant
-- Propague contexto para operações assíncronas
-- Use TaskDecorator para threads assíncronas
+- Não escreva filtro de tenant: o tenant do token é a fonte de verdade
+- Com empresa como fronteira de dados, registre `ArchbaseCompanyAccessResolver` e ligue `company.validation`
+- Desligue `archbase.app.tenant.accept-query-param` e ligue `fail-on-missing` em produção
+- Use o `ArchbaseTenantAwareTaskDecorator` em executores criados à mão
 
 ### Gerenciamento de Tokens
 - Configure TTLs apropriados ao ambiente
-- Revogue tokens em situações de segurança
-- Implemente limpeza periódica de tokens
-- Mantenha auditoria de criação e revogação
-- Monitore falhas de validação
+- Ligue `password-change.revoke-sessions` e revogue com `revokeAllTokensOfUser` ao desativar
+- Ligue `token.cleanup.enabled` em vez de escrever um job
+- Ligue `audit.enabled` e `audit.tenant-scoped`
 
 ---
 

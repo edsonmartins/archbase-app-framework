@@ -68,7 +68,13 @@ class ResetDeSenhaNaoEnumeraUsuariosTest {
                 continue;
             }
             if (ReflectionTestUtils.getField(service, campo.getName()) == null) {
-                ReflectionTestUtils.setField(service, campo.getName(), mock(campo.getType()));
+                // Coleção opcional de SPI (ex.: políticas de credencial local) vira lista vazia, que é o
+                // que o Spring injeta quando a aplicação não registra nenhum bean. Um mock de List
+                // devolve iterator() nulo e estouraria NPE, que o teste confundiria com o comportamento.
+                Object valor = java.util.List.class.equals(campo.getType())
+                        ? java.util.List.of()
+                        : mock(campo.getType());
+                ReflectionTestUtils.setField(service, campo.getName(), valor);
             }
         }
 

@@ -1,4 +1,7 @@
-# Endurecimento de segurança — migração para 3.1.1
+# Endurecimento de segurança — o que ligar
+
+> Documento iniciado na 3.1.1 e mantido até a 3.5.0. As seções seguem a ordem em que as proteções
+> entraram; a [referência rápida](#referência-rápida-para-produção) logo abaixo reúne todas as chaves.
 
 > **Se você está em 3.1.0, atualize.** Aquela versão saiu com dois defeitos graves,
 > corrigidos aqui: o logout não revogava nada para usuário fora do tenant padrão
@@ -14,6 +17,92 @@ com default compatível.
 Isso é intencional — permite atualizar sem risco e virar as chaves depois, uma a uma, com o
 frontend acompanhando. Mas significa que **subir a versão nova não realiza o ganho de segurança**.
 Este documento é a lista do que ligar.
+
+---
+
+## Referência rápida para produção
+
+Todas as chaves de segurança, com o padrão (compatível) e o valor recomendado. Cada uma é detalhada
+mais abaixo; as marcadas com ⚠ exigem preparo antes de virar.
+
+| Chave | Padrão | Produção | Observação |
+|---|---|---|---|
+| `archbase.security.admin-endpoints.policy` | `permit` | `admin-only` | ⚠ incompatível com o auto-registro de telas do archbase-react; ver Passo 1 |
+| `archbase.security.public-paths.actuator` | `true` | `false` | Exponha só `/actuator/health` via `whitelist` |
+| `archbase.security.public-paths.registration` | `true` | `false` | Auto-cadastro anônimo |
+| `archbase.security.public-paths.swagger` | `true` | `false` | Swagger/OpenAPI público |
+| `archbase.security.public-paths.static-files` | `true` | conforme o caso | Libera `/api/files/**`, `/static/**` e `/*.html`, `/*.png`, `/*.jpg`, `/*.jpeg`. **Se a aplicação serve arquivos de usuário em `/api/files/**`, eles ficam públicos** |
+| `archbase.security.public-paths.legacy-app-routes` | `true` | `false` | Deprecado; mova as rotas para `whitelist` |
+| `archbase.security.require-role.no-resolver-policy` | `permit` | `deny` | ⚠ exige bean `ArchbaseRoleResolver` |
+| `archbase.security.prevent-user-enumeration` | `false` | `true` | ⚠ frontend precisa da mensagem neutra |
+| `archbase.security.jwt.accept-token-query-param` | `true` | `false` | ⚠ downloads e SSE costumam usar `?token=` |
+| `archbase.security.jwt.strict-token-use` | `false` | `true` | ⚠ só depois de `refresh-expiration` desde o deploy |
+| `archbase.security.api-token.hash-enabled` | `true` | `true` | `false` grava o token em claro |
+| `archbase.security.api-token.hash-migration-enabled` | `true` | `true` | Calcula o hash dos tokens antigos na subida |
+| `archbase.security.api-token.purge-plaintext` | `false` | `true` | ⚠ **irreversível**; num segundo deploy |
+| `archbase.security.password-change.revoke-sessions` | `false` | `true` | Troca de senha desloga as outras sessões |
+| `archbase.security.password.*` | tudo desligado | política da empresa | `min-length`, `require-*`, `block-common`, `expiration-days` |
+| `archbase.security.rate-limit.enabled` | `true` | `true` | `max-attempts=10`, `window-seconds=900`, `block-seconds=900` |
+| `archbase.security.rate-limit.discovery.*` | `200` / `300 s` | padrão | Limite próprio do `GET /auth/tenants` |
+| `archbase.security.client-ip.trust-forwarded-for` | `false` | `true` **só** atrás de proxy que sobrescreve o cabeçalho | Ver "Se você roda atrás de proxy" |
+| `archbase.app.tenant.fail-on-missing` | `false` | `true` | ⚠ todo acesso legítimo precisa carregar tenant |
+| `archbase.app.tenant.accept-query-param` | `true` | `false` | Tenant/empresa por query string |
+| `archbase.security.company.validation` | `off` | `enforce` | ⚠ exige bean `ArchbaseCompanyAccessResolver`; ligue `warn` antes |
+| `archbase.security.audit.enabled` | `false` | `true` | Trilha em `SEGURANCA_EVENTO`; `audit.retention-months=12` |
+| `archbase.security.audit.tenant-scoped` | `false` | `true` | Sem ele, admin de um tenant lê eventos de todos |
+| `archbase.security.token.cleanup.enabled` | `false` | `true` | Purga tokens expirados (`retention-days=30`); exige `@EnableScheduling` |
+| `archbase.security.permission.require-active` | `false` | `true` | ⚠ leia o relatório de concessões a ações inativas antes |
+| `archbase.security.access-level.enabled` | `false` | conforme o caso | Portão LEVEL |
+| `archbase.security.diagnostics.enabled` | `false` | `false` | Ligue durante a migração; exige administrador |
+| `archbase.security.hardening.validation` | `fail` | `fail` | Não sobe se uma proteção ligada não puder funcionar |
+| `archbase.security.crypto.key` | vazio | segredo | Chave AES do segredo MFA (Base64 de 16/24/32 bytes); vazia, ativar MFA falha |
+| `archbase.security.jwt.secret-key` | **obrigatória** | segredo | Base64 padrão de ≥ 32 bytes (`openssl rand -base64 48`) |
+| `archbase.security.cors.*` | **obrigatórias** | origens explícitas | Nunca `*` com `allow-credentials=true` |
+| `archbase.analytics.secret-validation` | `warn` | `fail` | Só com `archbase-analytics` |
+
+### Empresa no cabeçalho (`X-COMPANY-ID`)
+
+Até a 3.5.0, o `X-COMPANY-ID` (cabeçalho ou query) ia para o contexto **sem conferir se o usuário pertence à
+empresa**. Ele alimenta o `companyFilter` do Hibernate e o escopo de empresa do `@HasPermission`: um usuário com
+permissão sem escopo de empresa que troque o cabeçalho lê os dados de outra empresa do mesmo tenant.
+
+A conferência existe a partir da 3.5.0, desligada por padrão. Como o vínculo usuário–empresa é do domínio da
+aplicação, ela registra um `ArchbaseCompanyAccessResolver`:
+
+```java
+@Component
+public class EmpresasDoUsuario implements ArchbaseCompanyAccessResolver {
+    private final VinculoEmpresaRepository vinculos;
+
+    @Override
+    public boolean canAccess(UserEntity user, String companyId) {
+        return vinculos.existsByUsuarioIdAndEmpresaId(user.getId(), companyId);
+    }
+}
+```
+
+```properties
+# off (padrão) | warn | enforce
+archbase.security.company.validation=warn
+```
+
+| Modo | Autenticado, empresa permitida | Autenticado, empresa alheia | Anônimo (rota pública) |
+|---|---|---|---|
+| `off` | segue | segue (como antes) | segue com a empresa |
+| `warn` | segue | segue, com WARN no log | segue, com WARN |
+| `enforce` | segue | **403 `COMPANY_NOT_ALLOWED`** | empresa **descartada** do contexto |
+
+Vale para JWT próprio, token de API e token de IdP externo. Com `enforce`, principal que não é usuário local,
+resolver que lança exceção ou ausência de resolver contam como recusa — e sem resolver a aplicação não sobe.
+Ligue `warn` primeiro e confira o log antes de virar para `enforce`.
+
+### IdP externo e Control Plane
+
+Os dois módulos são opt-in e têm validação própria na subida:
+
+- [`archbase-security-oidc`](../archbase-security-oidc/README.md) — tokens de IdP externo. Configuração
+  errada (algoritmo simétrico, `aud` ausente, emissor `http://`, fonte de tenant ambígua) **não sobe**.
+- [`archbase-controlplane`](../archbase-controlplane/README.md) — exige `archbase.app.tenant.fail-on-missing=true`.
 
 ---
 
@@ -409,7 +498,7 @@ idempotente (`if not exists` em tudo). Aplica-se sozinho em quem usa `archbase-s
 >
 > e aplique o DDL equivalente pelo versionamento do próprio projeto.
 
-Colunas adicionadas nesta versão:
+Colunas adicionadas a partir da 3.0.11:
 
 | Tabela | Coluna | Para quê |
 |---|---|---|
@@ -419,6 +508,15 @@ Colunas adicionadas nesta versão:
 | `seguranca_acao` | `minimum_level` | Piso da capacidade. Nula = sem piso |
 | `seguranca` | `access_level` | Nível do perfil. Só tem sentido nas linhas de perfil |
 | `seguranca_permissao` | `effect` | `GRANT` (inclusive quando nula) ou `DENY` |
+| `seguranca` | `employee_id` | Matrícula do funcionário (3.1.20) |
+| `seguranca_acao` | `rotulo` | Rótulo curto da capacidade (3.4) |
+| `seguranca_acao` | `categoria` | Agrupamento; a migration só passou a criá-la na 3.4.0 |
+| `seguranca_acao_dependencia` | *(tabela)* | Dependências informativas entre capacidades (3.4) |
+| `seguranca_evento`, `seguranca_revisao` | *(tabelas)* | Trilha de eventos e revisões (3.1.10). Exigidas por `validate` mesmo com a trilha desligada |
+
+Para **MySQL**, os scripts equivalentes estão em [`sql/`](sql/): `upgrade-2.x-para-3.x-mysql.sql` (todas as
+colunas e a tabela de dependências) e `auditoria-seguranca-mysql.sql` (trilha e revisões). Ver
+[upgrade-3.x-para-3.5.md](upgrade-3.x-para-3.5.md).
 
 As três últimas entram **nulas**, sem `not null` e sem backfill. Enquanto ninguém as preencher e
 nenhuma flag for ligada, a decisão de acesso é exatamente a de antes.
@@ -426,6 +524,9 @@ nenhuma flag for ligada, a decisão de acesso é exatamente a de antes.
 Quem **não** usa Flyway precisa garantir que as colunas existam **antes** de subir a versão nova:
 
 - com `spring.jpa.hibernate.ddl-auto=update`, o Hibernate as cria sozinho;
+- com `archbase.security.schema.mode=apply` (padrão desde a 3.1.12), o inicializador do framework cria
+  o que falta no dialeto do banco — mas ele roda **depois** da validação do Hibernate, então com
+  `validate` não chega a tempo (ver [esquema-de-seguranca.md](esquema-de-seguranca.md));
 - com `validate` ou `none`, aplique o DDL do arquivo acima manualmente. **Sem a coluna
   `token_hash`, toda autenticação por token de API para** — a consulta passa a referenciá-la
   sempre, e não há degradação graciosa aqui.

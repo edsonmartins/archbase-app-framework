@@ -93,6 +93,17 @@ public class ArchbaseAuthenticationService {
     private ArchbaseTenantInfoResolver tenantInfoResolver;
 
     /**
+     * Contas cuja senha não é do Archbase (ex.: vinculadas a IdP externo com senha local desligada). Vazio = toda
+     * conta usa senha local, como sempre foi. Ver {@link br.com.archbase.security.spi.ArchbaseLocalCredentialPolicy}.
+     */
+    @Autowired(required = false)
+    private List<br.com.archbase.security.spi.ArchbaseLocalCredentialPolicy> localCredentialPolicies = List.of();
+
+    private boolean allowsLocalPassword(UserEntity user) {
+        return br.com.archbase.security.spi.ArchbaseLocalCredentialPolicy.allowsLocalPassword(localCredentialPolicies, user);
+    }
+
+    /**
      * Faz o pedido de reset responder igual para e-mail cadastrado e não cadastrado.
      *
      * <p>Desligado por padrão porque muda o contrato do endpoint: hoje ele responde 400 com
@@ -119,6 +130,23 @@ public class ArchbaseAuthenticationService {
 
     @Transactional
     public void register(RegisterNewUser request) {
+        registerUser(request);
+    }
+
+    /**
+     * Cria o usuário e chama {@link AuthenticationBusinessDelegate#onUserRegistered} <b>uma vez</b>, com os dados do
+     * cadastro mais {@link RegisterNewUser#getAdditionalData()}.
+     * <p>
+     * O {@code /register} chamava o delegate duas vezes: aqui, com os dados básicos, e de novo no controller, com o
+     * {@code additionalData} — a entidade de negócio podia nascer duplicada, e a segunda falha devolvia 400 com o
+     * usuário já criado.
+     *
+     * @return o id devolvido pelo delegate; {@code null} sem delegate ou se ele falhar (o registro não falha por isso)
+     * @since 3.5.0
+     */
+    @Transactional
+    public String registerUser(RegisterNewUser request) {
+        String businessEntityId = null;
         Optional<UserEntity> byEmail = repository.findByEmail(request.getEmail());
         List<Group> groups = groupService.findByNames(request.getGroupNames());
         Optional<Profile> profile = userProfileService.findByName(request.getProfileName());
@@ -155,7 +183,7 @@ public class ArchbaseAuthenticationService {
             if (businessDelegate != null) {
                 try {
                     Map<String, Object> registrationData = createRegistrationDataMap(request);
-                    String businessEntityId = businessDelegate.onUserRegistered(createdUser.toDomain(), registrationData);
+                    businessEntityId = businessDelegate.onUserRegistered(createdUser.toDomain(), registrationData);
                     log.debug("Business delegate criou entidade de negócio com ID: {} para usuário: {}",
                             businessEntityId, createdUser.getEmail());
                 } catch (Exception e) {
@@ -167,6 +195,7 @@ public class ArchbaseAuthenticationService {
         } else {
             throw new ArchbaseValidationException("Usuário já existe.");
         }
+        return businessEntityId;
     }
 
     @Transactional
@@ -190,7 +219,7 @@ public class ArchbaseAuthenticationService {
                     tenant = (String) opts.get(0)[0];
                 } else if (opts.size() > 1) {
                     // Múltiplos tenants: o frontend deve exibir o seletor de tenant.
-                    throw new ArchbaseValidationException("Selecione o tenant para efetuar login");
+                    throw new br.com.archbase.security.exception.ArchbaseTenantSelectionRequiredException();
                 }
                 // Se vazio: mantém tenant nulo (caminho existente de "usuário não encontrado").
             }
@@ -212,6 +241,13 @@ public class ArchbaseAuthenticationService {
 
             var user = repository.findByEmail(request.getEmail())
                     .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
+
+            // Senha local desligada para esta conta (credencial é de outro provedor). Cai no mesmo
+            // tratamento de senha errada: resposta idêntica, contagem e trilha — dizer "use o IdP"
+            // revelaria que a conta existe e é federada.
+            if (!allowsLocalPassword(user)) {
+                throw new BadCredentialsException("Senha local desabilitada para esta conta");
+            }
 
             // Segundo fator (MFA): senha conferiu, mas falta o TOTP. Não emite tokens ainda —
             // devolve um desafio; o cliente completa em POST /auth/mfa/verify.
@@ -424,6 +460,35 @@ public class ArchbaseAuthenticationService {
      * de conta. O logout já havia sido migrado por exatamente este motivo; os demais chamadores
      * ficaram para trás.
      */
+    /**
+     * Sessão local para um usuário <b>já autenticado por um provedor externo</b> (troca de token do
+     * {@code archbase-security-oidc}). Não passa pela senha nem pelo MFA do Archbase: quem autenticou foi o IdP.
+     * <p>
+     * Diferente do login por senha, de propósito:
+     * <ul>
+     * <li>emite sempre um access token novo com {@code ttl} curto, em vez de reaproveitar um que ainda vale — o
+     * reaproveitado pode ter a validade longa do login local;</li>
+     * <li>não emite refresh token: quando o access vence, o cliente troca de novo com um token novo do IdP, e é o IdP
+     * quem decide se a sessão continua (usuário desligado lá deixa de renovar aqui).</li>
+     * </ul>
+     * Respeita a sessão única: sem {@code allowMultipleLogins}, as sessões anteriores são revogadas, como no login.
+     * <p>
+     * Não substitui nem altera {@link #authenticateWithoutPassword(String)}, que revoga todas as sessões.
+     *
+     * @since 3.5.0
+     */
+    @Transactional
+    public AuthenticationResponse issueExternalSession(UserEntity user, java.time.Duration ttl) {
+        if (Boolean.TRUE.equals(user.getAccountDeactivated()) || Boolean.TRUE.equals(user.getAccountLocked())) {
+            throw new BadCredentialsException("Conta de usuário inativa ou bloqueada");
+        }
+        if (!Boolean.TRUE.equals(user.getAllowMultipleLogins())) {
+            revokeAllUserTokens(user);
+        }
+        AccessTokenEntity accessToken = saveUserToken(user, jwtService.generateToken(user, ttl.toMillis()));
+        return buildAuthenticationResponse(accessToken, null, user);
+    }
+
     @Transactional
     public void revokeAllUserTokens(UserEntity user) {
         log.debug("Revogando todos os tokens válidos para o usuário {}", user.getEmail());
@@ -575,7 +640,9 @@ public class ArchbaseAuthenticationService {
         revokeExistingTokens(user);
         // Coluna nula (base legada) é tratada como "pode alterar": o padrão do cadastro é true e
         // negar o reset por ausência de dado trancaria o usuário fora da conta.
-        if (!Boolean.FALSE.equals(user.getAllowPasswordChange())) {
+        // Conta cuja senha é de outro provedor segue o mesmo caminho de quem não pode trocar a senha,
+        // inclusive a resposta uniforme — é a mesma situação vista de fora.
+        if (!Boolean.FALSE.equals(user.getAllowPasswordChange()) && allowsLocalPassword(user)) {
             try {
                 String passwordResetToken = createPasswordResetToken(user.toDomain());
                 archbaseEmailService.sendResetPasswordEmail(email, passwordResetToken, user.getUsername(), user.getName());
@@ -624,6 +691,13 @@ public class ArchbaseAuthenticationService {
     public void resetPassword(PasswordResetRequest request) {
         Optional<UserEntity> usuarioOptional = repository.findByEmail(request.getEmail());
         if(usuarioOptional.isEmpty()) {
+            if (preventUserEnumeration) {
+                // Mesma resposta de token errado, e a tentativa conta: "não encontrado" aqui desfazia a
+                // proteção que o envio do e-mail (sendResetPasswordEmail) já dava.
+                rateLimiter.recordFailure(ArchbaseAuthRateLimiter.key("reset", request.getEmail()));
+                log.info("Redefinição de senha para e-mail não cadastrado (resposta uniforme)");
+                throw new ArchbaseValidationException("Token de redefinição de senha inválido.");
+            }
             throw new ArchbaseValidationException(String.format("Usuário com email %s não foi encontrado.", request.getEmail()));
         }
         UserEntity user = usuarioOptional.get();
@@ -654,6 +728,11 @@ public class ArchbaseAuthenticationService {
 
         if (token.isRevoked()) {
             throw new ArchbaseValidationException("Token de redefinição de senha inválido, favor utilizar o token mais recente.");
+        }
+
+        if (!allowsLocalPassword(user)) {
+            // Token emitido antes de a senha local ser desligada para esta conta.
+            throw new ArchbaseValidationException("A senha deste usuário é gerenciada por outro provedor de identidade.");
         }
 
         passwordStrengthPolicy.validate(request.getNewPassword());
@@ -868,6 +947,17 @@ public class ArchbaseAuthenticationService {
             throw new BadCredentialsException("Conta de usuário inativa ou bloqueada");
         }
 
+        // O provedor social substitui a SENHA, não o segundo fator. Sem esta checagem, quem ativou MFA
+        // tinha o segundo fator contornado por qualquer login social com o mesmo e-mail. Mesmo desafio
+        // do login por senha; o cliente completa em POST /auth/mfa/verify.
+        if (mfaService != null && mfaService.isMfaEnabled(user)) {
+            log.debug("MFA requerido para usuário {} no login sem senha, emitindo desafio", user.getEmail());
+            return AuthenticationResponse.builder()
+                    .mfaRequired(true)
+                    .challengeToken(jwtService.generateMfaChallengeToken(user).token())
+                    .build();
+        }
+
         // Revogar tokens antigos
         revokeAllUserTokens(user);
 
@@ -943,6 +1033,11 @@ public class ArchbaseAuthenticationService {
      */
     private Map<String, Object> createRegistrationDataMap(RegisterNewUser request) {
         Map<String, Object> data = new HashMap<>();
+        // Os dados da aplicação entram primeiro: os campos do cadastro, gravados abaixo, prevalecem numa colisão
+        // de chave — o delegate não pode ler um "email" ou "isAdministrator" diferente do que foi gravado.
+        if (request.getAdditionalData() != null) {
+            data.putAll(request.getAdditionalData());
+        }
         data.put("name", request.getName());
         data.put("description", request.getDescription());
         data.put("email", request.getEmail());

@@ -44,7 +44,10 @@ public class ArchbaseTenantRequestInterceptor implements HandlerInterceptor {
             ArchbaseTenantContext.setTenantId(tenantId);
         }
 
-        if (companyId != null && !companyId.isEmpty()) {
+        // O filtro de segurança descartou a empresa (conferência ligada, requisição anônima): relê-la do
+        // cabeçalho aqui desfaria a decisão.
+        if (companyId != null && !companyId.isEmpty()
+                && !Boolean.TRUE.equals(request.getAttribute(ArchbaseTenantContext.COMPANY_DISCARDED_ATTRIBUTE))) {
             ArchbaseTenantContext.setCompanyId(companyId);
         }
 

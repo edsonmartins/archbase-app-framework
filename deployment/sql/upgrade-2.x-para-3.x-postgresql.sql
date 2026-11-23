@@ -37,7 +37,7 @@ ALTER TABLE seguranca ADD COLUMN IF NOT EXISTS mfa_recovery_codes varchar(2048);
 -- Ação: nível mínimo exigido, gravado no primeiro registro da ação.
 ALTER TABLE seguranca_acao ADD COLUMN IF NOT EXISTS minimum_level varchar(30);
 
--- Permissão: ALLOW ou DENY. Nulo continua valendo como concessão — o comportamento de antes.
+-- Permissão: GRANT ou DENY. Nulo continua valendo como concessão — o comportamento de antes.
 ALTER TABLE seguranca_permissao ADD COLUMN IF NOT EXISTS effect varchar(10);
 
 -- Token de acesso: distingue access de refresh. As linhas existentes ficam nulas e seguem sendo
@@ -51,3 +51,42 @@ ALTER TABLE seguranca_token_api ADD COLUMN IF NOT EXISTS token_hash varchar(64);
 -- A coluna token deixou de ser obrigatória na entidade. É o que permite, mais adiante, apagar o
 -- valor em claro sem violar a restrição; sem isto, ligar o purge quebra a gravação.
 ALTER TABLE seguranca_token_api ALTER COLUMN token DROP NOT NULL;
+
+-- ---------------------------------------------------------------------------------------------
+-- Adições posteriores à 3.0 (3.1.20 e 3.4). Necessárias para quem vai do 2.x direto para 3.4+.
+-- ---------------------------------------------------------------------------------------------
+
+-- Usuário: matrícula do funcionário (3.1.20). Opcional e sem índice único.
+ALTER TABLE seguranca ADD COLUMN IF NOT EXISTS employee_id varchar(60);
+
+-- Ação: rótulo curto da capacidade (3.4). Nulo = usa a descrição.
+ALTER TABLE seguranca_acao ADD COLUMN IF NOT EXISTS rotulo varchar(120);
+
+-- Dependências entre capacidades (3.4). Informativa: a decisão de acesso não lê esta tabela.
+CREATE TABLE IF NOT EXISTS seguranca_acao_dependencia (
+    id_dependencia         varchar(40)  not null,
+    cd_dependencia         varchar(40),
+    tenant_id              varchar(40),
+    id_acao                varchar(40)  not null,
+    capacidade_requerida   varchar(200) not null,
+    id_acao_requerida      varchar(40),
+    declarada_por          varchar(20)  not null,
+    versao                 bigint,
+    dh_criacao             timestamp(6),
+    usuario_criou          varchar(255),
+    dh_atualizacao         timestamp(6),
+    ultimo_usuario_alterou varchar(255),
+    constraint pk_seguranca_acao_dependencia primary key (id_dependencia),
+    constraint fk_seguranca_acao_dependencia_acao
+        foreign key (id_acao) references seguranca_acao (id_acao),
+    constraint fk_seguranca_acao_dependencia_requerida
+        foreign key (id_acao_requerida) references seguranca_acao (id_acao)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_seguranca_acao_dependencia
+    ON seguranca_acao_dependencia (tenant_id, id_acao, capacidade_requerida);
+CREATE INDEX IF NOT EXISTS idx_seguranca_acao_dependencia_acao
+    ON seguranca_acao_dependencia (id_acao);
+
+-- As tabelas seguranca_evento e seguranca_revisao (trilha e revisões) vêm de
+-- auditoria-seguranca-postgresql.sql. Com ddl-auto=validate elas são exigidas mesmo com a trilha
+-- desligada: rode aquele script também.
