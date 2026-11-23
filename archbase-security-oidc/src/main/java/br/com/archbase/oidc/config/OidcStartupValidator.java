@@ -112,7 +112,8 @@ public final class OidcStartupValidator {
         for (String[] url : new String[][]{
                 {"issuer", provider.getIssuer()},
                 {"issuer-pattern", provider.getIssuerPattern()},
-                {"jwks-uri", provider.getJwksUri()}}) {
+                {"jwks-uri", provider.getJwksUri()},
+                {"logout.end-session-uri", provider.getLogout().getEndSessionUri()}}) {
             if (!blank(url[1]) && !url[1].startsWith("https://")) {
                 errors.add(at + "." + url[0] + ": precisa ser https:// (allow-insecure-http só em desenvolvimento)");
             }

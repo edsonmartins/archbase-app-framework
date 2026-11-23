@@ -73,6 +73,11 @@ public class ArchbaseOidcProperties {
         private final Users users = new Users();
         private final RoleMapping roleMapping = new RoleMapping();
         private final Introspection introspection = new Introspection();
+        private final Logout logout = new Logout();
+
+        public Logout getLogout() {
+            return logout;
+        }
 
         public RoleMapping getRoleMapping() {
             return roleMapping;
@@ -421,6 +426,23 @@ public class ArchbaseOidcProperties {
 
         public void setOnError(OnError onError) {
             this.onError = onError;
+        }
+    }
+
+    /** Logout iniciado pela aplicação (OIDC RP-Initiated Logout). */
+    public static class Logout {
+        /**
+         * {@code end_session_endpoint} do IdP, devolvido por {@code POST /api/v1/auth/oidc/logout} para o frontend
+         * redirecionar o navegador. Vazio = o frontend usa o da própria descoberta.
+         */
+        private String endSessionUri;
+
+        public String getEndSessionUri() {
+            return endSessionUri;
+        }
+
+        public void setEndSessionUri(String endSessionUri) {
+            this.endSessionUri = endSessionUri;
         }
     }
 

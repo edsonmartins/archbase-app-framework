@@ -49,5 +49,7 @@ class OidcInerteSemProvedorTest {
         assertThat(context.getBeansOfType(ArchbaseLocalCredentialPolicy.class)).isEmpty();
         assertThat(context.getBeansOfType(ExternalIdentityStore.class)).isEmpty();
         assertThat(new ExternalIdentityStore(dataSource).tableExists()).isFalse();
+        assertThat(new br.com.archbase.oidc.user.RevokedTokenStore(dataSource, java.time.Clock.systemUTC())
+                .tableExists()).isFalse();
     }
 }

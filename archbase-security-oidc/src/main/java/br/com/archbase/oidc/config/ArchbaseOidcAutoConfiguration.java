@@ -9,6 +9,8 @@ import br.com.archbase.oidc.user.ExternalIdentityStore;
 import br.com.archbase.oidc.user.OidcIdentityLinker;
 import br.com.archbase.oidc.user.OidcLocalCredentialPolicy;
 import br.com.archbase.oidc.user.OidcRoleSynchronizer;
+import br.com.archbase.oidc.user.RevokedTokenStore;
+import br.com.archbase.oidc.exchange.OidcLogoutController;
 import jakarta.persistence.EntityManagerFactory;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -60,19 +62,30 @@ public class ArchbaseOidcAutoConfiguration {
     /** Segue {@code archbase.security.schema.mode}, como as tabelas do próprio módulo de segurança. */
     @Bean
     public SmartInitializingSingleton oidcSchemaInitializer(ExternalIdentityStore store,
+                                                            RevokedTokenStore revokedTokens,
                                                             ObjectProvider<ArchbaseSecuritySchemaProperties> schema) {
         return () -> {
             ArchbaseSecuritySchemaProperties.Mode mode = schema.getIfAvailable(ArchbaseSecuritySchemaProperties::new)
                     .getMode();
-            if (mode == ArchbaseSecuritySchemaProperties.Mode.OFF || store.tableExists()) {
+            if (mode == ArchbaseSecuritySchemaProperties.Mode.OFF) {
                 return;
             }
-            if (mode == ArchbaseSecuritySchemaProperties.Mode.REPORT) {
-                log.warn("oidc.schema.missing table={} — crie com:\n{};\n{};", ExternalIdentityStore.TABLE,
-                        ExternalIdentityStore.DDL, ExternalIdentityStore.INDEX_DDL);
-                return;
+            if (!store.tableExists()) {
+                if (mode == ArchbaseSecuritySchemaProperties.Mode.REPORT) {
+                    log.warn("oidc.schema.missing table={} — crie com:\n{};\n{};", ExternalIdentityStore.TABLE,
+                            ExternalIdentityStore.DDL, ExternalIdentityStore.INDEX_DDL);
+                } else {
+                    store.createTableIfMissing();
+                }
             }
-            store.createTableIfMissing();
+            if (!revokedTokens.tableExists()) {
+                if (mode == ArchbaseSecuritySchemaProperties.Mode.REPORT) {
+                    log.warn("oidc.schema.missing table={} — crie com:\n{};", RevokedTokenStore.TABLE,
+                            RevokedTokenStore.DDL);
+                } else {
+                    revokedTokens.createTableIfMissing();
+                }
+            }
         };
     }
 
@@ -86,8 +99,20 @@ public class ArchbaseOidcAutoConfiguration {
     @Order(ExternalBearerAuthenticator.ORDER_OIDC)
     public OidcBearerAuthenticator oidcBearerAuthenticator(OidcProviderRegistry registry, OidcIdentityLinker linker,
                                                            OidcRoleSynchronizer roles,
-                                                           OidcIntrospector introspector) {
-        return new OidcBearerAuthenticator(registry, linker, roles, introspector);
+                                                           OidcIntrospector introspector,
+                                                           RevokedTokenStore revokedTokens) {
+        return new OidcBearerAuthenticator(registry, linker, roles, introspector, revokedTokens);
+    }
+
+    @Bean
+    public RevokedTokenStore oidcRevokedTokenStore(DataSource dataSource) {
+        return new RevokedTokenStore(dataSource, Clock.systemUTC());
+    }
+
+    @Bean
+    public OidcLogoutController oidcLogoutController(RevokedTokenStore revokedTokens,
+                                                     ArchbaseOidcProperties properties) {
+        return new OidcLogoutController(revokedTokens, properties);
     }
 
     @Bean

@@ -82,6 +82,7 @@ class OidcIntegrationTest {
         r.add(p + "archguard.required-claims.tokenType", () -> "access-token");
         r.add(p + "archguard.tenant.claim", () -> "owner");
         r.add(p + "archguard.users.local-password", () -> "disable-on-link");
+        r.add(p + "archguard.logout.end-session-uri", () -> IDP.issuer("archguard") + "/api/logout");
 
         r.add(p + "keycloak.issuer", () -> IDP.issuer("realms/empresa"));
         r.add(p + "keycloak.audiences[0]", () -> "archbase-api");
@@ -184,6 +185,7 @@ class OidcIntegrationTest {
     @BeforeEach
     void preparar() {
         jdbc.update("DELETE FROM " + ExternalIdentityStore.TABLE);
+        jdbc.update("DELETE FROM " + br.com.archbase.oidc.user.RevokedTokenStore.TABLE);
         tokenRepository.deleteAll();
         userRepository.deleteAll();
         groupRepository.deleteAll();
@@ -853,6 +855,68 @@ class OidcIntegrationTest {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(json.writeValueAsString(Map.of("token", t)))).andReturn().getResponse();
             assertRecusa(r, 401, "TOKEN_REVOKED");
+        }
+    }
+
+    // ═══════════════════════════ fase 2d: logout ═══════════════════════════
+
+    @Nested
+    @DisplayName("logout: POST /api/v1/auth/oidc/logout")
+    class Logout {
+
+        private MockHttpServletResponse sair(String bearer) throws Exception {
+            var req = post("/api/v1/auth/oidc/logout");
+            if (bearer != null) {
+                req.header("Authorization", "Bearer " + bearer);
+            }
+            return mockMvc.perform(req).andReturn().getResponse();
+        }
+
+        @Test
+        @DisplayName("revoga o token nesta aplicação e devolve o end_session_endpoint do IdP")
+        void revogaEDevolveEndSession() throws Exception {
+            String t = archguard("sub-ana").sign();
+            assertThat(eu(t).getStatus()).isEqualTo(200);
+
+            MockHttpServletResponse r = sair(t);
+
+            assertThat(r.getStatus()).isEqualTo(200);
+            JsonNode corpo = json.readTree(r.getContentAsString());
+            assertThat(corpo.get("revoked").asBoolean()).isTrue();
+            assertThat(corpo.get("end_session_endpoint").asString()).isEqualTo(IDP.issuer("archguard") + "/api/logout");
+
+            assertRecusa(eu(t), 401, "TOKEN_REVOKED");
+            assertThat(eu(archguard("sub-ana").sign()).getStatus()).as("token novo do IdP entra").isEqualTo(200);
+        }
+
+        @Test
+        @DisplayName("token revogado aqui também não serve para a troca")
+        void trocaRecusada() throws Exception {
+            String t = archguard("sub-ana").sign();
+            sair(t);
+            MockHttpServletResponse r = mockMvc.perform(post("/api/v1/auth/oidc/exchange")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(json.writeValueAsString(Map.of("token", t)))).andReturn().getResponse();
+            assertRecusa(r, 401, "TOKEN_REVOKED");
+        }
+
+        @Test
+        @DisplayName("provedor sem end-session-uri: só revoga")
+        void semEndSession() throws Exception {
+            String t = IDP.token(IDP.issuer("realms/empresa")).aud("archbase-api")
+                    .claim("sub", "kc-ana").claim("email", EMAIL).claim("email_verified", true).sign();
+            JsonNode corpo = json.readTree(sair(t).getContentAsString());
+            assertThat(corpo.get("revoked").asBoolean()).isTrue();
+            assertThat(corpo.has("end_session_endpoint")).isFalse();
+        }
+
+        @Test
+        @DisplayName("sessão local ou anônima: 400 NOT_AN_OIDC_SESSION (o logout local é o do core)")
+        void naoOidc() throws Exception {
+            String local = json.readTree(loginLocal("bruno@empresa.com.br").getContentAsString())
+                    .get("access_token").asString();
+            assertRecusa(sair(local), 400, "NOT_AN_OIDC_SESSION");
+            assertRecusa(sair(null), 400, "NOT_AN_OIDC_SESSION");
         }
     }
 
