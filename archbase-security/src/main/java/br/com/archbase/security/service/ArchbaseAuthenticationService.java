@@ -442,6 +442,35 @@ public class ArchbaseAuthenticationService {
      * de conta. O logout já havia sido migrado por exatamente este motivo; os demais chamadores
      * ficaram para trás.
      */
+    /**
+     * Sessão local para um usuário <b>já autenticado por um provedor externo</b> (troca de token do
+     * {@code archbase-security-oidc}). Não passa pela senha nem pelo MFA do Archbase: quem autenticou foi o IdP.
+     * <p>
+     * Diferente do login por senha, de propósito:
+     * <ul>
+     * <li>emite sempre um access token novo com {@code ttl} curto, em vez de reaproveitar um que ainda vale — o
+     * reaproveitado pode ter a validade longa do login local;</li>
+     * <li>não emite refresh token: quando o access vence, o cliente troca de novo com um token novo do IdP, e é o IdP
+     * quem decide se a sessão continua (usuário desligado lá deixa de renovar aqui).</li>
+     * </ul>
+     * Respeita a sessão única: sem {@code allowMultipleLogins}, as sessões anteriores são revogadas, como no login.
+     * <p>
+     * Não substitui nem altera {@link #authenticateWithoutPassword(String)}, que revoga todas as sessões.
+     *
+     * @since 3.5.0
+     */
+    @Transactional
+    public AuthenticationResponse issueExternalSession(UserEntity user, java.time.Duration ttl) {
+        if (Boolean.TRUE.equals(user.getAccountDeactivated()) || Boolean.TRUE.equals(user.getAccountLocked())) {
+            throw new BadCredentialsException("Conta de usuário inativa ou bloqueada");
+        }
+        if (!Boolean.TRUE.equals(user.getAllowMultipleLogins())) {
+            revokeAllUserTokens(user);
+        }
+        AccessTokenEntity accessToken = saveUserToken(user, jwtService.generateToken(user, ttl.toMillis()));
+        return buildAuthenticationResponse(accessToken, null, user);
+    }
+
     @Transactional
     public void revokeAllUserTokens(UserEntity user) {
         log.debug("Revogando todos os tokens válidos para o usuário {}", user.getEmail());

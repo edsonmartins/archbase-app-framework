@@ -145,12 +145,21 @@ Toda mudança no `archbase-security` tem de produzir **o mesmo resultado** para 
 O frontend (archbase-react) faz Authorization Code + PKCE direto com o IdP e chama a API com o
 access token do IdP. O Archbase só valida. Refresh, MFA, step-up e logout são do IdP.
 
-### 4.2 Troca de token (primeira entrega no archbase-react; ver 10.2)
+### 4.2 Troca de token (primeira entrega no archbase-react; ver 10.2) — implementada na 1c
 
-`POST /api/v1/auth/oidc/exchange` recebe o access token do IdP, valida pelo mesmo caminho e emite o
-**JWT local** do Archbase. Generaliza o `/login-social` existente (`ArchbaseAuthenticationController.java:411-461`).
-Serve para aplicações cujo frontend ainda depende do refresh/logout locais. Custo: a revogação no IdP
-só chega quando o JWT local expira. Desligado por padrão (`exchange.enabled=false`).
+`POST /api/v1/auth/oidc/exchange` com `{"token": "<access token do IdP>"}` no corpo. O token passa pela
+mesma validação e pela mesma regra de tenant que teria se fosse usado direto na API, e o retorno é uma
+sessão local do Archbase. Desligado por padrão (`archbase.security.oidc.exchange.enabled=true` liga).
+
+A sessão emitida é diferente da do login por senha, de propósito:
+
+- **curta** — `exchange.local-token-ttl` (padrão 15 min), nunca acima de `token-expiration`;
+- **sem refresh token** — quando vence, o frontend troca de novo com um token novo do IdP. Assim o IdP
+  continua decidindo: usuário desligado lá não renova aqui, sem precisar de revogação cruzada;
+- respeita `allowMultipleLogins` (sessão única encerra a anterior, como no login).
+
+Emitida por `ArchbaseAuthenticationService.issueExternalSession`, método novo do core. Não reaproveita
+`authenticateWithoutPassword` (do `/login-social`), que revoga **todas** as sessões do usuário a cada chamada.
 
 ### 4.3 Usuário federado nos endpoints locais
 
@@ -354,7 +363,7 @@ proposta e afeta quem já consome o ArchGuard hoje.**
 | Fase | Entrega | Testes |
 |---|---|---|
 | **0** | Testes de regressão do filtro no core (JWT local, token de API, tenant por header/claim, Control Plane) **sem mudar código**. É a régua de P1. | Os testes passam antes e depois de cada fase |
-| **1** | **1a — feita (2026-11-21):** mudanças compatíveis no core (seção 3) — política agregada, `ArchbaseCurrentUser`, `ArchbaseLocalCredentialPolicy`, `@Order`. **1b — feita (2026-11-21):** módulo `archbase-security-oidc`: propriedades + validação na subida, `OidcProviderRegistry` (Nimbus, JWKS explícito ou por descoberta, emissor por modelo `{tid}`), `OidcBearerAuthenticator`, `ClaimReader` (nome ou caminho), vínculo (`existing-user` + `link-by-email`, proteção contra segunda identidade com o mesmo e-mail), `local-password: disable-on-link`. **1c:** `/auth/oidc/exchange` — separado porque a emissão local existente (`authenticateWithoutPassword`) revoga todas as sessões do usuário; precisa de um método de emissão no core que respeite `allowMultipleLogins` e tenha validade curta | IdP falso RS256 (nos moldes do `FakeControlPlane`): iss/aud/exp/alg/kid, rotação, dois provedores + CP + JWT local no mesmo contexto, tenant por claim/header/mapa; **`@SpringBootTest` de boot com e sem o pacote**, com `ddl-auto=validate` |
+| **1** | **1a — feita (2026-11-21):** mudanças compatíveis no core (seção 3) — política agregada, `ArchbaseCurrentUser`, `ArchbaseLocalCredentialPolicy`, `@Order`. **1b — feita (2026-11-21):** módulo `archbase-security-oidc`: propriedades + validação na subida, `OidcProviderRegistry` (Nimbus, JWKS explícito ou por descoberta, emissor por modelo `{tid}`), `OidcBearerAuthenticator`, `ClaimReader` (nome ou caminho), vínculo (`existing-user` + `link-by-email`, proteção contra segunda identidade com o mesmo e-mail), `local-password: disable-on-link`. **1c — feita (2026-11-21):** `POST /api/v1/auth/oidc/exchange` (desligado por padrão) + `ArchbaseAuthenticationService.issueExternalSession` no core (só acréscimo; o login por senha e o `authenticateWithoutPassword`, que revoga todas as sessões, não mudam): sessão local curta (`exchange.local-token-ttl`, padrão 15 min), **sem refresh token**, respeitando `allowMultipleLogins` | IdP falso RS256 (nos moldes do `FakeControlPlane`): iss/aud/exp/alg/kid, rotação, dois provedores + CP + JWT local no mesmo contexto, tenant por claim/header/mapa; **`@SpringBootTest` de boot com e sem o pacote**, com `ddl-auto=validate` |
 | **2** | `jit` (com `pending`); `role-mapping` (`add`/`mirror`); introspecção com cache; RP-initiated logout; tela de vínculo manual | Sincronização de grupos; token revogado via introspecção |
 | **3** | Back-channel logout + denylist; `acr`/step-up quando o ArchGuard montar o v1; suporte OIDC nativo no archbase-react (10.2) | Logout token assinado |
 | **4** | **Migração entre IdPs** (pedido em 2026-11-21): rotina para trocar a origem da identidade sem recadastrar ninguém — ver 9.1 | Migração local→ArchGuard e Keycloak→ArchGuard em ambiente de teste, com relatório de dry-run conferido |
@@ -441,9 +450,10 @@ o "nOAuth"). Por isso `link-by-email` tem três valores:
 1. **Fase 1: B no archbase-react, A já pronto no backend.** O mesmo validador atende os dois, então
    o backend sai completo; o frontend muda o mínimo. Clientes de API, integrações e serviços (que
    não usam o archbase-react) já usam A desde o primeiro dia.
-2. **Mitigar o contra de B:** JWT local emitido pela troca com vida curta (sugestão: 15 min,
-   `exchange.local-token-ttl`), e o refresh local revalida o vínculo — usuário desvinculado ou
-   desativado não renova.
+2. **Mitigar o contra de B:** JWT local emitido pela troca com vida curta (15 min,
+   `exchange.local-token-ttl`) e **sem refresh token** — renovar exige um token novo do IdP, então
+   usuário desligado no IdP não renova. *(Implementado assim na 1c; a ideia inicial de revalidar o
+   vínculo no refresh local foi trocada por não emitir refresh.)*
 3. **Fase 3: A no archbase-react**, como opção por aplicação, quando o ArchGuard tiver o v1
    (`acr`, `sid`, rotação de refresh) — é quando A passa a entregar mais que B.
 4. **C:** descartado enquanto P1 valer.

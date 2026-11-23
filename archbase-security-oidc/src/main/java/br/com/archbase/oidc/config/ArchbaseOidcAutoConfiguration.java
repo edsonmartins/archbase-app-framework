@@ -1,6 +1,7 @@
 package br.com.archbase.oidc.config;
 
 import br.com.archbase.oidc.auth.OidcBearerAuthenticator;
+import br.com.archbase.oidc.exchange.OidcTokenExchangeController;
 import br.com.archbase.oidc.provider.OidcProviderRegistry;
 import br.com.archbase.oidc.user.ExternalIdentityStore;
 import br.com.archbase.oidc.user.OidcIdentityLinker;
@@ -8,11 +9,13 @@ import br.com.archbase.oidc.user.OidcLocalCredentialPolicy;
 import br.com.archbase.security.auth.external.ExternalBearerAuthenticator;
 import br.com.archbase.security.repository.UserJpaRepository;
 import br.com.archbase.security.schema.ArchbaseSecuritySchemaProperties;
+import br.com.archbase.security.service.ArchbaseAuthenticationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Conditional;
@@ -81,6 +84,18 @@ public class ArchbaseOidcAutoConfiguration {
     public OidcLocalCredentialPolicy oidcLocalCredentialPolicy(ExternalIdentityStore store,
                                                                ArchbaseOidcProperties properties) {
         return new OidcLocalCredentialPolicy(store, properties);
+    }
+
+    /** Troca de token por sessão local — só com {@code archbase.security.oidc.exchange.enabled=true}. */
+    @Bean
+    @ConditionalOnProperty(prefix = "archbase.security.oidc.exchange", name = "enabled", havingValue = "true")
+    public OidcTokenExchangeController oidcTokenExchangeController(OidcBearerAuthenticator authenticator,
+                                                                   ArchbaseAuthenticationService authenticationService,
+                                                                   ArchbaseOidcProperties properties) {
+        log.info("oidc.exchange.enabled path=/api/v1/auth/oidc/exchange ttl={}",
+                properties.getExchange().getLocalTokenTtl());
+        return new OidcTokenExchangeController(authenticator, authenticationService,
+                properties.getExchange().getLocalTokenTtl());
     }
 
     /** Jar presente, nenhum provedor: avisa e não cria nada. */

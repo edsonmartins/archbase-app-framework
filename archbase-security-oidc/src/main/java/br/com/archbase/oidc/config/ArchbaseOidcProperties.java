@@ -22,6 +22,12 @@ public class ArchbaseOidcProperties {
     /** Provedores por id (o id é gravado no vínculo do usuário — não o troque depois de em uso). */
     private Map<String, Provider> providers = new LinkedHashMap<>();
 
+    private final Exchange exchange = new Exchange();
+
+    public Exchange getExchange() {
+        return exchange;
+    }
+
     public Map<String, Provider> getProviders() {
         return providers;
     }
@@ -254,6 +260,32 @@ public class ArchbaseOidcProperties {
 
         public void setLocalPassword(LocalPassword localPassword) {
             this.localPassword = localPassword;
+        }
+    }
+
+    /**
+     * Troca de token: {@code POST /api/v1/auth/oidc/exchange} recebe o access token do IdP e devolve uma sessão local
+     * do Archbase — para frontends que ainda dependem do JWT próprio. Desligada por padrão.
+     */
+    public static class Exchange {
+        private boolean enabled = false;
+        /** Validade do token local emitido. Nunca passa da de {@code archbase.security.jwt.token-expiration}. */
+        private Duration localTokenTtl = Duration.ofMinutes(15);
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public Duration getLocalTokenTtl() {
+            return localTokenTtl;
+        }
+
+        public void setLocalTokenTtl(Duration localTokenTtl) {
+            this.localTokenTtl = localTokenTtl;
         }
     }
 
