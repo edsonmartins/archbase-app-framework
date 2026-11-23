@@ -93,12 +93,13 @@ public interface AuthenticationBusinessDelegate {
      * 
      * @param provider Nome do provedor (google, facebook, apple, etc)
      * @param providerData Dados fornecidos pelo provedor
-     * @return ID do usuário de negócio criado/atualizado
+     * @return ID do usuário de negócio criado/atualizado; o padrão não faz nada e devolve {@code null}
      */
     default String onSocialLogin(String provider, Map<String, Object> providerData) {
-        throw new UnsupportedOperationException(
-            "Login social não implementado para provider: " + provider
-        );
+        // Antes da 3.5.0 lançava UnsupportedOperationException. Como o DefaultAuthenticationBusinessDelegate (usado
+        // quando a aplicação não tem delegate) não a sobrescrevia, o primeiro login social de um e-mail novo dava
+        // 400 com o usuário já criado. Sem lógica de negócio para login social, o login segue.
+        return null;
     }
     
     /**

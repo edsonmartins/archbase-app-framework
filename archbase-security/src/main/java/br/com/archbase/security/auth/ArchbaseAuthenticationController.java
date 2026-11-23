@@ -6,6 +6,7 @@ import br.com.archbase.security.ratelimit.ArchbaseClientIpResolver;
 import br.com.archbase.security.service.ArchbaseAuthenticationService;
 import br.com.archbase.security.spi.ArchbaseSocialTokenValidator;
 import br.com.archbase.security.service.ArchbaseUserService;
+import br.com.archbase.security.exception.ArchbaseTenantSelectionRequiredException;
 import br.com.archbase.validation.exception.ArchbaseValidationException;
 import io.jsonwebtoken.JwtException;
 import io.swagger.v3.oas.annotations.Operation;
@@ -100,6 +101,8 @@ public class ArchbaseAuthenticationController {
     ) {
         try {
             return ResponseEntity.ok(service.authenticate(request));
+        } catch (ArchbaseTenantSelectionRequiredException e) {
+            return tenantSelectionRequired(e);
         } catch (ArchbaseTooManyAttemptsException e) {
             return tooManyAttempts(e);
         } catch (CredentialsExpiredException e) {
@@ -120,6 +123,13 @@ public class ArchbaseAuthenticationController {
      * Passo 2 do login com MFA: recebe o token de desafio (emitido quando a senha conferiu e o
      * usuário tem MFA) + o código do segundo fator, e devolve os tokens reais se ambos conferem.
      */
+    /** Mesma forma de corpo das demais recusas do login ({@code error} + {@code message}). */
+    private static ResponseEntity<Map<String, Object>> tenantSelectionRequired(
+            ArchbaseTenantSelectionRequiredException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Map.of("error", ArchbaseTenantSelectionRequiredException.CODE, "message", e.getMessage()));
+    }
+
     @PostMapping("/mfa/verify")
     public ResponseEntity<?> verifyMfa(@RequestBody MfaVerifyRequest request) {
         try {
@@ -150,6 +160,8 @@ public class ArchbaseAuthenticationController {
                 httpRequest
             );
             return ResponseEntity.ok(response);
+        } catch (ArchbaseTenantSelectionRequiredException e) {
+            return tenantSelectionRequired(e);
         } catch (ArchbaseTooManyAttemptsException e) {
             return tooManyAttempts(e);
         } catch (CredentialsExpiredException e) {
@@ -311,18 +323,12 @@ public class ArchbaseAuthenticationController {
                 .password(request.getPassword())
                 .description(request.getName())
                 .avatar(request.getAvatar())
+                .additionalData(request.getAdditionalData())
                 .build();
-                
-            service.register(newUser);
-            
-            // Se houver delegate, criar dados de negócio
-            String businessId = null;
-            if (businessDelegate != null && request.getAdditionalData() != null) {
-                businessId = businessDelegate.onUserRegistered(
-                    userService.findByEmail(request.getEmail()),
-                    request.getAdditionalData()
-                );
-            }
+
+            // O serviço chama o businessDelegate uma vez, com os dados do cadastro e o additionalData. Chamá-lo de
+            // novo aqui (como antes da 3.5.0) duplicava a entidade de negócio.
+            String businessId = service.registerUser(newUser);
             
             Map<String, Object> response = new HashMap<>();
             response.put("email", request.getEmail());
@@ -372,7 +378,13 @@ public class ArchbaseAuthenticationController {
                 .build();
                 
             AuthenticationResponse response = service.authenticate(authRequest);
-            
+
+            // MFA pendente: devolve o desafio sem pós-processar nem enriquecer — a resposta ainda não tem usuário
+            // nem tokens. Mesmo tratamento do /login.
+            if (Boolean.TRUE.equals(response.getMfaRequired())) {
+                return ResponseEntity.ok(response);
+            }
+
             // Pós-autenticação
             if (businessDelegate != null) {
                 businessDelegate.postAuthenticate(response.getUser(), context);
@@ -384,6 +396,8 @@ public class ArchbaseAuthenticationController {
             
             return ResponseEntity.ok(response);
 
+        } catch (ArchbaseTenantSelectionRequiredException e) {
+            return tenantSelectionRequired(e);
         } catch (ArchbaseTooManyAttemptsException e) {
             return tooManyAttempts(e);
         } catch (CredentialsExpiredException e) {
@@ -428,13 +442,20 @@ public class ArchbaseAuthenticationController {
             boolean userExists = userService.existsByEmail(email);
             
             if (!userExists) {
-                // Criar novo usuário
+                // Criar novo usuário. NOME e DESCRICAO são @NotBlank na entidade: sem eles a gravação
+                // falhava na validação, e o primeiro login social de qualquer e-mail novo dava 400. O nome
+                // do provedor é opcional — na falta dele, o e-mail. A foto só é usada se vier em bytes:
+                // provedores costumam devolvê-la como URL, e o cast direto lançava ClassCastException.
+                Object nomeDoProvedor = providerData.get("name");
+                String nome = nomeDoProvedor instanceof String n && !n.isBlank() ? n : email;
+                Object foto = providerData.get("picture");
                 RegisterNewUser newUser = RegisterNewUser.builder()
                     .email(email)
-                    .name((String) providerData.get("name"))
+                    .name(nome)
+                    .description(nome)
                     .userName(email)
                     .password(generateSecurePassword()) // Senha aleatória segura
-                    .avatar((byte[]) providerData.get("picture"))
+                    .avatar(foto instanceof byte[] bytes ? bytes : null)
                     .build();
                     
                 service.register(newUser);
@@ -448,6 +469,12 @@ public class ArchbaseAuthenticationController {
             
             // Gerar tokens
             AuthenticationResponse response = service.authenticateWithoutPassword(email);
+
+            // MFA ligado: o login social devolve o desafio, como o login por senha. Sem usuário nem tokens ainda,
+            // não há o que enriquecer.
+            if (Boolean.TRUE.equals(response.getMfaRequired())) {
+                return ResponseEntity.ok(response);
+            }
             
             // Enriquecer resposta
             String context = request.getContext() != null ? 
