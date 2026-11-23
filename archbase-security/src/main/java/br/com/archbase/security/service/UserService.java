@@ -252,9 +252,9 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
         }
         denyAdministratorPromotionByNonAdmin(userDto);
         // Só valida quando há senha. Criação sem senha é legítima (convite, SSO, provisionamento
-        // automático de login social), e a política rejeita senha vazia já na configuração padrão —
-        // block-common vem ligado, o que basta para isEnabled() ser true. Sem esta guarda, esses
-        // fluxos quebram em qualquer instalação, não só nas que configuram regras de composição.
+        // automático de login social), e a política rejeita senha vazia assim que qualquer regra
+        // (min-length, require-*, block-common) é ligada — todas vêm desligadas por padrão. Sem esta
+        // guarda, esses fluxos quebram em toda instalação que configura a política.
         // O encode também precisa ficar dentro da guarda: BCryptPasswordEncoder.encode(null) lança
         // IllegalArgumentException. Validar e cifrar são a mesma condição — há senha ou não há.
         if (!StringUtils.isBlank(userDto.getPassword())) {
