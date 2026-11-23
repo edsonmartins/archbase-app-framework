@@ -510,12 +510,8 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http.authorizeHttpRequests(auth -> auth
             // === Endpoints de Autenticação ===
-            .requestMatchers(
-                "/api/v1/auth/login",
-                "/api/v1/auth/register",
-                "/api/v1/auth/forgot-password",
-                "/api/v1/auth/reset-password"
-            ).permitAll()
+            // login, cadastro, refresh, sendResetPasswordEmail, resetPassword, mfa/verify
+            .requestMatchers("/api/v1/auth/**").permitAll()
 
             // === Health Checks ===
             .requestMatchers(
@@ -658,9 +654,12 @@ abriria troca de tenant por cabeçalho forjado.
 
 O que o framework faz:
 
-- **O tenant do token é a fonte de verdade.** Depois de autenticar, o contexto é alinhado ao tenant do
-  token. Um `X-TENANT-ID` diferente é recusado com **403** (log `Acesso cross-tenant NEGADO`); com token de
-  IdP externo, o corpo traz `TENANT_MISMATCH`.
+- **O tenant do token é a fonte de verdade.** Um `X-TENANT-ID` diferente do tenant do token não troca de tenant:
+  - JWT próprio e token de API: a credencial é procurada no tenant do cabeçalho, não é achada e a requisição
+    segue **não autenticada (401)**;
+  - token de IdP externo (Control Plane, OIDC): **403 `TENANT_MISMATCH`**.
+
+  Com o cabeçalho ausente ou igual, o contexto é alinhado ao tenant do token.
 - **Sem token** (rota pública), vale o `X-TENANT-ID` — e, com `archbase.app.tenant.accept-query-param=true`
   (padrão), também o parâmetro de query. Desligue o parâmetro em produção.
 - `archbase.app.tenant.fail-on-missing=true` recusa requisição sem tenant em vez de seguir com contexto vazio.

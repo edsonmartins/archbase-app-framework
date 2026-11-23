@@ -23,10 +23,13 @@ Escrito a partir do código.
 
 ## O modelo em uma imagem
 
-Toda decisão de acesso passa por **cinco portões, na mesma ordem, sempre**. E há uma regra que
-organiza tudo:
+Toda decisão de acesso passa por **cinco portões**. E há uma regra que organiza tudo:
 
 > **Os portões 1 a 4 só sabem NEGAR. Só o portão 5 CONCEDE.**
+
+A numeração dá nome aos portões; não é a ordem em que o código os executa. A imagem abaixo mostra o
+modelo. A ordem real de `DefaultArchbaseAccessEvaluator.decide` está em
+[Ordem real de execução](#ordem-real-de-execução).
 
 ```mermaid
 flowchart TD
@@ -37,7 +40,7 @@ flowchart TD
     G1 -->|não| D1([NEGA<br/>PRINCIPAL_NOT_SUPPORTED])
     G1 -->|sim| G2
 
-    G2{"2 · SCOPE<br/>tenant · company · project"}
+    G2{"2 · SCOPE<br/>company · project"}
     G2 -->|não alcança| D2([NEGA<br/>OUT_OF_SCOPE])
     G2 -->|alcança| G3
 
@@ -105,16 +108,42 @@ public record AccessDecision(
 
 É isso que permite responder *"por que essa pessoa não passou?"* sem abrir grupo por grupo no admin.
 
+### Ordem real de execução
+
+`DefaultArchbaseAccessEvaluator.decide` avalia nesta sequência e para no primeiro que nega:
+
+| Passo | Portão | O que faz |
+|---|---|---|
+| 1 | IDENTITY | Sujeito nulo nega (`PRINCIPAL_NOT_SUPPORTED`). `isAdministrator` nulo é tratado como `false`, com WARN |
+| 2 | RESTRICTION | Cada tranca declarada (`@RequireProfile`, `@RequireRole`, `@RequirePersona`). Tranca sem avaliador registrado nega (`RESTRICTION_EVALUATOR_MISSING`) |
+| 3 | GRANT (admin) | Administrador ativo: procura só uma permissão `DENY` que o alcance. Há → `EXPLICIT_DENY`. Não há → `GRANTED_ADMINISTRATOR`, sem passar por SCOPE nem LEVEL |
+| 4 | GRANT | Sem capacidade declarada: só trancas → concede (`GRANTED_RESTRICTIONS_ONLY`); nem capacidade nem tranca → `EMPTY_REQUIREMENT` |
+| 5 | GRANT | Busca as permissões da capacidade (usuário, grupos, perfil). Nenhuma → `NO_GRANT` |
+| 6 | GRANT | Alguma `DENY` alcança a requisição → `EXPLICIT_DENY`. Só negações, nenhuma concessão → `NO_GRANT` |
+| 7 | SCOPE | Nenhuma concessão no escopo pedido → `OUT_OF_SCOPE` |
+| 8 | LEVEL | Só com `access-level.enabled=true`. Nível abaixo do maior mínimo entre as concessões → `LEVEL_TOO_LOW` |
+| 9 | GRANT | Concede (`GRANTED`), com a origem registrada |
+
+A regra continua a mesma: tudo antes do passo 9 só nega (o passo 4 é o caso de tranca pura, ver
+[Uma tranca sozinha concede](#uma-tranca-sozinha-concede)). O LEVEL fica depois do catálogo porque
+o mínimo é propriedade da ação, e só se conhece a ação depois de consultá-la.
+
 ### O administrador
 
-`isAdministrator` **não é um desvio no topo**. São duas propriedades do sujeito:
+`isAdministrator` **não é um desvio no topo**: as trancas (passo 2) rodam antes. Um
+`@RequireProfile(allowSystemAdmin = false)` nega o administrador que não tem o perfil — e sempre
+negou.
 
-- nível `TENANT_ADMIN`, o topo da escala — nunca barrado pelo portão 4;
-- concessão universal no portão 5 — não consulta o catálogo.
+Passadas as trancas, porém, o administrador ativo **encerra a decisão** no passo 3:
 
-Consequência: um administrador continua sujeito a **escopo** (portão 2) e a **restrição explícita**
-(portão 3). Um `@RequireProfile(allowSystemAdmin = false)` nega o administrador que não tem o
-perfil — e sempre negou.
+- **não é sujeito a escopo.** SCOPE não é avaliado; o administrador alcança qualquer empresa e
+  projeto do tenant;
+- **não é sujeito a nível.** LEVEL não é avaliado;
+- **só uma negação explícita o barra.** Uma permissão `DENY` sobre a capacidade, no usuário, num
+  grupo ou no perfil dele, nega com `EXPLICIT_DENY` — ver [Negação explícita](#negação-explícita).
+
+O administrador desativado não entra no passo 3: segue o caminho comum do catálogo. Ali,
+`ArchbaseAccessLevelPolicy` lhe atribui `TENANT_ADMIN`, então o LEVEL não o barra.
 
 ---
 
@@ -126,20 +155,36 @@ Antes de chegar aos portões, a requisição atravessa a cadeia HTTP.
 flowchart TD
     REQ([Requisição HTTP]) --> F1[ArchbaseJwtAuthenticationFilter]
 
-    F1 --> CRED{Que credencial<br/>foi apresentada?}
+    F1 --> EXT{"Algum ExternalBearerAuthenticator<br/>supports(token)?<br/>Control Plane 100 · OIDC 200"}
+    EXT -->|sim| ECHK["check: assinatura, emissor,<br/>público, validade, tenant"]
+    ECHK -->|recusa| E401([401 ou 403<br/>com código])
+    ECHK -->|"tenant do token ≠ X-TENANT-ID"| E403([403 TENANT_MISMATCH])
+    ECHK -->|sem tenant no token nem no header| E403B([403 TENANT_REQUIRED])
+    ECHK -->|aceito| EAUTH["authenticate, já no tenant do token"]
+    EAUTH --> COMP
+
+    EXT -->|"não, ou não é JWT"| HDR["X-TENANT-ID e X-COMPANY-ID<br/>vão para o contexto"]
+    HDR --> CRED{Que credencial<br/>foi apresentada?}
     CRED -->|Bearer JWT| JWT["Valida assinatura<br/>+ linha viva em SEGURANCA_TOKEN_ACESSO<br/>+ token_use = access"]
-    CRED -->|UUID| API["Valida em SEGURANCA_TOKEN_API<br/>hash, ativo, não expirado"]
+    CRED -->|"UUID (cru ou Bearer)"| API["Valida em SEGURANCA_TOKEN_API<br/>hash, ativo, não expirado"]
     CRED -->|"?token= na URL"| QP["Mesma validação<br/>desligável por accept-token-query-param"]
     CRED -->|nenhuma| ANON[Segue anônimo]
 
     JWT --> AUTH["SecurityContext preenchido<br/>principal = UserEntity"]
     API --> AUTH
     QP --> AUTH
+    JWT -.->|"usuário ou token não achado<br/>no tenant do header"| NOAUTH[Segue sem autenticação]
+    API -.-> NOAUTH
 
     AUTH --> TEN{"Tenant do token<br/>= X-TENANT-ID?"}
-    ANON --> TEN
     TEN -->|diverge| F403([403])
-    TEN -->|confere ou ausente| CHAIN[Regras da cadeia HTTP]
+    TEN -->|confere ou ausente| COMP
+    ANON --> COMP
+    NOAUTH --> COMP
+
+    COMP{"X-COMPANY-ID acessível?<br/>company.validation=enforce"}
+    COMP -->|não| C403([403 COMPANY_NOT_ALLOWED])
+    COMP -->|"sim, off/warn<br/>ou sem empresa"| CHAIN[Regras da cadeia HTTP]
 
     CHAIN --> WL{Caminho está<br/>na whitelist?}
     WL -->|sim| MVC[DispatcherServlet]
@@ -155,9 +200,40 @@ flowchart TD
 
     style F403 fill:#a8261c,color:#fff
     style F403B fill:#a8261c,color:#fff
+    style E403 fill:#a8261c,color:#fff
+    style E403B fill:#a8261c,color:#fff
+    style C403 fill:#a8261c,color:#fff
+    style E401 fill:#8a5a08,color:#fff
     style F401 fill:#8a5a08,color:#fff
     style EXEC fill:#1b6b47,color:#fff
 ```
+
+**Token externo primeiro.** O filtro oferece o JWT apresentado a cada `ExternalBearerAuthenticator`
+registrado, na ordem do `@Order` (`ORDER_CONTROL_PLANE = 100`, `ORDER_OIDC = 200`). O primeiro cujo
+`supports()` aceita o token assume a requisição inteira, e o fluxo próprio (tenant padrão, JWT
+HS256, token de API) não roda. Token de API (UUID) nunca é oferecido a eles. Sem nenhum bean desse
+tipo, o filtro se comporta como antes. No ramo externo, o tenant do token é a fonte de verdade e o
+tenant padrão nunca é usado.
+
+**`X-TENANT-ID` divergente: 401 ou 403, conforme a credencial.**
+
+| Credencial | `X-TENANT-ID` diferente do tenant do token | Por quê |
+|---|---|---|
+| JWT próprio | **401** | O header entra no contexto antes de o token ser conferido. Usuário e linha de `SEGURANCA_TOKEN_ACESSO` (que é `@TenantId`) são procurados no tenant do header, onde não estão; sem autenticação, o bloco que responderia 403 nem roda |
+| Token de API | **401** | Mesmo motivo: a validação do token filtra pelo tenant do contexto, que veio do header |
+| Token externo (Control Plane, OIDC) | **403 `TENANT_MISMATCH`** | O tenant sai do `check()`, antes de qualquer consulta ao banco |
+
+O acesso é negado nos três casos; muda o status. O 403 do ramo próprio só aparece se a autenticação
+tiver sucesso com o header divergente. O comportamento está registrado em
+`FiltroDeAutenticacaoComportamentoAtualTest` (`tenantDivergenteNaoAutentica`,
+`tenantDivergenteDa401`).
+
+**Empresa no cabeçalho.** Depois da autenticação, nos três caminhos, o `X-COMPANY-ID` pode ser
+conferido contra o usuário: `archbase.security.company.validation=off|warn|enforce` (padrão `off`).
+Quem responde é o SPI `ArchbaseCompanyAccessResolver`, porque o vínculo usuário–empresa é da
+aplicação. Com `enforce`, empresa alheia dá `403 COMPANY_NOT_ALLOWED` e, em requisição anônima, a
+empresa é descartada do contexto. Detalhes em
+[security-hardening.md — Empresa no cabeçalho](../deployment/security-hardening.md#empresa-no-cabeçalho-x-company-id).
 
 **O ponto que mais confunde:** a whitelist libera o *caminho*, mas **não desliga** as anotações de
 método. Um endpoint na whitelist com `@HasPermission` continua exigindo permissão — e, sem usuário
@@ -496,8 +572,14 @@ Uma frase, explicável para analista de negócio sem diagrama:
 
 > O perfil libera para o time inteiro, e a negação no usuário tira daquela pessoa.
 
-**Escopo:** a negação vale **dentro do escopo em que foi declarada**. `DENY` com `tenantId = A` não
-afeta o tenant B; sem escopo, vence em todos. Mesma semântica que a concessão sempre teve.
+**Escopo:** a negação vale **dentro do escopo em que foi declarada**, e a regra é a oposta da
+concessão. Uma `DENY` estreitada (`COMPANY_ID` ou `PROJECT_ID` preenchido) só vale se a requisição
+**confirmar** aquela empresa ou projeto; sem contexto de empresa, uma negação por empresa não se
+aplica. Sem estreitamento, vence sempre. O tenant não entra nessa conta: a consulta só devolve linhas
+do tenant corrente (`@TenantId`), então uma `DENY` do tenant A nunca alcança o tenant B.
+
+**Alcança o administrador.** O atalho de `isAdministrator` consulta as negações antes de conceder:
+uma `DENY` sobre a capacidade, no usuário, num grupo ou no perfil dele, nega com `EXPLICIT_DENY`.
 
 `EFFECT` nulo é `GRANT` — é o que toda concessão existente significa.
 
@@ -521,9 +603,9 @@ erDiagram
         string ID_SEGURANCA FK "quem recebe"
         string ID_ACAO FK "o que pode"
         string EFFECT "GRANT (padrão) | DENY"
-        string tenantId "escopo opcional"
-        string companyId "escopo opcional"
-        string projectId "escopo opcional"
+        string TENANT_ID "discriminador @TenantId herdado"
+        string COMPANY_ID "estreitamento opcional"
+        string PROJECT_ID "estreitamento opcional"
     }
     SEGURANCA_ACAO {
         string ID_ACAO PK
@@ -551,24 +633,28 @@ erDiagram
     SEGURANCA ||--o| SEGURANCA : "usuário → perfil"
 ```
 
-As três colunas do core — `ACCESS_LEVEL`, `MINIMUM_LEVEL`, `EFFECT` — entram **nulas** pela migration
-repetível do próprio framework
-(`src/main/resources/db/migration/archbase/R__archbase_security_schema.sql`). Nenhum backfill, nenhum
-`not null`. Um sistema existente sobe idêntico.
+As três colunas do core — `ACCESS_LEVEL`, `MINIMUM_LEVEL`, `EFFECT` — entram **nulas**. Nenhum
+backfill, nenhum `not null`. Um sistema existente sobe idêntico. Há dois caminhos que as criam:
 
-> ⚠ O arquivo de migration é **específico de PostgreSQL** (`add column if not exists`,
-> `comment on column`). Em MySQL e Oracle o Flyway falha e a aplicação não sobe. Limitação
-> pré-existente ao core.
+| Caminho | Como | Limite |
+|---|---|---|
+| `ArchbaseSecuritySchemaInitializer` | Na subida, compara o mapeamento das 16 entidades do módulo com o banco e cria o que falta, no dialeto do banco em uso. `archbase.security.schema.mode=apply` (padrão) \| `report` (só escreve o DDL no log) \| `off` | Só DDL aditivo: não remove, não altera tipo, não toca em tabela fora das 16. Roda **depois** de o `EntityManagerFactory` subir — com `ddl-auto=validate`, o que falta faz o boot falhar antes |
+| Migration repetível `R__archbase_security_schema.sql` (`src/main/resources/db/migration/archbase/`) | Flyway, antes da validação do Hibernate | Escrita à mão e **específica de PostgreSQL** (`add column if not exists`, `comment on column`) |
 
-**Escopo nulo é curinga.** Permissão com `tenantId` nulo vale para qualquer tenant. O isolamento real
-entre tenants vem do `@TenantId` do Hibernate, não desses campos — eles são estreitamento *dentro*
-do tenant.
+Detalhes, inclusive o que criar à mão com `validate`, em
+[deployment/esquema-de-seguranca.md](../deployment/esquema-de-seguranca.md).
+
+**Não há escopo de tenant na permissão.** `SEGURANCA_PERMISSAO` não tem campo `tenantId` de escopo:
+existiu, colidia com o discriminador herdado de `TenantPersistenceEntityBase` e nunca funcionou. O
+`TENANT_ID` da linha é o discriminador `@TenantId`, e o isolamento entre tenants vem do Hibernate. O
+estreitamento *dentro* do tenant é só por `COMPANY_ID` e `PROJECT_ID`; nulo é curinga numa concessão.
 
 ---
 
 ## Diagnóstico: por que esta pessoa não passou?
 
-Três endpoints, todos alimentados pelo **mesmo avaliador que decide em produção**. Não há motor
+Três perguntas principais (há outras rotas, listadas em [Todas as rotas](#todas-as-rotas)), todas
+respondidas pelo **mesmo avaliador que decide em produção**. Não há motor
 paralelo — um diagnóstico que diverge da realidade é pior do que nenhum.
 
 ```properties
@@ -642,6 +728,50 @@ Devolve os contadores do tenant **junto do estado das proteções** — de prop�
 inerte é inofensiva enquanto nada consulta o catálogo, e vira acesso indevido no dia em que algo
 consultar. Número sem esse contexto não é interpretável.
 
+### Todas as rotas
+
+Todas sob `/api/v1/security/diagnostics`, com a mesma proteção:
+
+| Rota | Para quê |
+|---|---|
+| `GET overview` | Contadores do tenant e estado das proteções |
+| `GET overview/{metric}` | Os itens por trás de um contador, paginados; métrica fora do enum responde 400 |
+| `GET tree/{branch}` | Um ramo da árvore (pessoas, grupos, perfis, recursos, ações), paginado e filtrado no banco |
+| `GET groups/{groupId}` · `GET profiles/{profileId}` | Quem está no grupo ou perfil e o que cada pessoa acaba tendo |
+| `GET actions/{actionId}/reach` | Quem alcança uma capacidade, inclusive administradores, com a via marcada |
+| `GET users/{userId}/effective` · `GET effective?email=` | Efetivo de um usuário |
+| `POST simulate` | Simulação de uma decisão |
+
+---
+
+## Trilha de eventos
+
+Além do diagnóstico, que responde "como está agora", o módulo grava **o que aconteceu**. Desligada
+por padrão:
+
+```properties
+archbase.security.audit.enabled=false            # liga a trilha
+archbase.security.audit.tenant-scoped=false      # leitura restrita ao tenant de quem consulta
+archbase.security.audit.retention-months=12      # purga agendada; 0 desliga
+```
+
+| O quê | Onde |
+|---|---|
+| Acontecimentos: `LOGIN`, `LOGIN_FALHOU`, `LOGOUT`, `ACESSO_NEGADO`, `SIMULACAO` | `SEGURANCA_EVENTO` (`SecurityEventEntity`), gravados por `ArchbaseSecurityEventLogger` fora da thread da requisição |
+| Alterações nas entidades `@Audited` (permissão, entre outras) | Tabelas `_AUD` do Envers + `SEGURANCA_REVISAO` |
+
+**A ordem para ligar importa.** As tabelas `_AUD` precisam existir antes de virar a chave
+(`deployment/sql/auditoria-seguranca-*.sql`); invertido, a primeira escrita auditada falha.
+
+**Leitura.** `GET /api/v1/security/audit/events` (filtros `usuario`, `tipo`, `inicio`, `fim`;
+padrão dos últimos 30 dias; até 200 por página). Só existe com `audit.enabled=true` e exige
+`isAdministrator`, verificado no próprio controlador — não depende de `admin-endpoints.policy`.
+
+> ⚠ **`tenant-scoped=false` deixa o administrador de um tenant ler os eventos de todos.**
+> `SEGURANCA_EVENTO` é a única entidade do módulo sem `@TenantId`: grava `TENANT_ID`, mas a leitura
+> só filtra por ele com `tenant-scoped=true`. Não vira `@TenantId` porque a purga é `@Scheduled` e
+> roda sem tenant. Com a trilha ligada e essa chave desligada, a subida registra um WARN.
+
 ---
 
 ## Códigos de motivo
@@ -652,7 +782,7 @@ Quando um 403 aparece, o `reasonCode` diz onde olhar.
 |---|---|---|---|
 | `PRINCIPAL_NOT_SUPPORTED` | IDENTITY | O principal não é `UserEntity` — geralmente `UserDetailsService` próprio | Faça o seu `UserDetailsService` devolver `UserEntity` |
 | `PRINCIPAL_INCOMPLETE` | IDENTITY | `isAdministrator` nulo no banco | Preencha a coluna com `true` ou `false` |
-| `OUT_OF_SCOPE` | SCOPE | A permissão existe, mas para outro tenant/empresa/projeto | Revise o escopo da concessão |
+| `OUT_OF_SCOPE` | SCOPE | A concessão existe, mas estreitada a outra empresa ou projeto | Revise `COMPANY_ID`/`PROJECT_ID` da concessão |
 | `PROFILE_NOT_MATCHED` | RESTRICTION | Perfil diferente do exigido | Perfil do usuário, ou a anotação |
 | `PERSONA_NOT_MATCHED` | RESTRICTION | Persona não corresponde ao perfil | Ver a tabela fixa de personas |
 | `ROLE_NOT_MATCHED` | RESTRICTION | O resolver não devolveu o papel exigido | Seu `ArchbaseRoleResolver` |
@@ -664,6 +794,11 @@ Quando um 403 aparece, o `reasonCode` diz onde olhar.
 | `NO_GRANT` | GRANT | Ninguém concedeu — nem direto, nem grupo, nem perfil | Conceda no admin |
 | `EXPLICIT_DENY` | GRANT | Há uma permissão `DENY` alcançando o escopo | Remova a negação |
 | `EMPTY_REQUIREMENT` | — | Requisito sem capacidade e sem tranca | Erro de programação do adaptador |
+| `RESTRICTION_EVALUATOR_MISSING` | RESTRICTION | Tranca declarada sem avaliador no contexto | Use `archbase-starter`, confira `archbase.web.mvc.enabled` |
+
+Não vêm do avaliador, e sim do filtro de autenticação, antes dele: `COMPANY_NOT_ALLOWED` (empresa do
+`X-COMPANY-ID` não acessível com `company.validation=enforce`), `TENANT_MISMATCH` e `TENANT_REQUIRED`
+(ramo do token externo). Ver [Caminho de uma requisição](#caminho-de-uma-requisição).
 
 **Um caso que engana:** `NO_GRANT` num sistema recém-anotado quase sempre significa **catálogo
 vazio**, não permissão faltando. Confira `archbase.security.scan-packages`.
@@ -953,7 +1088,7 @@ archbase.security.access-level.enabled=false     # liga o portão LEVEL
 archbase.security.access-level.default=READER    # nível de quem não tem perfil
 archbase.security.permission.require-active=false # alinha o backend ao frontend
 archbase.security.sync.mode=apply                # apply | report | refresh
-archbase.security.diagnostics.enabled=false      # expõe /security/diagnostics/*
+archbase.security.diagnostics.enabled=false      # expõe /api/v1/security/diagnostics/*
 ```
 
 **Todos os padrões reproduzem o comportamento anterior ao core.** Ligar qualquer um é decisão
@@ -965,6 +1100,15 @@ archbase.security.hardening.validation=fail      # fail | warn | off
 
 Com `fail`, uma proteção habilitada sem pré-requisito **impede a subida** com a instrução do que
 fazer — em vez de produzir comportamento errado mais tarde, no meio de uma requisição.
+
+### Esquema, empresa e trilha
+
+```properties
+archbase.security.schema.mode=apply              # apply | report | off
+archbase.security.company.validation=off         # off | warn | enforce (enforce exige ArchbaseCompanyAccessResolver)
+archbase.security.audit.enabled=false            # trilha de eventos e Envers
+archbase.security.audit.tenant-scoped=false      # leitura da trilha restrita ao tenant
+```
 
 As demais propriedades estão em [deployment/security-hardening.md](../deployment/security-hardening.md).
 
@@ -990,15 +1134,19 @@ quem depende dela; substituir por resolução configurável é trabalho pendente
 `@Secured` nega em silêncio.
 
 **A migration é específica de PostgreSQL.** MySQL e Oracle não sobem com o arquivo repetível do
-framework.
+framework pelo Flyway. Quem não usa Flyway tem o `ArchbaseSecuritySchemaInitializer`
+(`archbase.security.schema.mode=apply`), que deriva o DDL do mapeamento no dialeto do banco — mas
+ele roda depois da validação do Hibernate, então não resolve `ddl-auto=validate`, e não conserta
+coluna que mudou de tipo ou nome. Ver [Modelo de dados](#modelo-de-dados) e
+[deployment/esquema-de-seguranca.md](../deployment/esquema-de-seguranca.md).
 
 **Uma consulta de sujeito por decisão.** O core acrescenta uma leitura onde antes havia uma. Cache
 por requisição resolve, mas não está desenhado.
 
 **O login recusa e-mail multi-tenant antes de conferir a senha.** Quando o pedido não traz tenant e o
 e-mail existe em mais de um, o login lança sem chegar à autenticação — o que revela pertencimento a
-várias organizações sem senha nenhuma, e ainda por um status diferente do 401 (`/authenticate` deixa
-escapar como 500; `/login-flexible` responde 400). Fechar isso exige conferir a senha contra **cada**
+várias organizações sem senha nenhuma, e ainda por um status diferente do 401 (`400
+TENANT_SELECTION_REQUIRED` em `/authenticate`, `/login` e `/login-flexible`). Fechar isso exige conferir a senha contra **cada**
 linha candidata, já que cada uma tem o seu hash: nenhum acerto → 401 uniforme; um acerto → aquele
 tenant; vários → devolver só esses, já autenticado. Muda semântica de autenticação, então é passo
 próprio.
