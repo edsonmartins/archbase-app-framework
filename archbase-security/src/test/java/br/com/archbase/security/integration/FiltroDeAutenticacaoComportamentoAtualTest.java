@@ -737,12 +737,10 @@ class FiltroDeAutenticacaoComportamentoAtualTest {
         }
 
         @Test
-        @DisplayName("DEFEITO ATUAL: PATCH /api/v1/user responde 500 — ChangePasswordRequest não desserializa")
-        void endpointQuebrado() throws Exception {
-            // ChangePasswordRequest só tem @Builder (construtor package-private, sem construtor vazio), e o
-            // Jackson não consegue montá-lo: "Type definition error: [simple type, class ...ChangePasswordRequest]".
-            // A requisição falha antes de chegar ao serviço. Registrado para que a correção seja deliberada:
-            // quando corrigir, inverta este teste para 200 e senha trocada.
+        @DisplayName("PATCH /api/v1/user troca a senha de ponta a ponta")
+        void endpointTrocaASenha() throws Exception {
+            // Até a correção respondia 500: ChangePasswordRequest só tinha @Builder, sem construtor vazio, e o
+            // Jackson não o desserializava ("Type definition error"). Este cenário é o que pegaria a volta disso.
             String token = accessToken();
             int status = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                             .patch("/api/v1/user")
@@ -754,7 +752,25 @@ class FiltroDeAutenticacaoComportamentoAtualTest {
                                     "confirmationPassword", "nova-senha-fase0"))))
                     .andReturn().getResponse().getStatus();
 
-            assertThat(status).isEqualTo(500);
+            assertThat(status).isEqualTo(200);
+            assertThat(senhaAtualE("nova-senha-fase0")).isTrue();
+        }
+
+        @Test
+        @DisplayName("PATCH /api/v1/user com a senha atual errada não troca")
+        void endpointSenhaAtualErrada() throws Exception {
+            String token = accessToken();
+            int status = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                            .patch("/api/v1/user")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "currentPassword", "errada",
+                                    "newPassword", "nova-senha-fase0",
+                                    "confirmationPassword", "nova-senha-fase0"))))
+                    .andReturn().getResponse().getStatus();
+
+            assertThat(status).isNotEqualTo(200);
             assertThat(senhaAtualE(SENHA)).isTrue();
         }
 
