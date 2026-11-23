@@ -1,6 +1,7 @@
 # Atualizar do Archbase 2.x para o 3.x — mudanças de banco
 
-O `archbase-security` 3.x mapeia nove colunas que a linha 2.x não tinha. Quem controla o schema por
+O `archbase-security` 3.0 mapeia nove colunas que a linha 2.x não tinha, e as versões 3.1.20 e 3.4
+acrescentaram mais duas colunas e uma tabela. Quem controla o schema por
 migrations não as recebe sozinho, e a aplicação **não sobe**: a primeira consulta a `seguranca_acao`
 falha com
 
@@ -38,9 +39,22 @@ A migração é só o schema alcançando o mapeamento.
 | `seguranca` | `mfa_secret` | Segredo TOTP |
 | `seguranca` | `mfa_recovery_codes` | Códigos de recuperação |
 | `seguranca_acao` | `minimum_level` | Nível mínimo exigido pela ação |
-| `seguranca_permissao` | `effect` | `ALLOW` ou `DENY`; nulo segue valendo como concessão |
+| `seguranca_permissao` | `effect` | `GRANT` ou `DENY`; nulo segue valendo como concessão |
 | `seguranca_token_acesso` | `tp_uso_token` | Separa token de acesso de token de renovação |
 | `seguranca_token_api` | `token_hash` | Hash do token de API |
+| `seguranca` | `employee_id` | Matrícula do funcionário (3.1.20) |
+| `seguranca_acao` | `rotulo` | Rótulo curto da capacidade (3.4) |
+| `seguranca_acao_dependencia` | *(tabela)* | Dependências informativas entre capacidades (3.4) |
+
+Os scripts trazem tudo isso. Com `validate`, a aplicação também exige `seguranca_evento` e
+`seguranca_revisao` mesmo com a trilha de auditoria desligada; elas vêm de
+[`auditoria-seguranca-postgresql.sql`](sql/auditoria-seguranca-postgresql.sql) /
+[`auditoria-seguranca-mysql.sql`](sql/auditoria-seguranca-mysql.sql) — rode o script do seu banco também.
+
+**Alternativa sem scripts:** `archbase.security.schema.mode=apply` (padrão) cria na subida o que faltar
+das entidades de segurança, no dialeto do banco — ver [esquema-de-seguranca.md](esquema-de-seguranca.md).
+Com `validate`, porém, a validação do Hibernate roda antes do inicializador; nesse caso os scripts são
+necessários.
 
 Além das colunas, `seguranca_token_api.token` deixa de ser obrigatória. Sem isso, ligar
 `archbase.security.api-token.purge-plaintext` mais tarde violaria a restrição na hora de apagar o

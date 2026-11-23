@@ -6,13 +6,14 @@
 
 **Archbase** é um framework Java para aplicações empresariais construído sobre Spring Boot 4.1 e Java 25. Implementa Domain-Driven Design (DDD) com Onion Architecture, oferecendo uma base sólida e modular para aplicações complexas.
 
-> **Versão 3.4.4** - Veja as [notas de release](CHANGELOG.md) para informações sobre atualizações. A versão mais recente publicada aparece no badge do Maven Central acima.
+> **Versão 3.5.0** - A versão mais recente publicada aparece no badge do Maven Central acima. Para atualizar uma aplicação existente, veja os guias em [`deployment/`](deployment/).
 
 ## Características
 
 - **Domain-Driven Design** - Suporte completo a entidades, agregados, value objects e repositórios
-- **Multi-tenancy** - Isolamento de tenant com múltiplas estratégias de resolução
-- **Segurança** - JWT com controle de permissões baseado em anotações
+- **Multi-tenancy** - Isolamento por coluna (`@TenantId`), tenant do token como fonte de verdade
+- **Segurança** - JWT, autorização em cinco portões com `@HasPermission`, MFA, token de API, trilha de auditoria
+- **IdP externo** (opt-in) - ArchGuard, Keycloak, Entra ID, Auth0, Okta via `archbase-security-oidc`
 - **Event-Driven** - CQRS com buses separados para Commands, Queries e Events
 - **Query Flexível** - Suporte a RSQL para filtros dinâmicos
 - **Validação** - Framework de validação com fluent interface
@@ -27,7 +28,7 @@
 <dependency>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-starter</artifactId>
-    <version>3.4.4</version>
+    <version>3.5.0</version>
 </dependency>
 ```
 
@@ -38,134 +39,158 @@ Ou use módulos específicos:
 <dependency>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-starter-core</artifactId>
-    <version>3.4.4</version>
+    <version>3.5.0</version>
 </dependency>
 
 <!-- Para segurança -->
 <dependency>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-starter-security</artifactId>
-    <version>3.4.4</version>
+    <version>3.5.0</version>
 </dependency>
 
 <!-- Para multi-tenancy -->
 <dependency>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-starter-multitenancy</artifactId>
-    <version>3.4.4</version>
+    <version>3.5.0</version>
 </dependency>
 ```
 
 ### Configure a aplicação
 
+As propriedades marcadas como obrigatórias não têm valor padrão: sem elas a aplicação não sobe.
+
 ```yaml
 archbase:
   security:
-    enabled: true
+    scan-packages: com.suaempresa          # onde estão os @HasPermission
     jwt:
-      secret-key: sua-chave-base64-minimo-32-bytes
-      token-expiration: 86400000  # 24 horas
-      refresh-expiration: 604800000  # 7 dias
-
-  multitenancy:
-    enabled: true
-    scan-packages: com.suaempresa
-
-  rsql:
-    enabled: true
-    case-insensitive: true
+      secret-key: ${JWT_SECRET}            # obrigatória: Base64 de >= 32 bytes (openssl rand -base64 48)
+      token-expiration: 3600000            # obrigatória, ms (1 hora)
+      refresh-expiration: 604800000        # obrigatória, ms (7 dias)
+    whitelist: /api/v1/public/**           # obrigatória: rotas públicas separadas por vírgula ("" = nenhuma)
+    cors:                                  # obrigatórias
+      allowed-origins: https://app.suaempresa.com
+      allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
+      allowed-headers: "*"
+      allow-credentials: true
+  app:
+    tenant:
+      default:
+        id: archbase
 ```
+
+Os defaults de segurança preservam o comportamento de versões anteriores e deixam várias proteções
+desligadas. Antes de ir para produção, leia [`deployment/security-hardening.md`](deployment/security-hardening.md).
 
 ### Crie uma entidade
 
+Entidades JPA estendem `PersistenceEntityBase` ou, com multi-tenancy, `TenantPersistenceEntityBase`. As
+classes base não são genéricas: o id é `String` (UUID gerado no construtor) e as colunas de auditoria
+(`DH_CRIACAO`, `USUARIO_CRIOU`, `VERSAO`…) vêm herdadas.
+
 ```java
 @Entity
-@DomainEntity
-public class Cliente extends PersistenceEntityBase<Cliente, UUID> {
+@Table(name = "CLIENTE")
+@Getter
+@Setter
+public class Cliente extends TenantPersistenceEntityBase {
 
+    @Column(name = "NOME")
     private String nome;
+
+    @Column(name = "EMAIL")
     private String email;
+}
+```
 
+A validação fica num validador fluente:
+
+```java
+public class ClienteValidator extends AbstractArchbaseValidator<Cliente> {
     @Override
-    public ValidationResult validate() {
-        return new Cliente.Validator().validate(this);
-    }
-
-    static class Validator extends AbstractArchbaseValidator<Cliente> {
-        @Override
-        public void rules() {
-            ruleFor(Cliente::getNome)
-                .must(not(stringEmptyOrNull()))
-                .withMessage("Nome é obrigatório");
-
-            ruleFor(Cliente::getEmail)
-                .must(emailAddress())
-                .withMessage("Email inválido");
-        }
+    public void rules() {
+        ruleFor(Cliente::getNome)
+            .must(not(stringEmptyOrNull()))
+            .withMessage("Nome é obrigatório");
     }
 }
+
+// uso: new ClienteValidator().validate(cliente).isValid()
 ```
 
 ### Crie um repositório
 
 ```java
-@DomainRepository
 public interface ClienteRepository
-    extends Repository<Cliente, UUID, Long> {
-    // CRUD automático disponível
+    extends ArchbaseCommonJpaRepository<Cliente, String, Long> {
+    // CRUD, QueryDSL, JpaSpecificationExecutor e revisões (Envers)
 }
 ```
 
 ### Crie um controller
 
+`@HasPermission` só vale em **método** e exige `description` (é o texto que o administrador vê ao
+conceder). Para não repetir o recurso, declare `@ArchbaseResource` na classe.
+
 ```java
 @RestController
 @RequestMapping("/api/clientes")
-@HasPermission(action = "VIEW", resource = "CLIENTE")
+@ArchbaseResource(value = "CLIENTE", description = "Clientes")
 public class ClienteController {
 
-    @Autowired
-    private ClienteRepository repository;
+    private final ClienteRepository repository;
+
+    public ClienteController(ClienteRepository repository) {
+        this.repository = repository;
+    }
 
     @GetMapping
-    public Page<Cliente> buscar(
-            @RequestParam(required = false) String filter,
-            Pageable pageable) {
-
-        ArchbaseSpecification<Cliente> spec = Specification.where(null);
-        if (filter != null) {
-            spec = ArchbaseRSQLJPASupport.toSpecification(filter, Cliente.class);
-        }
-
+    @HasPermission(action = "VIEW", description = "Consultar clientes")
+    public Page<Cliente> buscar(@RequestParam(required = false) String filter, Pageable pageable) {
+        Specification<Cliente> spec = filter == null
+            ? Specification.unrestricted()
+            : ArchbaseRSQLJPASupport.toSpecification(filter);
         return repository.findAll(spec, pageable);
     }
 
     @PostMapping
-    @HasPermission(action = "CREATE", resource = "CLIENTE")
+    @HasPermission(action = "CREATE", description = "Cadastrar cliente")
     public Cliente criar(@RequestBody @Valid Cliente cliente) {
         return repository.save(cliente);
     }
 }
 ```
 
+Endpoints públicos entram em `archbase.security.whitelist`. `@PermitAll`, `@RolesAllowed` e `@Secured`
+**não têm efeito**: só a segurança de método `prePost` está ligada.
+
 ## Módulos
+
+São 40 módulos; a lista completa, com o propósito de cada um, está no [`CLAUDE.md`](CLAUDE.md#module-organization).
+Os principais:
 
 | Módulo | Descrição |
 |--------|-----------|
-| `archbase-starter` | Starter completo com todos os módulos |
-| `archbase-starter-core` | Configuração core (RSQL, Jackson, Swagger) |
-| `archbase-starter-security` | Autenticação JWT e controle de permissões |
-| `archbase-starter-multitenancy` | Suporte a multi-tenancy |
-| `archbase-domain-driven-design` | Implementação base de DDD |
-| `archbase-domain-driven-design-spec` | Padrão Specification para queries |
-| `archbase-query` | Query handling e suporte RSQL |
-| `archbase-security` | `@HasPermission` e autenticação programática |
+| `archbase-starter` | Agrega `starter-core`, `starter-security` e `starter-multitenancy` |
+| `archbase-starter-core` | Auto-configuração MVC, RSQL, validação e propagação de contexto em threads |
+| `archbase-starter-security` | Autenticação, autorização, esquema de segurança (`archbase.security.schema.mode`) |
+| `archbase-starter-multitenancy` | Interceptor e aspecto de tenant |
+| `archbase-domain-driven-design-spec` | Contratos DDD: `Repository`, `AggregateRoot`, bases de entidade, `ArchbaseTenantContext` |
+| `archbase-domain-driven-design` | Implementação JPA dos repositórios |
+| `archbase-query` | RSQL para JPA |
+| `archbase-security` | `@HasPermission`, core de autorização, MFA, token de API, trilha de auditoria |
+| `archbase-security-oidc` | IdP externo (opt-in) |
+| `archbase-controlplane` | Integração com o Control Plane: licença, assentos, provisionamento (opt-in) |
 | `archbase-multitenancy` | Isolamento de tenant e contexto |
 | `archbase-event-driven` | CQRS com Command/Query/Event buses |
 | `archbase-workflow-process` | Motor de workflow |
 | `archbase-plugin-manager` | Carregamento dinâmico de plugins |
-| `archbase-validation` | Framework de validação |
+| `archbase-validation` | Validação fluente |
 | `archbase-error-handling` | Tratamento centralizado de erros |
+| `archbase-hypersistence` | Tipos JSON, array e range, repositório otimizado |
+| `archbase-analytics` | Proxy auditado para a camada semântica Cube (opt-in) |
 
 ## Arquitetura
 
@@ -179,9 +204,9 @@ O framework segue **Hexagonal Architecture** (Ports & Adapters) com separação 
 
 ```java
 @Entity
-@DomainEntity
-public class Produto extends TenantPersistenceEntityBase<Produto, UUID> {
-    // Tenant ID é adicionado automaticamente
+@Table(name = "PRODUTO")
+public class Produto extends TenantPersistenceEntityBase {
+    // TENANT_ID é @TenantId: gravado e filtrado pelo Hibernate com o tenant do contexto
 }
 ```
 
@@ -212,7 +237,7 @@ public class CriarProdutoHandler {
 
 ```java
 @Autowired
-private SystemUserContext systemUserContext;
+private SystemUserContext systemUserContext; // br.com.archbase.security.usecase
 
 public void processarJob() {
     systemUserContext.runAsSystemUser("system@empresa.com", () -> {
@@ -224,15 +249,16 @@ public void processarJob() {
 ### Workflow Engine
 
 ```java
-Workflow workflow = Workflow.builder()
-    .id("pedido-workflow")
-    .step("validar")
-    .step("processar-pagamento")
-    .step("enviar-confirmacao")
+// validar, processarPagamento e enviarConfirmacao implementam Work
+SequentialFlow pedido = SequentialFlow.Builder.aNewSequentialFlow()
+    .named("pedido-workflow")
+    .execute(validar)
+    .then(processarPagamento)
+    .then(enviarConfirmacao)
     .build();
 
-WorkflowEngine executor = new WorkflowEngine(workflow);
-executor.execute(context);
+WorkFlowEngine engine = WorkFlowEngineBuilder.aNewWorkFlowEngine().build();
+WorkReport report = engine.run(pedido, new WorkContext());
 ```
 
 ## Documentação

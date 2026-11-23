@@ -26,9 +26,10 @@ A anotação `@HasPermission` é o **principal mecanismo** para implementar cont
 
 - Aplica-se apenas em **métodos** (não em classes)
 - Verifica permissões em tempo de execução
-- Suporta contextos multi-tenant, company e project
-- Integra-se com o cache de permissões para melhor performance
-- Permite descrições legíveis para documentação automática
+- Suporta estreitamento por empresa e projeto; o isolamento entre tenants é do Hibernate (`@TenantId`)
+- É avaliada pelo core de cinco portões (`ARQUITETURA.md`, `MODELO_CORE_AUTORIZACAO.md`): uma permissão com
+  `EFFECT=DENY` vence qualquer concessão, inclusive a do administrador
+- `description` é obrigatória: é o texto que aparece na tela de concessão
 
 ---
 
@@ -40,12 +41,29 @@ A anotação `@HasPermission` é o **principal mecanismo** para implementar cont
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface HasPermission {
-    String action();           // Nome da ação (obrigatório)
-    String description();      // Descrição legível (obrigatório)
-    String resource();         // Nome do recurso (obrigatório)
-    String tenantId() default "";    // Contexto de tenant (opcional)
-    String companyId() default "";   // Contexto de empresa (opcional)
-    String projectId() default "";   // Contexto de projeto (opcional)
+    String action();                                   // Nome da ação (obrigatório)
+    String description();                              // Descrição legível (obrigatório)
+    String resource() default "";                      // Vazio = herda de @ArchbaseResource da classe
+    String label() default "";                         // Rótulo curto no admin (vazio = usa a descrição)
+    String category() default "";                      // Agrupamento dentro do recurso
+    AccessLevel minimumLevel() default AccessLevel.NONE; // Piso de nível (semente; portão LEVEL)
+    String[] requires() default {};                    // Dependências informativas, nunca portão
+    String tenantId() default "";                      // Ver 2.2 — não dá acesso entre tenants
+    String companyId() default "";                     // Estreitamento por empresa
+    String projectId() default "";                     // Estreitamento por projeto
+}
+```
+
+Sem `resource` e sem `@ArchbaseResource` na classe, o acesso é **negado** e o erro vai para o log.
+
+```java
+@RestController
+@ArchbaseResource(value = "USER", description = "Usuários")
+public class UserController {
+
+    @GetMapping
+    @HasPermission(action = "VIEW", description = "Consultar usuários")   // recurso USER herdado
+    public List<UserDto> list() { ... }
 }
 ```
 
@@ -78,7 +96,7 @@ public @interface HasPermission {
 
 #### resource
 
-**Tipo**: `String` (obrigatório)
+**Tipo**: `String` (obrigatório, a menos que a classe declare `@ArchbaseResource`)
 
 **Descrição**: Nome do recurso sobre o qual a ação será executada.
 
@@ -142,28 +160,22 @@ public @interface HasPermission {
 **Descrição**: Define o contexto de tenant para a verificação de permissão.
 
 **Comportamento**:
-- **Vazio (`""`)**: Usa o tenant atual de `ArchbaseTenantContext`
-- **Não vazio**: Força verificação no tenant especificado
-
-**Uso Típico**:
+- **Vazio (`""`)**: usa o tenant atual de `ArchbaseTenantContext`. É o uso correto.
+- **Não vazio**: o valor é comparado literalmente. **Não dá acesso entre tenants**: as permissões são
+  lidas com o filtro `@TenantId` do Hibernate, que só devolve as linhas do tenant corrente. Um valor
+  fixo como `"MASTER_TENANT"` não alcança dados de outro tenant.
 
 ```java
-// Contexto dinâmico (recomendado para SaaS multi-tenant)
 @HasPermission(
     action = "VIEW",
     resource = "USER",
     description = "View users in current tenant"
     // tenantId vazio = usa contexto atual
 )
-
-// Contexto fixo (uso raro, para operações cross-tenant)
-@HasPermission(
-    action = "AUDIT",
-    resource = "TENANT_LOG",
-    description = "Audit logs across all tenants",
-    tenantId = "MASTER_TENANT"
-)
 ```
+
+Operação que precise ler vários tenants (purga, relatório da plataforma) deve rodar fora da
+requisição, com o tenant definido explicitamente em `ArchbaseTenantContext` para cada um.
 
 #### companyId
 
@@ -171,9 +183,11 @@ public @interface HasPermission {
 
 **Descrição**: Define o contexto de empresa para a verificação de permissão.
 
-**Uso**:
-- Para aplicações com hierarquia: Tenant → Company → Project
-- Permite permissões específicas por empresa dentro de um tenant
+**Comportamento**:
+- **Vazio (`""`)**: usa a empresa atual de `ArchbaseTenantContext.getCompanyId()`.
+- **Não vazio**: comparado literalmente com `SEGURANCA_PERMISSAO.COMPANY_ID`. Não é expressão: `"#companyId"`
+  não é avaliado como SpEL.
+- Permissão com `COMPANY_ID` nulo vale para qualquer empresa; a negação (DENY) com escopo tem regra própria.
 
 **Exemplo**:
 
@@ -196,9 +210,12 @@ public List<ReportDto> getCompanyReports(@PathVariable String companyId) {
 
 **Descrição**: Define o contexto de projeto para a verificação de permissão.
 
-**Uso**:
-- Para permissões no nível de projeto
-- Comum em sistemas de gerenciamento de projetos
+**Comportamento**:
+- **Vazio (`""`)**: não estreita por projeto. Não existe "projeto atual" no contexto:
+  `ArchbaseTenantContext` só guarda tenant e empresa.
+- **Não vazio**: comparado literalmente com `SEGURANCA_PERMISSAO.PROJECT_ID`.
+- O valor é fixo na anotação; não é possível usar o `{projectId}` da URL. Para checar acesso ao projeto
+  da requisição, combine com `@PreAuthorize` e um bean (ver 5.2).
 
 **Exemplo**:
 
@@ -207,8 +224,7 @@ public List<ReportDto> getCompanyReports(@PathVariable String companyId) {
 @HasPermission(
     action = "CREATE",
     resource = "TASK",
-    description = "Create task in project",
-    projectId = ""  // Usar projeto atual do contexto
+    description = "Create task in project"
 )
 public TaskDto createTask(@PathVariable String projectId, @RequestBody TaskDto task) {
     return taskService.create(projectId, task);
@@ -514,17 +530,12 @@ public class ReportController {
 
 **Uso**: Para lógica de autorização customizada ou baseada em roles/profiles.
 
+> **`hasRole`/`hasAuthority` sempre negam.** `UserEntity.getAuthorities()` devolve lista vazia: papéis e
+> perfis do Archbase não viram `GrantedAuthority`. Para papel, use `@RequireRole` (com um
+> `ArchbaseRoleResolver`), `@RequireProfile` ou `@RequirePersona`; para administrador, `@HasPermission`
+> já concede a quem tem `isAdministrator`.
+
 ```java
-@PreAuthorize("hasRole('ADMIN')")
-public void adminOnlyOperation() {
-    // Apenas usuários com role ADMIN podem executar
-}
-
-@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-public void managerOperation() {
-    // Usuários com role ADMIN ou MANAGER podem executar
-}
-
 @PreAuthorize("authentication.principal.username == #username")
 public void ownProfileOperation(@PathVariable String username) {
     // Apenas o próprio usuário pode executar
@@ -554,7 +565,8 @@ public class CustomSecurityService {
     public boolean canApproveInvoice(String invoiceId) {
         // Lógica customizada para aprovação de faturas
         Invoice invoice = invoiceRepository.findById(invoiceId);
-        return invoice.getAmount() < 1000.00 || hasRole("FINANCIAL_DIRECTOR");
+        // Não use hasRole(): getAuthorities() é vazio. Consulte o domínio ou o ArchbaseRoleResolver.
+        return invoice.getAmount() < 1000.00 || roleResolver.resolveRoles(currentUser()).contains("FINANCIAL_DIRECTOR");
     }
 }
 
@@ -590,37 +602,26 @@ public Document getDocument(String documentId) {
 }
 ```
 
-### 5.4 @Secured
+### 5.4 @Secured, @RolesAllowed e @PermitAll — NÃO USE
 
-**Descrição**: Anotação simplificada do Spring Security (menos flexível que `@PreAuthorize`).
+O Archbase liga só `@EnableMethodSecurity(prePostEnabled = true)`. `securedEnabled` e `jsr250Enabled`
+ficam desligados, então estas anotações são **ignoradas em silêncio**:
 
-```java
-@Secured("ROLE_ADMIN")
-public void adminOperation() {
-    // Implementação
-}
+| Anotação | O que acontece |
+|----------|----------------|
+| `@Secured("ROLE_ADMIN")` | Ignorada. Qualquer usuário autenticado executa o método. |
+| `@RolesAllowed("ADMIN")` | Ignorada. Qualquer usuário autenticado executa o método. |
+| `@PermitAll` | Ignorada. O endpoint continua exigindo autenticação. |
 
-@Secured({"ROLE_ADMIN", "ROLE_MANAGER"})
-public void managerOperation() {
-    // Implementação
-}
-```
+Mesmo que a aplicação ligasse `securedEnabled`/`jsr250Enabled`, os papéis nunca casariam, porque
+`getAuthorities()` é vazio (ver 5.1).
 
-### 5.5 @RolesAllowed (JSR-250)
-
-**Descrição**: Anotação padrão Java para controle de acesso baseado em roles.
-
-```java
-@RolesAllowed("ADMIN")
-public void adminOperation() {
-    // Implementação
-}
-
-@RolesAllowed({"ADMIN", "MANAGER"})
-public void managerOperation() {
-    // Implementação
-}
-```
+Use no lugar:
+- controle de acesso: `@HasPermission`;
+- papel do domínio: `@RequireRole` + `ArchbaseRoleResolver` (sem o resolver, vale
+  `archbase.security.require-role.no-resolver-policy`);
+- perfil ou persona: `@RequireProfile`, `@RequirePersona` (aceitam classe; a do método prevalece);
+- endpoint público: `archbase.security.whitelist`.
 
 ---
 
@@ -726,7 +727,7 @@ public class TransactionController {
         resource = "TRANSACTION",
         description = "Approve transaction"
     )
-    @PreAuthorize("hasRole('FINANCIAL_APPROVER')")
+    @RequireRole("FINANCIAL_APPROVER")   // exige um ArchbaseRoleResolver na aplicação
     public TransactionDto approveTransaction(@PathVariable String id) {
         return transactionService.approve(id);
     }
@@ -892,14 +893,20 @@ ATTACHMENT
 
 **Verificações**:
 
-1. **Usuário possui a permissão?**
+1. **Por que foi negado?** Ligue `archbase.security.diagnostics.enabled=true` e, como administrador, use
+   `POST /api/v1/security/diagnostics/simulate` ou `GET /api/v1/security/diagnostics/users/{id}/effective`.
+   A resposta traz o portão que negou e o código do motivo. O log da negação traz o mesmo código.
+
+   A consulta direta abaixo cobre só a permissão dada ao usuário; a concessão também pode vir dos
+   grupos ou do perfil dele (`ID_SEGURANCA` do grupo/perfil), e uma linha com `EFFECT='DENY'` vence:
    ```sql
-   SELECT p.* FROM SEGURANCA_PERMISSAO p
+   SELECT p.ID_PERMISSAO, p.EFFECT, p.COMPANY_ID, p.PROJECT_ID
+   FROM SEGURANCA_PERMISSAO p
    JOIN SEGURANCA_ACAO a ON p.ID_ACAO = a.ID_ACAO
    JOIN SEGURANCA_RECURSO r ON a.ID_RECURSO = r.ID_RECURSO
    WHERE p.ID_SEGURANCA = '<user_id>'
-     AND a.CD_ACAO = 'VIEW'
-     AND r.CD_RECURSO = 'USER';
+     AND a.NOME = 'VIEW'
+     AND r.NOME = 'USER';
    ```
 
 2. **Contexto está correto?**
@@ -908,16 +915,13 @@ ATTACHMENT
    System.out.println("Current tenant: " + currentTenant);
    ```
 
-3. **Segurança de método está habilitada?**
-   ```properties
-   archbase.security.method.enabled=true
-   ```
+3. **A ação está inativa?** Com `archbase.security.permission.require-active=true`, permissão de ação
+   inativa não conta.
 
-4. **Cache de permissões está desatualizado?**
-   - Desabilite o cache temporariamente para teste:
-     ```properties
-     archbase.security.permission.cache.enabled=false
-     ```
+4. **O portão de nível está ligado?** Com `archbase.security.access-level.enabled=true`, o nível do perfil
+   precisa alcançar o `MINIMUM_LEVEL` da ação.
+
+Não há cache de permissões: a decisão lê o banco a cada requisição.
 
 ### 9.2 Anotação Não Está Funcionando
 

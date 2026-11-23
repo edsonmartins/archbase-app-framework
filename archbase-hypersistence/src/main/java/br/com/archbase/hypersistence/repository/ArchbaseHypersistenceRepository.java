@@ -32,7 +32,7 @@ import java.util.List;
  * <h3>Exemplo de uso:</h3>
  * <pre>{@code
  * public interface ProductRepository
- *     extends ArchbaseJpaRepository<ProductEntity, String, Long>,
+ *     extends ArchbaseCommonJpaRepository<ProductEntity, String, Long>,
  *             ArchbaseHypersistenceRepository<ProductEntity, String> {
  * }
  *
