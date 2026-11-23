@@ -190,6 +190,7 @@ class OidcIntegrationTest {
         jdbc.update("DELETE FROM " + ExternalIdentityStore.TABLE);
         jdbc.update("DELETE FROM " + br.com.archbase.oidc.user.RevokedTokenStore.TABLE);
         jdbc.update("DELETE FROM " + br.com.archbase.oidc.user.ExternalLogoutStore.TABLE);
+        jdbc.update("DELETE FROM " + br.com.archbase.oidc.migration.IdentityMigrationJournal.TABLE);
         tokenRepository.deleteAll();
         userRepository.deleteAll();
         groupRepository.deleteAll();
@@ -1039,6 +1040,170 @@ class OidcIntegrationTest {
             assertAvisoRecusado(avisar(aviso(IDP.issuer("desconhecido"), "x", "sub-ana", null).sign()));
 
             assertThat(eu(antes).getStatus()).as("nenhum aviso recusado derrubou a sessão").isEqualTo(200);
+        }
+    }
+
+    @Nested
+    @DisplayName("migração de identidades: /api/v1/security/identity-migration")
+    class Migracao {
+
+        private static final String API = "/api/v1/security/identity-migration";
+        private String admin;
+        private UserEntity adm;
+        private UserEntity bruno;
+
+        @BeforeEach
+        void administrador() throws Exception {
+            adm = usuario("admin@empresa.com.br");
+            adm.setIsAdministrator(true);
+            userRepository.save(adm);
+            bruno = userRepository.findAll().stream().filter(u -> u.getEmail().startsWith("bruno")).findFirst()
+                    .orElseThrow();
+            admin = json.readTree(loginLocal("admin@empresa.com.br").getContentAsString()).get("access_token")
+                    .asString();
+        }
+
+        private FakeOidcProvider.Token entra(String oid) {
+            return IDP.token(IDP.baseUrl() + "/tid-cliente-a/v2.0").aud("api://archbase")
+                    .claim("oid", oid).claim("tid", "tid-cliente-a");
+        }
+
+        private Map<String, Object> pedido(List<Map<String, String>> entries, boolean admins, String hash) {
+            Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("providerId", "entra");
+            m.put("entries", entries);
+            m.put("includeAdministrators", admins);
+            m.put("planHash", hash);
+            return m;
+        }
+
+        private MockHttpServletResponse chamar(String bearer, String path, Object body) throws Exception {
+            return mockMvc.perform(post(API + path).header("Authorization", "Bearer " + bearer)
+                    .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body)))
+                    .andReturn().getResponse();
+        }
+
+        private JsonNode item(JsonNode plano, int linha) {
+            for (JsonNode i : plano.get("items")) {
+                if (i.get("line").asInt() == linha) {
+                    return i;
+                }
+            }
+            throw new AssertionError("linha " + linha + " ausente");
+        }
+
+        @Test
+        @DisplayName("exporta, planeja, executa com o hash conferido; o usuário passa a entrar pelo IdP")
+        void fluxoCompleto() throws Exception {
+            JsonNode exportado = json.readTree(mockMvc.perform(get(API + "/export").param("providerId", "entra")
+                    .header("Authorization", "Bearer " + admin)).andReturn().getResponse().getContentAsString());
+            assertThat(exportado).hasSize(3);
+            assertRecusa(eu(entra("oid-ana").sign()), 403, "USER_NOT_LINKED");
+
+            var entries = List.of(Map.of("subject", "oid-ana", "email", "ANA@empresa.com.br "),
+                    Map.of("subject", "oid-bruno", "userId", bruno.getId()));
+            MockHttpServletResponse r = chamar(admin, "/plan", pedido(entries, false, null));
+            assertThat(r.getStatus()).isEqualTo(200);
+            JsonNode plano = json.readTree(r.getContentAsString());
+            assertThat(plano.get("summary").get("LINK").asInt()).isEqualTo(2);
+            assertThat(item(plano, 1).get("userId").asString()).as("e-mail sem caixa nem espaço").isEqualTo(ana.getId());
+            assertThat(plano.get("unmatched")).hasSize(1);
+            assertThat(plano.get("unmatched").get(0).get("email").asString()).isEqualTo("admin@empresa.com.br");
+            assertThat(plano.get("cutover").get("administratorsWithoutLink").asInt()).isEqualTo(1);
+            assertThat(links.findUserId("entra", TENANT, "oid-ana")).as("dry-run não grava").isEmpty();
+
+            String hash = plano.get("planHash").asString();
+            MockHttpServletResponse exec = chamar(admin, "/execute", pedido(entries, false, hash));
+            assertThat(exec.getStatus()).isEqualTo(200);
+
+            assertThat(eu(entra("oid-ana").sign()).getStatus()).isEqualTo(200);
+            assertThat(eu(entra("oid-bruno").sign()).getStatus()).isEqualTo(200);
+            JsonNode denovo = json.readTree(chamar(admin, "/plan", pedido(entries, false, null)).getContentAsString());
+            assertThat(denovo.get("summary").get("ALREADY_LINKED").asInt()).as("idempotente").isEqualTo(2);
+
+            JsonNode historico = json.readTree(mockMvc.perform(get(API + "/history")
+                    .header("Authorization", "Bearer " + admin)).andReturn().getResponse().getContentAsString());
+            assertThat(historico).hasSize(3);
+            assertThat(historico.findValuesAsString("mode")).contains("DRY_RUN", "EXECUTE");
+        }
+
+        @Test
+        @DisplayName("sem hash, ou com o plano mudado desde o dry-run: nada é gravado")
+        void exigeOPlanoConferido() throws Exception {
+            var entries = List.of(Map.of("subject", "oid-ana", "email", EMAIL));
+            assertRecusa(chamar(admin, "/execute", pedido(entries, false, null)), 400, "PLAN_REQUIRED");
+
+            String hash = json.readTree(chamar(admin, "/plan", pedido(entries, false, null)).getContentAsString())
+                    .get("planHash").asString();
+            links.link("entra", TENANT, "oid-ana-outro", ana.getId()); // alguém vinculou no meio do caminho
+
+            MockHttpServletResponse r = chamar(admin, "/execute", pedido(entries, false, hash));
+            assertRecusa(r, 409, "PLAN_CHANGED");
+            assertThat(item(json.readTree(r.getContentAsString()).get("plan"), 1).get("reason").asString())
+                    .isEqualTo("USER_LINKED_TO_OTHER_SUBJECT");
+            assertThat(links.findUserId("entra", TENANT, "oid-ana")).isEmpty();
+        }
+
+        @Test
+        @DisplayName("cada linha que não pode ser vinculada diz por quê; repetidos não são desempatados")
+        void motivos() throws Exception {
+            UserEntity d1 = usuario("dup-a@empresa.com.br");
+            d1.setEmail("dup@empresa.com.br");
+            UserEntity d2 = usuario("dup-b@empresa.com.br");
+            d2.setEmail("Dup@empresa.com.br");
+            userRepository.save(d1);
+            userRepository.save(d2);
+            links.link("entra", TENANT, "oid-ja-usado", bruno.getId());
+
+            var entries = List.of(
+                    Map.of("subject", "oid-1", "email", "ninguem@empresa.com.br"),       // 1
+                    Map.of("subject", "oid-2", "email", "dup@empresa.com.br"),           // 2
+                    Map.of("subject", "oid-3", "email", "admin@empresa.com.br"),         // 3
+                    Map.of("subject", "oid-ja-usado", "email", EMAIL),                   // 4
+                    Map.of("subject", "oid-5", "userId", bruno.getId()),                 // 5
+                    Map.of("subject", "oid-6", "email", "x@y", "userId", ana.getId()),   // 6
+                    Map.of("email", EMAIL),                                              // 7
+                    Map.of("subject", "oid-rep", "userId", d1.getId()),                  // 8
+                    Map.of("subject", "oid-rep", "userId", d2.getId()));                 // 9
+            JsonNode plano = json.readTree(chamar(admin, "/plan", pedido(entries, false, null)).getContentAsString());
+
+            assertThat(item(plano, 1).get("reason").asString()).isEqualTo("USER_NOT_FOUND");
+            assertThat(item(plano, 2).get("reason").asString()).isEqualTo("AMBIGUOUS_EMAIL");
+            assertThat(item(plano, 3).get("reason").asString()).isEqualTo("ADMINISTRATOR");
+            assertThat(item(plano, 4).get("reason").asString()).isEqualTo("SUBJECT_LINKED_TO_OTHER_USER");
+            assertThat(item(plano, 5).get("reason").asString()).isEqualTo("USER_LINKED_TO_OTHER_SUBJECT");
+            assertThat(item(plano, 6).get("reason").asString()).as("userId e e-mail divergentes")
+                    .isEqualTo("INVALID_ENTRY");
+            assertThat(item(plano, 7).get("reason").asString()).isEqualTo("INVALID_ENTRY");
+            assertThat(item(plano, 8).get("reason").asString()).isEqualTo("DUPLICATE_SUBJECT");
+            assertThat(item(plano, 9).get("reason").asString()).isEqualTo("DUPLICATE_SUBJECT");
+            assertThat(plano.get("summary").get("LINK").asInt()).isZero();
+
+            JsonNode comAdmins = json.readTree(chamar(admin, "/plan",
+                    pedido(List.of(Map.of("subject", "oid-3", "email", "admin@empresa.com.br")), true, null))
+                    .getContentAsString());
+            assertThat(item(comAdmins, 1).get("action").asString()).isEqualTo("LINK");
+            assertThat(item(comAdmins, 1).get("administrator").asBoolean()).isTrue();
+        }
+
+        @Test
+        @DisplayName("só administrador; provedor desconhecido e excesso de linhas são recusados")
+        void acesso() throws Exception {
+            String comum = json.readTree(loginLocal("bruno@empresa.com.br").getContentAsString())
+                    .get("access_token").asString();
+            var entries = List.of(Map.of("subject", "oid-ana", "email", EMAIL));
+            assertThat(chamar(comum, "/plan", pedido(entries, false, null)).getStatus()).isEqualTo(403);
+            assertThat(chamar(comum, "/execute", pedido(entries, false, "x")).getStatus()).isEqualTo(403);
+            assertThat(mockMvc.perform(get(API + "/export").param("providerId", "entra")
+                    .header("Authorization", "Bearer " + comum)).andReturn().getResponse().getStatus()).isEqualTo(403);
+
+            Map<String, Object> outro = pedido(entries, false, null);
+            outro.put("providerId", "nao-existe");
+            assertRecusa(chamar(admin, "/plan", outro), 400, "UNKNOWN_PROVIDER");
+            List<Map<String, String>> muitas = java.util.Collections.nCopies(
+                    br.com.archbase.oidc.migration.IdentityMigrationService.MAX_ENTRIES + 1,
+                    Map.of("subject", "s", "email", EMAIL));
+            assertRecusa(chamar(admin, "/plan", pedido(muitas, false, null)), 400, "TOO_MANY_ENTRIES");
         }
     }
 
