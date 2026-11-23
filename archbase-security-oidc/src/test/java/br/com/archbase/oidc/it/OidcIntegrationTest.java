@@ -25,6 +25,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -116,6 +117,28 @@ class OidcIntegrationTest {
         r.add(p + "jitativo.users.provisioning", () -> "jit");
         r.add(p + "jitativo.users.jit.status", () -> "active");
 
+        r.add(p + "papeis.issuer", () -> IDP.issuer("papeis"));
+        r.add(p + "papeis.jwks-uri", () -> IDP.jwksUri("papeis"));
+        r.add(p + "papeis.audiences[0]", () -> "app-papeis");
+        r.add(p + "papeis.allow-insecure-http", () -> "true");
+        r.add(p + "papeis.tenant.fixed", () -> TENANT);
+        r.add(p + "papeis.claims.roles[0]", () -> "realm_access.roles");
+        r.add(p + "papeis.claims.roles[1]", () -> "roles");
+        r.add(p + "papeis.role-mapping.sync", () -> "add");
+        r.add(p + "papeis.role-mapping.map.financeiro", () -> "Financeiro");
+        r.add(p + "papeis.role-mapping.map.[cliente-a/vendas]", () -> "Vendas");
+        r.add(p + "papeis.role-mapping.map.fantasma", () -> "GrupoQueNaoExiste");
+
+        r.add(p + "espelho.issuer", () -> IDP.issuer("espelho"));
+        r.add(p + "espelho.jwks-uri", () -> IDP.jwksUri("espelho"));
+        r.add(p + "espelho.audiences[0]", () -> "app-papeis");
+        r.add(p + "espelho.allow-insecure-http", () -> "true");
+        r.add(p + "espelho.tenant.fixed", () -> TENANT);
+        r.add(p + "espelho.claims.roles[0]", () -> "groups");
+        r.add(p + "espelho.role-mapping.sync", () -> "mirror");
+        r.add(p + "espelho.role-mapping.map.financeiro", () -> "Financeiro");
+        r.add(p + "espelho.role-mapping.map.vendas", () -> "Vendas");
+
         r.add("archbase.security.oidc.exchange.enabled", () -> "true");
         r.add("archbase.security.oidc.exchange.local-token-ttl", () -> "10m");
     }
@@ -136,7 +159,11 @@ class OidcIntegrationTest {
     @Autowired
     ExternalIdentityStore links;
     @Autowired
+    org.springframework.transaction.PlatformTransactionManager transactionManager;
+    @Autowired
     JdbcTemplate jdbc;
+    @Autowired
+    br.com.archbase.security.repository.GroupJpaRepository groupRepository;
 
     private final ObjectMapper json = new ObjectMapper();
     private UserEntity ana;
@@ -146,6 +173,7 @@ class OidcIntegrationTest {
         jdbc.update("DELETE FROM " + ExternalIdentityStore.TABLE);
         tokenRepository.deleteAll();
         userRepository.deleteAll();
+        groupRepository.deleteAll();
         ana = userRepository.save(usuario(EMAIL));
         userRepository.save(usuario("bruno@empresa.com.br"));
         IDP.publish("rsa-1", true);
@@ -638,6 +666,109 @@ class OidcIntegrationTest {
             assertThat(mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                             .delete(API + "/entra/nao-vinculado").header("Authorization", "Bearer " + admin))
                     .andReturn().getResponse().getStatus()).isEqualTo(404);
+        }
+    }
+
+    // ═══════════════════════════ fase 2b: papéis → grupos ═══════════════════════════
+
+    @Nested
+    @DisplayName("role-mapping: papéis do IdP viram participação em grupos locais")
+    class Papeis {
+
+        @BeforeEach
+        void grupos() {
+            for (String nome : List.of("Financeiro", "Vendas", "Manual")) {
+                groupRepository.save(br.com.archbase.security.persistence.GroupEntity.builder()
+                        .id(UUID.randomUUID().toString()).createEntityDate(LocalDateTime.now())
+                        .name(nome).description(nome).build());
+            }
+        }
+
+        private FakeOidcProvider.Token token(String provedor) {
+            return IDP.token(IDP.issuer(provedor)).aud("app-papeis").claim("sub", "sub-ana-" + provedor)
+                    .claim("email", EMAIL).claim("email_verified", true);
+        }
+
+        private java.util.Set<String> gruposDaAna() {
+            return userRepository.findByIdWithGroupsAndProfile(ana.getId()).orElseThrow().getGroups().stream()
+                    .map(ug -> ug.getGroup().getName()).collect(java.util.stream.Collectors.toSet());
+        }
+
+        private void colocarNoGrupo(String nome) {
+            new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(t -> {
+                UserEntity u = userRepository.findByIdWithGroupsAndProfile(ana.getId()).orElseThrow();
+                var g = groupRepository.findAll().stream().filter(x -> nome.equals(x.getName())).findFirst().orElseThrow();
+                u.getGroups().add(br.com.archbase.security.persistence.UserGroupEntity.builder()
+                        .id(UUID.randomUUID().toString()).createEntityDate(LocalDateTime.now()).user(u).group(g).build());
+                userRepository.save(u);
+            });
+        }
+
+        @Test
+        @DisplayName("add: papéis mapeados (caminho aninhado e nome com '/') viram grupo; não mapeados são ignorados")
+        void adiciona() throws Exception {
+            String t = token("papeis")
+                    .claim("realm_access", Map.of("roles", List.of("financeiro", "papel-qualquer")))
+                    .claim("roles", List.of("cliente-a/vendas"))
+                    .sign();
+
+            assertThat(eu(t).getStatus()).isEqualTo(200);
+            assertThat(gruposDaAna()).containsExactlyInAnyOrder("Financeiro", "Vendas");
+        }
+
+        @Test
+        @DisplayName("add nunca remove: papel que sumiu do token mantém o grupo")
+        void addNaoRemove() throws Exception {
+            eu(token("papeis").claim("roles", List.of("financeiro")).sign());
+            eu(token("papeis").claim("roles", List.of()).sign());
+
+            assertThat(gruposDaAna()).containsExactly("Financeiro");
+        }
+
+        @Test
+        @DisplayName("grupo mapeado que não existe no tenant: ignorado, a requisição segue")
+        void grupoInexistente() throws Exception {
+            assertThat(eu(token("papeis").claim("roles", List.of("fantasma", "financeiro")).sign()).getStatus())
+                    .isEqualTo(200);
+            assertThat(gruposDaAna()).containsExactly("Financeiro");
+        }
+
+        @Test
+        @DisplayName("mirror: remove dos grupos mapeados cujo papel sumiu, e nunca toca grupo atribuído à mão")
+        void espelha() throws Exception {
+            colocarNoGrupo("Manual");
+            eu(token("espelho").claim("groups", List.of("financeiro", "vendas")).sign());
+            assertThat(gruposDaAna()).containsExactlyInAnyOrder("Manual", "Financeiro", "Vendas");
+
+            eu(token("espelho").claim("groups", List.of("vendas")).sign());
+
+            assertThat(gruposDaAna()).containsExactlyInAnyOrder("Manual", "Vendas");
+        }
+
+        @Test
+        @DisplayName("mirror com o claim AUSENTE: nada muda (ex.: overage de grupos do Entra)")
+        void claimAusente() throws Exception {
+            colocarNoGrupo("Financeiro");
+            eu(token("espelho").sign());
+
+            assertThat(gruposDaAna()).containsExactly("Financeiro");
+        }
+
+        @Test
+        @DisplayName("mirror com o claim PRESENTE e vazio: o IdP disse 'nenhum papel' e os grupos mapeados saem")
+        void claimVazio() throws Exception {
+            colocarNoGrupo("Financeiro");
+            colocarNoGrupo("Manual");
+            eu(token("espelho").claim("groups", List.of()).sign());
+
+            assertThat(gruposDaAna()).containsExactly("Manual");
+        }
+
+        @Test
+        @DisplayName("papel nunca torna ninguém administrador")
+        void nuncaAdmin() throws Exception {
+            eu(token("papeis").claim("roles", List.of("financeiro", "admin", "administrator")).sign());
+            assertThat(userRepository.findById(ana.getId()).orElseThrow().getIsAdministrator()).isFalse();
         }
     }
 

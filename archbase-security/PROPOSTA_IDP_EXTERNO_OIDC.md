@@ -236,6 +236,12 @@ com `algorithms` vazio, com `link-by-email` sem garantia de e-mail verificado, o
 - **`role-mapping.sync=add|mirror`:** a cada autenticação (com cache), os papéis do token viram
   participação em grupos locais. `mirror` remove de grupos mapeados que sumiram do token. Os cinco
   portões continuam sem ler token.
+- **Claim de papéis ausente não é "nenhum papel"** (implementado na 2b): o Entra omite `groups` quando o
+  usuário tem grupos demais (*overage*), e alguns IdPs só emitem o claim sob um escopo. Tratar ausência como
+  lista vazia faria o `mirror` apagar os grupos da pessoa a cada login. Só uma lista presente — inclusive
+  vazia — decide.
+- Papel com `/`, `:` ou `.` no nome precisa de colchetes na chave: `role-mapping.map.[cliente-a/vendas]=Vendas`
+  (YAML: `"[cliente-a/vendas]": Vendas`); sem eles o Spring descarta esses caracteres.
 - Papéis do token **nunca** concedem diretamente (GRANT só vem do banco). Isso evita que um IdP mal
   configurado — ou um IdP de cliente no modo multi-tenant — conceda acesso no Archbase.
 - Administrador (`isAdministrator`) **não** é concedido por mapeamento; continua manual, sob o admin-guard.
@@ -364,7 +370,7 @@ proposta e afeta quem já consome o ArchGuard hoje.**
 |---|---|---|
 | **0** | Testes de regressão do filtro no core (JWT local, token de API, tenant por header/claim, Control Plane) **sem mudar código**. É a régua de P1. | Os testes passam antes e depois de cada fase |
 | **1** | **1a — feita (2026-11-21):** mudanças compatíveis no core (seção 3) — política agregada, `ArchbaseCurrentUser`, `ArchbaseLocalCredentialPolicy`, `@Order`. **1b — feita (2026-11-21):** módulo `archbase-security-oidc`: propriedades + validação na subida, `OidcProviderRegistry` (Nimbus, JWKS explícito ou por descoberta, emissor por modelo `{tid}`), `OidcBearerAuthenticator`, `ClaimReader` (nome ou caminho), vínculo (`existing-user` + `link-by-email`, proteção contra segunda identidade com o mesmo e-mail), `local-password: disable-on-link`. **1c — feita (2026-11-21):** `POST /api/v1/auth/oidc/exchange` (desligado por padrão) + `ArchbaseAuthenticationService.issueExternalSession` no core (só acréscimo; o login por senha e o `authenticateWithoutPassword`, que revoga todas as sessões, não mudam): sessão local curta (`exchange.local-token-ttl`, padrão 15 min), **sem refresh token**, respeitando `allowMultipleLogins` | IdP falso RS256 (nos moldes do `FakeControlPlane`): iss/aud/exp/alg/kid, rotação, dois provedores + CP + JWT local no mesmo contexto, tenant por claim/header/mapa; **`@SpringBootTest` de boot com e sem o pacote**, com `ddl-auto=validate` |
-| **2** | **2a — feita (2026-11-21):** `users.provisioning=jit` (`jit.status` `pending` padrão / `active`; só com e-mail confiável; nunca duplica cadastro; usuário nasce sem senha local, sem poder redefinir, sem grupo e não admin; proibido com tenant pelo header) + API administrativa de vínculo `/api/v1/security/external-identities` (exige `isAdministrator`). **2b:** `role-mapping` (`add`/`mirror`). **2c:** introspecção com cache. **2d:** RP-initiated logout | Sincronização de grupos; token revogado via introspecção |
+| **2** | **2a — feita (2026-11-21):** `users.provisioning=jit` (`jit.status` `pending` padrão / `active`; só com e-mail confiável; nunca duplica cadastro; usuário nasce sem senha local, sem poder redefinir, sem grupo e não admin; proibido com tenant pelo header) + API administrativa de vínculo `/api/v1/security/external-identities` (exige `isAdministrator`). **2b — feita (2026-11-21):** `role-mapping` (`add`/`mirror`) sobre `claims.roles`; claim ausente não muda nada. **2c:** introspecção com cache. **2d:** RP-initiated logout | Sincronização de grupos; token revogado via introspecção |
 | **3** | Back-channel logout + denylist; `acr`/step-up quando o ArchGuard montar o v1; suporte OIDC nativo no archbase-react (10.2) | Logout token assinado |
 | **4** | **Migração entre IdPs** (pedido em 2026-11-21): rotina para trocar a origem da identidade sem recadastrar ninguém — ver 9.1 | Migração local→ArchGuard e Keycloak→ArchGuard em ambiente de teste, com relatório de dry-run conferido |
 

@@ -56,6 +56,7 @@ public final class OidcStartupValidator {
             validateAlgorithms(at, provider, errors);
             validateTenant(at, provider, errors);
             validateProvisioning(at, provider, errors);
+            validateRoleMapping(at, provider, errors);
             if (blank(provider.getClaims().getSubject())) {
                 errors.add(at + ".claims.subject: obrigatório");
             }
@@ -136,6 +137,23 @@ public final class OidcStartupValidator {
         if (sources != 1) {
             errors.add(at + ".tenant: informe exatamente uma fonte — claim, fixed ou header=true "
                     + "(com issuer-pattern, a fonte é allowed-tenants e nenhuma outra)");
+        }
+    }
+
+    private static void validateRoleMapping(String at, Provider provider, List<String> errors) {
+        ArchbaseOidcProperties.RoleMapping mapping = provider.getRoleMapping();
+        if (mapping.getSync() == ArchbaseOidcProperties.RoleSync.OFF) {
+            return;
+        }
+        if (mapping.getMap() == null || mapping.getMap().isEmpty()) {
+            errors.add(at + ".role-mapping.map: obrigatório com sync=" + mapping.getSync()
+                    + " — só papéis mapeados explicitamente viram grupo");
+        } else if (mapping.getMap().values().stream().anyMatch(OidcStartupValidator::blank)) {
+            errors.add(at + ".role-mapping.map: todo papel precisa apontar para um nome de grupo");
+        }
+        if (provider.getClaims().getRoles() == null || provider.getClaims().getRoles().isEmpty()) {
+            errors.add(at + ".claims.roles: obrigatório com role-mapping.sync=" + mapping.getSync()
+                    + " — de onde ler os papéis no token");
         }
     }
 

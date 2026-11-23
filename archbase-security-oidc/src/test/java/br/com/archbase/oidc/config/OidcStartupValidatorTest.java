@@ -109,6 +109,19 @@ class OidcStartupValidatorTest {
     }
 
     @Test
+    @DisplayName("role-mapping ligado sem map ou sem claims.roles: recusa")
+    void roleMapping() {
+        recusa(com("idp", p -> {
+            p.getRoleMapping().setSync(ArchbaseOidcProperties.RoleSync.ADD);
+            p.getClaims().setRoles(List.of("roles"));
+        }), "role-mapping.map");
+        recusa(com("idp", p -> {
+            p.getRoleMapping().setSync(ArchbaseOidcProperties.RoleSync.MIRROR);
+            p.getRoleMapping().getMap().put("a", "A");
+        }), "claims.roles");
+    }
+
+    @Test
     @DisplayName("id de provedor fora do formato da coluna: recusa")
     void idInvalido() {
         recusa(com("Meu IdP", p -> { }), "id deve ter");
