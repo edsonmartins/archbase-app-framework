@@ -6,7 +6,7 @@
 
 **Archbase** é um framework Java para aplicações empresariais construído sobre Spring Boot 4.1 e Java 25. Implementa Domain-Driven Design (DDD) com Onion Architecture, oferecendo uma base sólida e modular para aplicações complexas.
 
-> **Versão 3.5.0** - A versão mais recente publicada aparece no badge do Maven Central acima. Para atualizar uma aplicação existente, veja os guias em [`deployment/`](deployment/).
+> **Versão 3.5.0** - A versão mais recente publicada aparece no badge do Maven Central acima. Para atualizar: [2.x → 3.x](deployment/upgrade-2.x-para-3.x.md), [3.x → 3.5](deployment/upgrade-3.x-para-3.5.md) e [o que ligar em produção](deployment/security-hardening.md).
 
 ## Características
 
@@ -181,7 +181,7 @@ Os principais:
 | `archbase-domain-driven-design` | Implementação JPA dos repositórios |
 | `archbase-query` | RSQL para JPA |
 | `archbase-security` | `@HasPermission`, core de autorização, MFA, token de API, trilha de auditoria |
-| `archbase-security-oidc` | IdP externo (opt-in) |
+| [`archbase-security-oidc`](archbase-security-oidc/README.md) | IdP externo (opt-in): ArchGuard, Keycloak, Entra ID, Auth0, Okta |
 | `archbase-controlplane` | Integração com o Control Plane: licença, assentos, provisionamento (opt-in) |
 | `archbase-multitenancy` | Isolamento de tenant e contexto |
 | `archbase-event-driven` | CQRS com Command/Query/Event buses |

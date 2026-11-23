@@ -40,8 +40,8 @@ O filtro não é cosmético. Sem ele, o migrador do Hibernate emite `drop constr
 segurança no catálogo — o que significaria derrubar e recriar as chaves únicas de `seguranca_acao` e
 `seguranca_recurso` a cada reinício da aplicação.
 
-Ela também não alcança nada fora do módulo: o mapeamento que ela constrói contém apenas as 15
-entidades do `archbase-security`, então as tabelas da aplicação estão fora de alcance por
+Ela também não alcança nada fora do módulo: o mapeamento que ela constrói contém apenas as 16
+entidades do `archbase-security` (lista em `ArchbaseSecuritySchemaInitializer.ENTIDADES`), então as tabelas da aplicação estão fora de alcance por
 construção.
 
 ## Os limites

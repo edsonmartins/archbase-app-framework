@@ -1,0 +1,78 @@
+# Exemplos de provedor do README (archbase-security-oidc/README.md).
+# ExemplosDocumentadosTest carrega este arquivo, faz o bind e roda o OidcStartupValidator: se um exemplo
+# deixar de subir, o build quebra. Ao mudar um exemplo no README, mude aqui (e vice-versa).
+archbase:
+  security:
+    oidc:
+      providers:
+
+        # ArchGuard (superfície legada Casdoor). Aplicação com tokenFormat: JWT-Standard.
+        archguard:
+          issuer: https://idp.empresa.com
+          jwks-uri: https://idp.empresa.com/.well-known/archbase-app/jwks
+          audiences: [ archbase-app-client-id ]
+          algorithms: [ RS256 ]
+          required-claims:
+            tokenType: access-token
+          tenant:
+            claim: owner                      # organização do usuário
+          introspection:
+            enabled: true
+            uri: https://idp.empresa.com/api/login/oauth/introspect
+            client-id: archbase-app-client-id
+            client-secret: ${ARCHGUARD_CLIENT_SECRET:troque}
+          logout:
+            backchannel:
+              enabled: true
+
+        # Keycloak: um realm por cliente, tenant fixo.
+        keycloak:
+          issuer: https://sso.empresa.com/realms/empresa
+          audiences: [ archbase-api ]         # exige "Audience mapper"; o padrão do Keycloak é "account"
+          tenant:
+            fixed: empresa
+          claims:
+            roles: [ realm_access.roles, resource_access.archbase-api.roles ]
+          role-mapping:
+            sync: add
+            map:
+              financeiro: Financeiro
+              "[empresa/vendas]": Vendas      # chave com / . : precisa de colchetes
+
+        # Microsoft Entra ID multi-tenant: o tenant vem de allowed-tenants, e de nenhuma outra fonte.
+        entra:
+          issuer-pattern: https://login.microsoftonline.com/{tid}/v2.0
+          jwks-uri: https://login.microsoftonline.com/common/discovery/v2.0/keys
+          allowed-tenants:
+            "[11111111-2222-3333-4444-555555555555]": cliente-a
+            "[66666666-7777-8888-9999-000000000000]": cliente-b
+          audiences: [ "api://archbase-api" ]
+          required-claims:
+            ver: "2.0"                        # manifest: accessTokenAcceptedVersion = 2
+          claims:
+            subject: oid                      # "sub" é pairwise por aplicação; o estável é oid
+            roles: [ roles ]
+          users:
+            link-by-email: never              # Entra não emite email_verified
+
+        # Auth0 com Organizations.
+        auth0:
+          issuer: https://empresa.us.auth0.com/   # com barra final
+          audiences: [ https://api.empresa.com ]
+          tenant:
+            claim: org_id
+          claims:
+            email: https://empresa.com/email  # claim customizado exige namespace
+            roles: [ permissions ]
+
+        # Okta (custom authorization server), sem tenant no token.
+        okta:
+          issuer: https://empresa.okta.com/oauth2/default
+          audiences: [ "api://default" ]
+          tenant:
+            header: true                      # só entra quem já tem vínculo naquele tenant
+          claims:
+            subject: uid                      # "sub" costuma ser o login e pode mudar
+            roles: [ groups ]
+          users:
+            link-by-email: never
