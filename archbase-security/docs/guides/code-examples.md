@@ -1221,6 +1221,6 @@ Após estudar estes exemplos completos, recomendamos:
 
 1. **[Melhores Práticas](best-practices.md)** - Aprenda recomendações de design e segurança
 2. **[Troubleshooting](troubleshooting.md)** - Resolva problemas comuns
-3. **[Arquitetura do Sistema](../architecture/permissions-system.md)** - Entenda o funcionamento interno
+3. **[Arquitetura de autorização](../../ARQUITETURA.md)** - Entenda o funcionamento interno
 
 Para dúvidas ou contribuições, consulte o [README principal](../README.md).

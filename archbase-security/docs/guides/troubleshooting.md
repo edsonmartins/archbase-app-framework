@@ -488,9 +488,8 @@ controla.
 
 - [Configuração](configuration.md)
 - [Entidades](../entities/overview.md)
-- [Sistema de Autenticação](../architecture/authentication-system.md)
-- [Sistema de Permissões](../architecture/permissions-system.md)
-- [Multi-Tenancy](../architecture/multi-tenancy.md)
+- [Arquitetura de autorização](../../ARQUITETURA.md)
+- [Multi-Tenancy](../../../archbase-multitenancy/README.md)
 - Endurecimento: `deployment/security-hardening.md`
 - Documentação principal: [readme-security.md](../../readme-security.md)
 

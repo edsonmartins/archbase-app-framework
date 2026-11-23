@@ -1,3 +1,13 @@
+> ### ⚠ Arquivado — não use como referência
+>
+> Descreve o modelo anterior ao core de cinco portões e traz propriedades, rotas e classes que não existem mais ou nunca existiram.
+>
+> Em vez deste documento:
+> - autorização: [ARQUITETURA.md](../../../ARQUITETURA.md)
+> - autenticação, tokens, senha: [readme-security.md](../../../readme-security.md)
+> - propriedades: [configuration.md](../../guides/configuration.md)
+> - multi-tenancy: [README.md](../../../../archbase-multitenancy/README.md)
+
 [← Anterior: Sistema de Autenticação](authentication-system.md) | [Voltar ao Índice](../README.md)
 
 ---
@@ -701,8 +711,8 @@ archbase.multitenancy.tenant-header=X-Tenant-ID
 
 **Ver também**:
 - [Sistema de Permissões](permissions-system.md) - Como contextos são usados em permissões
-- [Entidades Core](../entities/core-entities.md) - TenantPersistenceEntityBase
-- [Melhores Práticas](../guides/best-practices.md) - Recomendações de multi-tenancy
+- [Entidades Core](../../entities/core-entities.md) - TenantPersistenceEntityBase
+- [Melhores Práticas](../../guides/best-practices.md) - Recomendações de multi-tenancy
 
 ---
 

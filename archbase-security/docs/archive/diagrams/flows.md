@@ -1,3 +1,11 @@
+> ### ⚠ Arquivado — não use como referência
+>
+> Diagramas do modelo anterior ao core de cinco portões; entidades, escopos e fluxos mudaram.
+>
+> Em vez deste documento:
+> - diagramas atuais (ERD, fluxos): [ARQUITETURA.md](../../../ARQUITETURA.md)
+> - entidades: [overview.md](../../entities/overview.md)
+
 [← Anterior: ERD](entity-relationships.md) | [Voltar ao Índice dos Diagramas](README.md) | [Voltar ao Índice Principal](../README.md) | [Próximo: Escopos de Permissões →](permission-scopes.md)
 
 ---

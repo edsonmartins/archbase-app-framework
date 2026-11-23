@@ -176,7 +176,7 @@ anotação é `@Target(METHOD)`. A varredura da subida cria `SALES_REPORT_API` (
 
 **Ver também**:
 - [Entidades Core](core-entities.md)
-- [Sistema de Permissões](../architecture/permissions-system.md)
+- [Arquitetura de autorização](../../ARQUITETURA.md)
 - [Anotações](../guides/annotations-and-usage.md)
 
 ---

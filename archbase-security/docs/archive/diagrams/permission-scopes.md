@@ -1,3 +1,11 @@
+> ### ⚠ Arquivado — não use como referência
+>
+> Diagramas do modelo anterior ao core de cinco portões; entidades, escopos e fluxos mudaram.
+>
+> Em vez deste documento:
+> - diagramas atuais (ERD, fluxos): [ARQUITETURA.md](../../../ARQUITETURA.md)
+> - entidades: [overview.md](../../entities/overview.md)
+
 [← Anterior: Fluxos](flows.md) | [Voltar ao Índice dos Diagramas](README.md) | [Voltar ao Índice Principal](../README.md)
 
 ---
@@ -398,7 +406,7 @@ String tenantId = ArchbaseTenantContext.getTenantId();
 
 **Ver também**:
 - [Sistema de Permissões](../architecture/permissions-system.md) - Fluxo completo de avaliação
-- [Entidades de Permissão](../entities/permission-entities.md) - Modelo de dados
+- [Entidades de Permissão](../../entities/permission-entities.md) - Modelo de dados
 - [Multi-Tenancy](../architecture/multi-tenancy.md) - Propagação de contexto
 
 ---

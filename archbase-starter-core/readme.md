@@ -1,71 +1,101 @@
+# archbase-starter-core
 
-# Archbase-Starter-Core
-
-O `archbase-starter-core` é projetado para fornecer todas as configurações essenciais e infraestrutura comuns para projetos baseados em Spring Boot. Ele inclui internacionalização, configurações de serialização JSON, e suporte extensivo para JPA.
-
-## Funcionalidades Incluídas
-- **RSQL**: Suporte para RSQL, permitindo filtragem e busca avançada através de URLs.
-- **Spring MVC**: Configuração básica do Spring MVC com serialização e deserialização personalizada.
-- **Bean Validation**: Integração com Hibernate Validator para validação de beans.
-- **Locale**: Configuração padrão do locale para `pt-BR`, facilitando a internacionalização.
-- **Jackson Configuration**: Customizações no ObjectMapper para melhor tratamento de JSON, incluindo módulos como Hibernate5Module para lidar com entidades Hibernate.
-- **Swagger**: Configuração pronta para uso do Swagger para documentação da API.
-- **TaskExecutor**: Configuração de um `TaskExecutor` para gerenciamento eficiente de tarefas assíncronas.
-
-## Personalização e Exclusão de Módulos
-
-Os starters da Archbase foram projetados para serem flexíveis, permitindo aos desenvolvedores excluir módulos específicos ou desabilitar funcionalidades conforme necessário.
-
-### Desabilitando Módulos via Propriedades
-
-Para desabilitar um módulo específico, você pode utilizar a propriedade `enabled` no seu arquivo `application.properties` ou `application.yml`. Por exemplo, para desabilitar o módulo de multitenancy:
-
-```properties
-archbase.multitenancy.enabled=false
-```
-
-### Sobrepor Configurações
-
-Se você deseja sobrepor qualquer configuração padrão ou bean fornecido pelo starter, você pode declarar seu próprio bean com a mesma assinatura no seu contexto de aplicação. Spring Boot usará sua declaração de bean em vez da fornecida pelo starter, graças ao mecanismo de `@ConditionalOnMissingBean`.
-
-#### Exemplo de Sobreposição
-
-Para substituir o `LocaleResolver` padrão que define o locale como `pt-BR`, você pode definir o seguinte bean:
-
-```java
-@Bean
-public LocaleResolver localeResolver() {
-    SessionLocaleResolver resolver = new SessionLocaleResolver();
-    resolver.setDefaultLocale(new Locale("en", "US")); // Definir para inglês americano
-    return resolver;
-}
-```
-
-## Configuração e Uso Básico
-
-Inclua o `archbase-starter-core` no seu projeto para ativar automaticamente as configurações:
+Base de persistência e MVC do Archbase: repositórios JPA, RSQL, validação, auditoria JPA e a varredura dos pacotes
+do framework.
 
 ```xml
 <dependency>
-    <groupId>com.archbase</groupId>
+    <groupId>br.com.archbase</groupId>
     <artifactId>archbase-starter-core</artifactId>
-    <version>1.0.0</version>
+    <version>3.5.0</version>
 </dependency>
 ```
-Configurações adicionais podem ser feitas através de `application.properties` para ajustar o comportamento padrão das funcionalidades incluídas.
 
-### Configuração do Swagger
+Não há BOM do Archbase: declare a versão explícita e use a mesma em todos os módulos Archbase.
 
-Para customizar a configuração do Swagger, ajuste as seguintes propriedades:
+## O que traz
 
-```properties
-archbase.swagger.title=Minha API
-archbase.swagger.description=Descrição detalhada da API
-archbase.swagger.version=v1
-archbase.swagger.terms-of-service-url=http://examplo.com/terms
-archbase.swagger.contact.name=Suporte Técnico
-archbase.swagger.contact.url=http://examplo.com/contact
-archbase.swagger.contact.email=suporte@examplo.com
-```
+Dependências de compilação do `pom.xml`:
 
-Estas propriedades permitem definir os detalhes da sua API que serão exibidos na interface do Swagger.
+| Dependência | Para quê |
+|---|---|
+| `archbase-domain-driven-design` | Repositórios JPA (`ArchbaseCommonJpaRepository`), infraestrutura DDD; traz `archbase-query` (RSQL) e `archbase-error-handling` |
+| `archbase-domain-driven-design-spec` | Contratos DDD, bases de entidade, `ArchbaseTenantContext` |
+| `archbase-multitenancy` | Resolvedor de tenant do Hibernate e aspecto de empresa — ver [abaixo](#multitenancy-já-vem-pela-varredura) |
+| `archbase-resource-logger` | Aspecto de log de controller (`@Logging` / `@NoLogging`) |
+| `archbase-validation` | Validação e `ArchbaseMessageInterpolator` |
+| `spring-boot-persistence` | `@EntityScan` e `EntityScanPackages` |
+| `modelmapper` | Só a biblioteca; este starter não registra bean de `ModelMapper` |
+| `jackson-datatype-hibernate7` (`tools.jackson.datatype`) | Só a biblioteca; este starter não registra o módulo no Jackson |
+
+Não traz `archbase-security`.
+
+## Auto-configuração
+
+Registrada: `ArchbaseCoreAutoConfiguration`, que importa:
+
+| Configuração | Condição | O que registra |
+|---|---|---|
+| `ArchbaseServerMvcConfiguration` | `archbase.web.mvc.enabled` (padrão `true`) e ausência de bean chamado `customWebMvcConfigurer` | `@EnableTransactionManagement`, `@EnableJpaAuditing(auditorAwareRef = "auditorAware")`, `MessageSource` (`classpath:messages`, UTF-8), `LocaleChangeInterceptor` (parâmetro `lang`), aspecto `SimpleArchbaseResourceAspect`; importa a varredura abaixo |
+| `ArchbaseComponentScanConfiguration` | `archbase.web.mvc.enabled` (padrão `true`) | Varredura de pacotes do framework; `@EntityScan` e `@EnableJpaRepositories` dos pacotes de segurança; pacotes da aplicação por propriedade |
+| `ArchbaseThreadConfiguration` | sem bean `TaskExecutor` | `threadPoolTaskExecutor`: 6 a 12 threads, daemon, prefixo `archbase-task-executor` |
+| `ArchbaseRSQLConfiguration` | `archbase.rsql.enabled` (padrão `true`) | `ArchbaseRSQLJPASupport` com os `EntityManager` do contexto |
+| `ArchbaseBeanValidateConfiguration` | sem bean `jakarta.validation.Validator` | `Validator` do Hibernate Validator com `ArchbaseMessageInterpolator` |
+
+Propriedades lidas por este starter:
+
+| Propriedade | Padrão | O que faz |
+|---|---|---|
+| `archbase.web.mvc.enabled` | `true` | `false` desliga a configuração MVC **e** a varredura dos pacotes do framework |
+| `archbase.rsql.enabled` | `true` | Registra o `ArchbaseRSQLJPASupport` |
+| `archbase.rsql.max-page-size` | `1000` | Tamanho máximo de página nas consultas; `<= 0` desliga o limite |
+| `archbase.app.component.scan` | — | Pacotes extras para component scan, separados por vírgula |
+| `archbase.app.jpa.entities` | — | Pacotes extras de entidades (equivale a `@EntityScan`) |
+| `archbase.app.jpa.repositories` | — | Pacotes extras de repositórios; cada interface que estende `Repository` vira um repositório com base `CommonArchbaseJpaRepository` |
+
+As três últimas só têm efeito com `archbase.web.mvc.enabled=true`, porque são processadas pela varredura.
+
+## A varredura de pacotes
+
+`ArchbaseComponentScanConfiguration` faz component scan de:
+
+- `br.com.archbase.ddd.infraestructure.aspect`
+- `br.com.archbase.multitenancy`
+- `br.com.archbase.security`
+- `br.com.archbase.web.config`
+
+e registra `br.com.archbase.security.persistence` como pacote de entidades e `br.com.archbase.security.repository`
+como pacote de repositórios.
+
+Consequências que valem saber:
+
+- **É por aqui que os beans do `archbase-security` entram no contexto.** O `archbase-starter-security` sozinho não
+  os registra. Ver [archbase-starter-security](../archbase-starter-security/readme.md).
+- **A varredura não obedece `archbase.security.enabled` nem `archbase.multitenancy.enabled`.** Com o jar
+  `archbase-security` no classpath, as classes `@Configuration`/`@Component` de `br.com.archbase.security` são
+  registradas enquanto `archbase.web.mvc.enabled` for `true`.
+- **Auditoria JPA precisa de um bean `auditorAware`.** Ele é declarado pelo `archbase-security`
+  (`ArchbaseSecurityApplicationConfig`). Usando este starter sem o security, a aplicação declara o próprio
+  `AuditorAware<String>` com esse nome.
+
+### Multitenancy já vem pela varredura
+
+Como `archbase-multitenancy` é dependência deste starter e `br.com.archbase.multitenancy` está na varredura, o
+starter-core sozinho já registra o resolvedor de tenant do Hibernate (`ArchbaseCurrentTenantIdentifierResolverImpl`),
+o `TenantProperties` (`archbase.app.tenant.default.id`), o aspecto de empresa e o `AsyncConfig`. O interceptor que
+lê `X-TENANT-ID` não vem: ele é do `archbase-starter-multitenancy`. Detalhes em
+[archbase-multitenancy](../archbase-multitenancy/README.md).
+
+## Substituir o que o starter registra
+
+| Para trocar | Declare |
+|---|---|
+| Configuração MVC inteira (e a varredura) | um bean chamado `customWebMvcConfigurer` |
+| Executor de tarefas | um bean `TaskExecutor` |
+| Validator | um bean `jakarta.validation.Validator` |
+
+## Referência
+
+- Módulos e padrões do framework: [CLAUDE.md](../CLAUDE.md)
+- Segurança: [archbase-starter-security](../archbase-starter-security/readme.md)
+- Tenant: [archbase-multitenancy](../archbase-multitenancy/README.md)

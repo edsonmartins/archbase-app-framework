@@ -1164,6 +1164,6 @@ sobreviver endurecida para o resto.
 | Documento | Para quê |
 |---|---|
 | [MODELO_CORE_AUTORIZACAO.md](MODELO_CORE_AUTORIZACAO.md) | O desenho do core, as fases de implementação e a revisão crítica do plano |
-| [PROPOSTA_MODELO_AUTORIZACAO.md](PROPOSTA_MODELO_AUTORIZACAO.md) | Registro do levantamento que originou o core — histórico |
+| [docs/archive/PROPOSTA_MODELO_AUTORIZACAO.md](docs/archive/PROPOSTA_MODELO_AUTORIZACAO.md) | Registro do levantamento que originou o core — histórico |
 | [deployment/security-hardening.md](../deployment/security-hardening.md) | Migração de cada flag de endurecimento |
 | [readme-security.md](readme-security.md) | Autenticação, customização da configuração, endpoints |

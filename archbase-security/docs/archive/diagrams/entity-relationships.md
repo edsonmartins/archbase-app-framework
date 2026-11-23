@@ -1,3 +1,11 @@
+> ### ⚠ Arquivado — não use como referência
+>
+> Diagramas do modelo anterior ao core de cinco portões; entidades, escopos e fluxos mudaram.
+>
+> Em vez deste documento:
+> - diagramas atuais (ERD, fluxos): [ARQUITETURA.md](../../../ARQUITETURA.md)
+> - entidades: [overview.md](../../entities/overview.md)
+
 [← Voltar ao Índice dos Diagramas](README.md) | [Voltar ao Índice Principal](../README.md) | [Próximo: Fluxos →](flows.md)
 
 ---
@@ -181,7 +189,7 @@ Tabela central do sistema RBAC, ligando entidades de segurança a ações.
 - ManyToOne com SEGURANCA (usuário, grupo ou perfil)
 - ManyToOne com SEGURANCA_ACAO
 
-**Ver**: [Sistema de Permissões](../entities/permission-entities.md)
+**Ver**: [Sistema de Permissões](../../entities/permission-entities.md)
 
 ---
 
@@ -196,7 +204,7 @@ Recursos protegidos no sistema (APIs, páginas, funcionalidades).
 **Relacionamentos**:
 - OneToMany com SEGURANCA_ACAO
 
-**Ver**: [Entidades de Recursos](../entities/permission-entities.md#resourceentity)
+**Ver**: [Entidades de Recursos](../../entities/permission-entities.md#resourceentity)
 
 ---
 
@@ -210,7 +218,7 @@ Operações que podem ser executadas sobre recursos.
 - ManyToOne com SEGURANCA_RECURSO
 - OneToMany com SEGURANCA_PERMISSAO
 
-**Ver**: [Entidades de Ações](../entities/permission-entities.md#actionentity)
+**Ver**: [Entidades de Ações](../../entities/permission-entities.md#actionentity)
 
 ---
 
@@ -226,7 +234,7 @@ Armazena tokens JWT para autenticação de usuários.
 **Relacionamentos**:
 - ManyToOne com SEGURANCA (usuário proprietário)
 
-**Ver**: [Access Tokens](../entities/token-entities.md#accesstokenentity)
+**Ver**: [Access Tokens](../../entities/token-entities.md#accesstokenentity)
 
 ---
 
@@ -242,7 +250,7 @@ Tokens de longa duração para serviços.
 **Relacionamentos**:
 - ManyToOne com SEGURANCA (usuário associado)
 
-**Ver**: [API Tokens](../entities/token-entities.md#apitokenentity)
+**Ver**: [API Tokens](../../entities/token-entities.md#apitokenentity)
 
 ---
 
@@ -258,7 +266,7 @@ Tokens temporários para redefinição de senha.
 **Relacionamentos**:
 - ManyToOne com SEGURANCA (usuário solicitante)
 
-**Ver**: [Password Reset Tokens](../entities/token-entities.md#passwordresettokenentity)
+**Ver**: [Password Reset Tokens](../../entities/token-entities.md#passwordresettokenentity)
 
 ---
 
@@ -280,7 +288,7 @@ Define horários permitidos de acesso para usuários.
 - OneToMany com SEGURANCA_INTERVALO_ACESSO
 - OneToMany com SEGURANCA (usuários que usam este horário)
 
-**Ver**: [AccessScheduleEntity](../entities/core-entities.md#accessscheduleentity)
+**Ver**: [AccessScheduleEntity](../../entities/core-entities.md#accessscheduleentity)
 
 ---
 
@@ -296,7 +304,7 @@ Define intervalos específicos dentro de um horário de acesso.
 **Relacionamentos**:
 - ManyToOne com SEGURANCA_HORARIO_ACESSO
 
-**Ver**: [AccessIntervalEntity](../entities/core-entities.md#accessintervalentity)
+**Ver**: [AccessIntervalEntity](../../entities/core-entities.md#accessintervalentity)
 
 ---
 
@@ -355,7 +363,7 @@ ON SEGURANCA_TOKEN_API(TOKEN);
 ---
 
 **Ver também**:
-- [Visão Geral das Entidades](../entities/overview.md) - Descrição detalhada de cada entidade
+- [Visão Geral das Entidades](../../entities/overview.md) - Descrição detalhada de cada entidade
 - [Sistema de Permissões](../architecture/permissions-system.md) - Como permissões funcionam
 - [Fluxos de Sistema](flows.md) - Diagramas de sequência
 

@@ -5,8 +5,8 @@
 > Este é o **levantamento** que originou o core único de autorização, com as opções que estavam em
 > aberto na época. As decisões foram tomadas e implementadas.
 >
-> - **Como o módulo funciona hoje:** [ARQUITETURA.md](ARQUITETURA.md)
-> - **O desenho do core e as fases de implementação:** [MODELO_CORE_AUTORIZACAO.md](MODELO_CORE_AUTORIZACAO.md)
+> - **Como o módulo funciona hoje:** [ARQUITETURA.md](../../ARQUITETURA.md)
+> - **O desenho do core e as fases de implementação:** [MODELO_CORE_AUTORIZACAO.md](../../MODELO_CORE_AUTORIZACAO.md)
 >
 > Mantido porque registra o raciocínio — em especial a separação entre *capacidade* (fixa, do
 > código) e *vocabulário* (do cliente), que continua sendo o princípio que sustenta o modelo.

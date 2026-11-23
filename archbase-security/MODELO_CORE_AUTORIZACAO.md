@@ -2,8 +2,8 @@
 
 Status: **implementado (fases 0 a G)**, no pacote `br.com.archbase.security.access` e em
 `br.com.archbase.security.diagnostics`.
-Substitui as opções em aberto de [`PROPOSTA_MODELO_AUTORIZACAO.md`](PROPOSTA_MODELO_AUTORIZACAO.md),
-que fica como registro do levantamento.
+Substitui as opções em aberto de [`PROPOSTA_MODELO_AUTORIZACAO.md`](docs/archive/PROPOSTA_MODELO_AUTORIZACAO.md),
+arquivado como registro do levantamento.
 
 | Pendente | Situação no código |
 |---|---|
