@@ -101,6 +101,21 @@ class OidcIntegrationTest {
         r.add(p + "cabecalho.allow-insecure-http", () -> "true");
         r.add(p + "cabecalho.tenant.header", () -> "true");
 
+        r.add(p + "jit.issuer", () -> IDP.issuer("jit"));
+        r.add(p + "jit.jwks-uri", () -> IDP.jwksUri("jit"));
+        r.add(p + "jit.audiences[0]", () -> "app-jit");
+        r.add(p + "jit.allow-insecure-http", () -> "true");
+        r.add(p + "jit.tenant.fixed", () -> TENANT);
+        r.add(p + "jit.users.provisioning", () -> "jit");
+
+        r.add(p + "jitativo.issuer", () -> IDP.issuer("jitativo"));
+        r.add(p + "jitativo.jwks-uri", () -> IDP.jwksUri("jitativo"));
+        r.add(p + "jitativo.audiences[0]", () -> "app-jit");
+        r.add(p + "jitativo.allow-insecure-http", () -> "true");
+        r.add(p + "jitativo.tenant.fixed", () -> TENANT);
+        r.add(p + "jitativo.users.provisioning", () -> "jit");
+        r.add(p + "jitativo.users.jit.status", () -> "active");
+
         r.add("archbase.security.oidc.exchange.enabled", () -> "true");
         r.add("archbase.security.oidc.exchange.local-token-ttl", () -> "10m");
     }
@@ -485,6 +500,144 @@ class OidcIntegrationTest {
                 req.header("X-TENANT-ID", tenantHeader);
             }
             return mockMvc.perform(req).andReturn().getResponse();
+        }
+    }
+
+    // ═══════════════════════════ fase 2a: criação no primeiro acesso ═══════════════════════════
+
+    @Nested
+    @DisplayName("jit: cria o usuário no primeiro acesso")
+    class Jit {
+
+        private FakeOidcProvider.Token jit(String provedor, String sub, String email) {
+            return IDP.token(IDP.issuer(provedor)).aud("app-jit").claim("sub", sub)
+                    .claim("email", email).claim("email_verified", true).claim("name", "Carla Nova");
+        }
+
+        @Test
+        @DisplayName("padrão PENDING: cria inativo, sem senha, sem poder redefinir, não admin; entra depois de ativado")
+        void pendenteAteAprovar() throws Exception {
+            assertRecusa(eu(jit("jit", "sub-carla", "carla@empresa.com.br").sign()), 403, "USER_DISABLED");
+
+            UserEntity carla = userRepository.findByEmail("carla@empresa.com.br").orElseThrow();
+            assertThat(carla.getAccountDeactivated()).isTrue();
+            assertThat(carla.getPassword()).isNull();
+            assertThat(carla.getAllowPasswordChange()).isFalse();
+            assertThat(carla.getIsAdministrator()).isFalse();
+            assertThat(carla.getName()).isEqualTo("Carla Nova");
+            assertThat(links.findUserId("jit", TENANT, "sub-carla")).contains(carla.getId());
+
+            carla.setAccountDeactivated(false);
+            userRepository.save(carla);
+            assertThat(eu(jit("jit", "sub-carla", "carla@empresa.com.br").sign()).getStatus()).isEqualTo(200);
+        }
+
+        @Test
+        @DisplayName("status ACTIVE: entra no primeiro acesso")
+        void ativo() throws Exception {
+            assertThat(eu(jit("jitativo", "sub-davi", "davi@empresa.com.br").sign()).getStatus()).isEqualTo(200);
+        }
+
+        @Test
+        @DisplayName("e-mail não verificado: não cria")
+        void naoVerificado() throws Exception {
+            assertRecusa(eu(jit("jitativo", "sub-eva", "eva@empresa.com.br").claim("email_verified", false).sign()),
+                    403, "USER_NOT_LINKED");
+            assertThat(userRepository.findByEmail("eva@empresa.com.br")).isEmpty();
+        }
+
+        @Test
+        @DisplayName("e-mail já cadastrado e verificado: vincula ao existente, não duplica")
+        void naoDuplica() throws Exception {
+            long antes = userRepository.count();
+            assertThat(eu(jit("jitativo", "sub-bruno", "bruno@empresa.com.br").sign()).getStatus()).isEqualTo(200);
+            assertThat(userRepository.count()).isEqualTo(antes);
+        }
+
+        @Test
+        @DisplayName("e-mail já cadastrado mas não verificado: nem cria outro nem vincula")
+        void existenteNaoVerificado() throws Exception {
+            long antes = userRepository.count();
+            assertRecusa(eu(jit("jitativo", "sub-bruno", "bruno@empresa.com.br").claim("email_verified", false)
+                    .sign()), 403, "USER_NOT_LINKED");
+            assertThat(userRepository.count()).isEqualTo(antes);
+        }
+    }
+
+    // ═══════════════════════════ fase 2a: vínculo manual ═══════════════════════════
+
+    @Nested
+    @DisplayName("API administrativa de vínculo: /api/v1/security/external-identities")
+    class VinculoManual {
+
+        private static final String API = "/api/v1/security/external-identities";
+        private String admin;
+
+        @BeforeEach
+        void administrador() throws Exception {
+            UserEntity adm = usuario("admin@empresa.com.br");
+            adm.setIsAdministrator(true);
+            userRepository.save(adm);
+            admin = json.readTree(loginLocal("admin@empresa.com.br").getContentAsString()).get("access_token").asString();
+        }
+
+        private FakeOidcProvider.Token entraAna() {
+            return IDP.token(IDP.baseUrl() + "/tid-cliente-a/v2.0").aud("api://archbase")
+                    .claim("oid", "oid-ana").claim("tid", "tid-cliente-a");
+        }
+
+        private MockHttpServletResponse vincular(String bearer, String provider, String subject, String userId)
+                throws Exception {
+            return mockMvc.perform(post(API).header("Authorization", "Bearer " + bearer)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(json.writeValueAsString(Map.of("providerId", provider, "subject", subject,
+                                    "userId", userId))))
+                    .andReturn().getResponse();
+        }
+
+        @Test
+        @DisplayName("administrador vincula; a identidade passa a entrar; desvincular corta o acesso")
+        void vinculaEDesvincula() throws Exception {
+            assertRecusa(eu(entraAna().sign()), 403, "USER_NOT_LINKED");
+
+            assertThat(vincular(admin, "entra", "oid-ana", ana.getId()).getStatus()).isEqualTo(201);
+            assertThat(eu(entraAna().sign()).getStatus()).isEqualTo(200);
+
+            JsonNode lista = json.readTree(mockMvc.perform(get(API).param("userId", ana.getId())
+                    .header("Authorization", "Bearer " + admin)).andReturn().getResponse().getContentAsString());
+            assertThat(lista).hasSize(1);
+            assertThat(lista.get(0).get("providerId").asString()).isEqualTo("entra");
+
+            assertThat(mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                            .delete(API + "/entra/oid-ana").header("Authorization", "Bearer " + admin))
+                    .andReturn().getResponse().getStatus()).isEqualTo(204);
+            assertRecusa(eu(entraAna().sign()), 403, "USER_NOT_LINKED");
+        }
+
+        @Test
+        @DisplayName("quem não é administrador recebe 403, mesmo com admin-endpoints.policy=permit (padrão)")
+        void naoAdministrador() throws Exception {
+            String bruno = json.readTree(loginLocal("bruno@empresa.com.br").getContentAsString())
+                    .get("access_token").asString();
+
+            assertThat(vincular(bruno, "entra", "oid-bruno", ana.getId()).getStatus()).isEqualTo(403);
+            assertThat(links.findUserId("entra", TENANT, "oid-bruno")).isEmpty();
+        }
+
+        @Test
+        @DisplayName("conflitos e validações")
+        void conflitos() throws Exception {
+            assertThat(vincular(admin, "entra", "oid-ana", ana.getId()).getStatus()).isEqualTo(201);
+            assertThat(vincular(admin, "entra", "oid-ana", ana.getId()).getStatus()).as("idempotente").isEqualTo(200);
+
+            UserEntity bruno = userRepository.findByEmail("bruno@empresa.com.br").orElseThrow();
+            assertRecusa(vincular(admin, "entra", "oid-ana", bruno.getId()), 409, "IDENTITY_ALREADY_LINKED");
+            assertRecusa(vincular(admin, "entra", "oid-outra", ana.getId()), 409, "USER_ALREADY_LINKED");
+            assertRecusa(vincular(admin, "nao-existe", "x", ana.getId()), 400, "UNKNOWN_PROVIDER");
+            assertRecusa(vincular(admin, "entra", "oid-z", UUID.randomUUID().toString()), 404, "USER_NOT_FOUND");
+            assertThat(mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                            .delete(API + "/entra/nao-vinculado").header("Authorization", "Bearer " + admin))
+                    .andReturn().getResponse().getStatus()).isEqualTo(404);
         }
     }
 

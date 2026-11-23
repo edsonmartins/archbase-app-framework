@@ -1,5 +1,6 @@
 package br.com.archbase.oidc.config;
 
+import br.com.archbase.oidc.admin.ExternalIdentityAdminController;
 import br.com.archbase.oidc.auth.OidcBearerAuthenticator;
 import br.com.archbase.oidc.exchange.OidcTokenExchangeController;
 import br.com.archbase.oidc.provider.OidcProviderRegistry;
@@ -8,6 +9,7 @@ import br.com.archbase.oidc.user.OidcIdentityLinker;
 import br.com.archbase.oidc.user.OidcLocalCredentialPolicy;
 import br.com.archbase.security.auth.external.ExternalBearerAuthenticator;
 import br.com.archbase.security.repository.UserJpaRepository;
+import br.com.archbase.security.usecase.UserUseCase;
 import br.com.archbase.security.schema.ArchbaseSecuritySchemaProperties;
 import br.com.archbase.security.service.ArchbaseAuthenticationService;
 import org.slf4j.Logger;
@@ -70,8 +72,8 @@ public class ArchbaseOidcAutoConfiguration {
 
     @Bean
     public OidcIdentityLinker oidcIdentityLinker(UserJpaRepository users, ExternalIdentityStore store,
-                                                 ArchbaseOidcProperties properties) {
-        return new OidcIdentityLinker(users, store, properties);
+                                                 ArchbaseOidcProperties properties, UserUseCase userService) {
+        return new OidcIdentityLinker(users, store, properties, userService);
     }
 
     @Bean
@@ -84,6 +86,13 @@ public class ArchbaseOidcAutoConfiguration {
     public OidcLocalCredentialPolicy oidcLocalCredentialPolicy(ExternalIdentityStore store,
                                                                ArchbaseOidcProperties properties) {
         return new OidcLocalCredentialPolicy(store, properties);
+    }
+
+    @Bean
+    public ExternalIdentityAdminController oidcExternalIdentityAdminController(ExternalIdentityStore store,
+                                                                               UserJpaRepository users,
+                                                                               ArchbaseOidcProperties properties) {
+        return new ExternalIdentityAdminController(store, users, properties);
     }
 
     /** Troca de token por sessão local — só com {@code archbase.security.oidc.exchange.enabled=true}. */
