@@ -4,444 +4,195 @@
 
 # Entidades Core do Sistema de Segurança
 
-## 1. SecurityEntity (Classe Base)
+Colunas conferidas contra `persistence/*.java` na versão 3.5.0. As colunas herdadas da base
+(`VERSAO`, `DH_CRIACAO`, `USUARIO_CRIOU`, `DH_ATUALIZACAO`, `ULTIMO_USUARIO_ALTEROU`, `TENANT_ID`)
+estão em [Visão Geral](overview.md#colunas-herdadas) e não se repetem abaixo. "Nulável" é o que o
+mapeamento declara: `@Column` sem `nullable = false` é nulável.
 
-**Localização**: `br.com.archbase.security.persistence.SecurityEntity`
+## SecurityEntity
+
+**Classe**: `br.com.archbase.security.persistence.SecurityEntity` (abstrata)
 **Tabela**: `SEGURANCA`
 
-SecurityEntity é a classe base abstrata para todas as entidades de segurança no sistema. Implementa a estratégia Single Table Inheritance (STI), onde todas as subclasses compartilham uma única tabela.
-
-### Configuração JPA
-
 ```java
+@org.hibernate.envers.Audited
 @Entity
 @Table(name="SEGURANCA")
 @Inheritance(strategy = InheritanceType.SINGLE_TABLE)
 @DiscriminatorColumn(name="TP_SEGURANCA")
-public abstract class SecurityEntity extends TenantPersistenceEntityBase<SecurityEntity, UUID> {
-    // Campos e métodos
-}
+@AttributeOverrides({
+        @AttributeOverride(name="id",   column=@Column(name="ID_SEGURANCA", length = 40)),
+        @AttributeOverride(name="code", column=@Column(name="CD_SEGURANCA", length = 40))
+})
+public abstract class SecurityEntity extends TenantPersistenceEntityBase { ... }
 ```
 
-### Campos Principais
+`TenantPersistenceEntityBase` não é genérica: não existe `TenantPersistenceEntityBase<SecurityEntity, UUID>`.
 
-| Campo | Coluna | Tipo | Descrição |
-|-------|--------|------|-----------|
-| `id` | ID_SEGURANCA | UUID | Identificador único |
-| `code` | CD_SEGURANCA | String | Código de negócio único |
-| `name` | NOME | String(255) | Nome da entidade |
-| `description` | DESCRICAO | String(500) | Descrição detalhada |
+| Campo | Coluna | Tipo Java | Nulável | Observação |
+|-------|--------|-----------|:-------:|------------|
+| `id` | `ID_SEGURANCA` (40) | `String` | não (PK) | |
+| `code` | `CD_SEGURANCA` (40) | `String` | sim | |
+| (discriminador) | `TP_SEGURANCA` | — | não | `USUARIO`, `SEGURANCA_GRUPO` ou `SEGURANCA_PERFIL`. |
+| `name` | `NOME` | `String` | **não** | `@NotBlank`. Vale para as três subclasses. |
+| `description` | `DESCRICAO` | `String` | **não** | `@NotBlank`. Vale para as três subclasses. |
 
-### Campos Herdados de TenantPersistenceEntityBase
-
-| Campo | Descrição |
-|-------|-----------|
-| `tenantId` | Identificador do tenant (isolamento multi-tenant) |
-| `version` | Versionamento otimista (controle de concorrência) |
-| `createEntityDate` | Data/hora de criação |
-| `createdByUser` | Usuário que criou a entidade |
-| `updateEntityDate` | Data/hora da última modificação |
-| `lastModifiedByUser` | Usuário que fez a última modificação |
-
-### Subclasses
-
-- **UserEntity**: discriminador `"USUARIO"`
-- **GroupEntity**: discriminador `"SEGURANCA_GRUPO"`
-- **ProfileEntity**: discriminador `"SEGURANCA_PERFIL"`
+Toda linha de `SEGURANCA` precisa de `NOME` e `DESCRICAO`, inclusive a de usuário.
 
 ---
 
-## 2. UserEntity
+## UserEntity
 
-**Localização**: `br.com.archbase.security.persistence.UserEntity`
-**Tabela**: `SEGURANCA` (TP_SEGURANCA = 'USUARIO')
+**Classe**: `br.com.archbase.security.persistence.UserEntity`, `@DiscriminatorValue("USUARIO")`
+**Tabela**: `SEGURANCA`
+Implementa `org.springframework.security.core.userdetails.UserDetails`.
 
-Representa um usuário no sistema, implementando `UserDetails` do Spring Security para integração nativa com o framework de segurança.
+| Campo | Coluna | Tipo Java | Nulável | Observação |
+|-------|--------|-----------|:-------:|------------|
+| `userName` | `USER_NAME` | `String` | sim | Retornado por `getUsername()`. |
+| `password` | `SENHA` | `String` | sim | Hash da senha. |
+| `changePasswordOnNextLogin` | `BO_ALTERAR_SENHA_PROXIMO_LOGIN` (1) | `Boolean` | sim | `S`/`N`. |
+| `allowPasswordChange` | `BO_PERMITE_ALTERAR_SENHA` (1) | `Boolean` | sim | `S`/`N`. |
+| `allowMultipleLogins` | `BO_PERMITE_MULTIPLICOS_LOGINS` (1) | `Boolean` | sim | `S`/`N`. Sem ela (`N`/nulo), login novo revoga todas as sessões anteriores. |
+| `passwordNeverExpires` | `BO_SENHA_NUNCA_EXPIRA` (1) | `Boolean` | sim | `S`/`N`. |
+| `passwordChangedAt` | `DT_ULTIMA_TROCA_SENHA` | `LocalDateTime` | sim | Base da expiração periódica. Nula em usuários anteriores à coluna. |
+| `accountDeactivated` | `BO_CONTA_DESATIVADA` (1) | `Boolean` | sim | `S`/`N`. |
+| `accountLocked` | `CONTA_BLOQUEADA` (1) | `Boolean` | sim | `S`/`N`. Sem prefixo `BO_`. |
+| `unlimitedAccessHours` | `BO_HORARIO_LIVRE` (1) | `Boolean` | sim | `S`/`N`. **Gravado, nunca aplicado** — ver [horário de acesso](#horário-de-acesso-não-é-aplicado). |
+| `isAdministrator` | `BO_ADMINISTRADOR` (1) | `Boolean` | sim | `S`/`N`. Nulo é tratado como não-administrador (com `WARN` no log). |
+| `accessSchedule` | `HORARIO_ACESSO_ID` | `AccessScheduleEntity` | sim | `@ManyToOne`. **Não aplicado.** |
+| `profile` | `PERFIL_ID` | `ProfileEntity` | sim | `@ManyToOne`. Um perfil por usuário. |
+| `avatar` | `AVATAR` (16777215) | `byte[]` | sim | Sem `@Lob`: `bytea` no PostgreSQL, `MEDIUMBLOB` no MySQL. |
+| `email` | `EMAIL` | `String` | sim | |
+| `nickname` | `APELIDO` | `String` | sim | |
+| `externalId` | `EXTERNAL_ID` | `String` | sim | `unique = true`. Id da conta num provedor de identidade. |
+| `employeeId` | `EMPLOYEE_ID` (60) | `String` | sim | Matrícula. Opcional e **não única**, de propósito. |
+| `mfaEnabled` | `BO_MFA_HABILITADO` (1) | `Boolean` | sim | `S`/`N`. |
+| `mfaSecret` | `MFA_SECRET` (255) | `String` | sim | Segredo TOTP. |
+| `mfaRecoveryCodes` | `MFA_RECOVERY_CODES` (2048) | `String` | sim | Códigos de recuperação. |
+| `groups` | — | `Set<UserGroupEntity>` | — | `@OneToMany(mappedBy = "user", cascade = ALL, orphanRemoval = true)`. |
+| `tokens` | — | `List<AccessTokenEntity>` | — | `@OneToMany(mappedBy = "user", cascade = ALL, orphanRemoval = true)`, `@NotAudited`. |
 
-### Campos de Credenciais
+**Unicidade.** A única restrição de unicidade mapeada em `UserEntity` é `EXTERNAL_ID`. **Não há**
+único `(TENANT_ID, USER_NAME)` nem `(TENANT_ID, EMAIL)` no mapeamento JPA; se a sua base precisa
+deles, crie no banco.
 
-| Campo | Coluna | Tipo | Descrição |
-|-------|--------|------|-----------|
-| `userName` | USER_NAME | String(150) | Nome de usuário para login (único por tenant) |
-| `password` | SENHA | String(500) | Senha criptografada (BCrypt) |
-| `email` | EMAIL | String(150) | Endereço de email (único por tenant) |
-| `nickname` | APELIDO | String(150) | Nome de exibição amigável |
+**Não existem** em `UserEntity`: coleção de tokens de API, coleção de tokens de redefinição de
+senha, `getPasswordExpired()`, colunas de "senha expirada" ou "data de expiração da senha". A
+expiração é calculada (abaixo).
 
-**Constraints Únicos**:
-- `(TENANT_ID, USER_NAME)` - Nome de usuário único dentro do tenant
-- `(TENANT_ID, EMAIL)` - Email único dentro do tenant
+### UserDetails
 
-### Campos de Controle de Segurança
+| Método | Retorna |
+|--------|---------|
+| `getUsername()` | `userName` |
+| `getAuthorities()` | **lista vazia, sempre.** Autorização é do core (`@HasPermission` etc.); `hasRole(...)`/`hasAuthority(...)` do Spring sempre negam. |
+| `isAccountNonExpired()` | `accountDeactivated` não é `TRUE` |
+| `isAccountNonLocked()` | `accountLocked` não é `TRUE` |
+| `isEnabled()` | nem `accountDeactivated` nem `accountLocked` são `TRUE` |
+| `isCredentialsNonExpired()` | `false` se `changePasswordOnNextLogin = TRUE`; senão, se `passwordNeverExpires = FALSE`, confere `DT_ULTIMA_TROCA_SENHA` (ou `DH_CRIACAO`, se nula) contra `archbase.security.password.expiration-days`; nos demais casos `true`. |
 
-| Campo | Coluna | Tipo | Padrão | Descrição |
-|-------|--------|------|--------|-----------|
-| `isAdministrator` | BO_ADMINISTRADOR | Boolean | false | Se `true`, bypassa verificação de permissões |
-| `accountDeactivated` | BO_CONTA_DESATIVADA | Boolean | false | Conta desativada (login negado) |
-| `accountLocked` | CONTA_BLOQUEADA | Boolean | false | Conta bloqueada (login negado) |
+`markPasswordChanged()` zera `changePasswordOnNextLogin` e grava `DT_ULTIMA_TROCA_SENHA = agora`.
 
-**Importante**: Administradores só têm bypass se `isAdministrator=true` **E** `isEnabled()=true`.
-
-### Políticas de Senha
-
-| Campo | Coluna | Tipo | Padrão | Descrição |
-|-------|--------|------|--------|-----------|
-| `changePasswordOnNextLogin` | BO_ALTERAR_SENHA_PROXIMO_LOGIN | Boolean | false | Força alteração de senha no próximo login |
-| `allowPasswordChange` | BO_PERMITE_ALTERAR_SENHA | Boolean | true | Permite que o usuário altere sua própria senha |
-| `passwordNeverExpires` | BO_SENHA_NUNCA_EXPIRA | Boolean | false | Se `true`, senha não expira |
-
-**Uso Típico**:
-- Novo usuário: `changePasswordOnNextLogin=true` para forçar definição de senha própria
-- Contas de serviço: `allowPasswordChange=false` para evitar alterações acidentais
-- Administradores: `passwordNeverExpires=true` (opcional, dependendo da política)
-
-### Controle de Acesso
-
-| Campo | Coluna | Tipo | Padrão | Descrição |
-|-------|--------|------|--------|-----------|
-| `allowMultipleLogins` | BO_PERMITE_MULTIPLICOS_LOGINS | Boolean | false | Permite múltiplas sessões simultâneas |
-| `unlimitedAccessHours` | BO_HORARIO_LIVRE | Boolean | true | Acesso ilimitado sem restrição de horário |
-| `avatar` | AVATAR | BLOB | null | Imagem do avatar do usuário |
-
-**Comportamento de `allowMultipleLogins`**:
-- `false`: Ao fazer login, todos os tokens anteriores são revogados
-- `true`: Múltiplos tokens podem existir simultaneamente (múltiplos dispositivos)
-
-### Relacionamentos
-
-#### ManyToOne
-
-| Relacionamento | Entidade | Descrição |
-|----------------|----------|-----------|
-| `profile` | ProfileEntity | Perfil principal do usuário (define permissões padrão) |
-| `accessSchedule` | AccessScheduleEntity | Horários permitidos de acesso (se `unlimitedAccessHours=false`) |
-
-#### OneToMany
-
-| Relacionamento | Entidade | Descrição |
-|----------------|----------|-----------|
-| `groups` | UserGroupEntity | Grupos aos quais o usuário pertence |
-| `tokens` | AccessTokenEntity | Tokens JWT ativos do usuário |
-| `apiTokens` | ApiTokenEntity | Tokens de API do usuário |
-| `passwordResetTokens` | PasswordResetTokenEntity | Tokens de redefinição de senha |
-
-### Integração com Spring Security
-
-UserEntity implementa `org.springframework.security.core.userdetails.UserDetails`, fornecendo os métodos exigidos pelo Spring Security:
-
-```java
-@Override
-public String getUsername() {
-    return this.userName;  // ou this.email, dependendo da configuração
-}
-
-@Override
-public boolean isEnabled() {
-    return !this.accountDeactivated && !this.accountLocked;
-}
-
-@Override
-public boolean isAccountNonExpired() {
-    return !this.accountDeactivated;
-}
-
-@Override
-public boolean isAccountNonLocked() {
-    return !this.accountLocked;
-}
-
-@Override
-public boolean isCredentialsNonExpired() {
-    return this.passwordNeverExpires;
-}
-
-@Override
-public Collection<? extends GrantedAuthority> getAuthorities() {
-    // Retorna permissões do usuário (via profile e grupos)
-    // Implementação específica no service
-}
-```
-
-**Importante**: O método `isEnabled()` é usado na verificação de bypass de administrador. Mesmo administradores com contas desativadas ou bloqueadas **não** terão acesso.
+O administrador (`isAdministrator = TRUE`) só é tratado como tal se `isEnabled()` for verdadeiro, e
+mesmo assim uma permissão `DENY` que o alcance vence (ver [permissões](permission-entities.md#permissionentity)).
 
 ---
 
-## 3. GroupEntity
+## GroupEntity
 
-**Localização**: `br.com.archbase.security.persistence.GroupEntity`
-**Tabela**: `SEGURANCA` (TP_SEGURANCA = 'SEGURANCA_GRUPO')
+**Classe**: `br.com.archbase.security.persistence.GroupEntity`, `@DiscriminatorValue("SEGURANCA_GRUPO")`
+**Tabela**: `SEGURANCA`
 
-Representa um agrupamento lógico de usuários, facilitando a atribuição de permissões a múltiplos usuários simultaneamente.
-
-### Campos
-
-GroupEntity **não possui campos específicos** além dos herdados de SecurityEntity:
-- `id`, `code`, `name`, `description`
-- `tenantId`, campos de auditoria
-
-### Relacionamentos
-
-| Relacionamento | Entidade | Descrição |
-|----------------|----------|-----------|
-| `users` | UserGroupEntity | Usuários que pertencem ao grupo |
-| `permissions` | PermissionEntity | Permissões atribuídas ao grupo |
-
-### Uso Típico
-
-Grupos são usados para organização estrutural de usuários:
-
-**Exemplos**:
-- "Equipe de Vendas"
-- "Desenvolvedores Backend"
-- "Gerentes de Projeto"
-- "Suporte Técnico Nível 1"
-
-**Caso de Uso**:
-```java
-// Criar grupo
-GroupEntity salesTeam = GroupEntity.builder()
-    .code("SALES_TEAM")
-    .name("Equipe de Vendas")
-    .description("Todos os vendedores da empresa")
-    .build();
-
-// Atribuir permissão ao grupo
-PermissionEntity permission = PermissionEntity.builder()
-    .security(salesTeam)
-    .action(viewCustomersAction)
-    .build();
-
-// Todos os usuários do grupo herdam a permissão automaticamente
-```
+Não declara colunas próprias: tem só `ID_SEGURANCA`, `CD_SEGURANCA`, `NOME`, `DESCRICAO` e as herdadas.
+Os membros estão em `SEGURANCA_GRUPO_USUARIO`. Um usuário pode estar em vários grupos.
 
 ---
 
-## 4. ProfileEntity
+## ProfileEntity
 
-**Localização**: `br.com.archbase.security.persistence.ProfileEntity`
-**Tabela**: `SEGURANCA` (TP_SEGURANCA = 'SEGURANCA_PERFIL')
+**Classe**: `br.com.archbase.security.persistence.ProfileEntity`, `@DiscriminatorValue("SEGURANCA_PERFIL")`
+**Tabela**: `SEGURANCA`
 
-Representa um perfil ou papel no sistema, definindo um conjunto predefinido de permissões e comportamentos.
+| Campo | Coluna | Tipo Java | Nulável | Observação |
+|-------|--------|-----------|:-------:|------------|
+| `accessLevel` | `ACCESS_LEVEL` (30) | `AccessLevel` | sim | `AccessLevelConverter`. `NONE`, `READER`, `OPERATOR`, `SUPERVISOR`, `TENANT_ADMIN`. |
 
-### Campos
+O nível mora no perfil porque o perfil é **um por usuário** e o piso precisa de valor único. Nulo
+significa sem nível, e então vale `archbase.security.access-level.default`. O nível só pesa com
+`archbase.security.access-level.enabled=true` (portão `LEVEL`). Quem modela senioridade fora do
+perfil implementa `ArchbaseAccessLevelResolver`.
 
-ProfileEntity **não possui campos específicos** além dos herdados de SecurityEntity:
-- `id`, `code`, `name`, `description`
-- `tenantId`, campos de auditoria
-
-### Relacionamentos
-
-| Relacionamento | Entidade | Descrição |
-|----------------|----------|-----------|
-| `users` | UserEntity | Usuários que possuem este perfil |
-| `permissions` | PermissionEntity | Permissões atribuídas ao perfil |
-
-### Uso Típico
-
-Perfis são usados para definir papéis funcionais com conjuntos específicos de permissões:
-
-**Exemplos**:
-- "Administrador do Sistema"
-- "Operador"
-- "Consultor"
-- "Auditor"
-
-**Caso de Uso**:
-```java
-// Criar perfil
-ProfileEntity adminProfile = ProfileEntity.builder()
-    .code("ADMIN")
-    .name("Administrador")
-    .description("Acesso completo ao sistema")
-    .build();
-
-// Atribuir múltiplas permissões ao perfil
-List<PermissionEntity> permissions = Arrays.asList(
-    createPermission(adminProfile, viewUsersAction),
-    createPermission(adminProfile, createUsersAction),
-    createPermission(adminProfile, editUsersAction),
-    createPermission(adminProfile, deleteUsersAction)
-);
-
-// Usuário recebe o perfil
-user.setProfile(adminProfile);
-// Agora o usuário herda todas as permissões do perfil
-```
-
-### Diferença entre Group e Profile
-
-| Aspecto | Group | Profile |
-|---------|-------|---------|
-| **Propósito** | Agrupamento organizacional | Papel funcional |
-| **Base** | Estrutura da organização | Função/responsabilidade |
-| **Exemplo** | "Equipe de Marketing" | "Gerente" |
-| **Permissões** | Específicas para o grupo | Definem o papel |
-| **Cardinalidade** | Usuário pode ter múltiplos grupos | Usuário tem 1 perfil principal |
-| **Uso** | Colaboração, comunicação | Controle de acesso |
-
-**Recomendação**: Use **Profile** para controle de acesso baseado em função (RBAC) e **Group** para organização estrutural e colaboração.
+**Grupo × perfil.** Os dois recebem permissões pela mesma coluna (`SEGURANCA_PERMISSAO.ID_SEGURANCA`).
+A diferença estrutural é a cardinalidade: perfil é um por usuário (`PERFIL_ID`), grupo é N por
+usuário (`SEGURANCA_GRUPO_USUARIO`), e só o perfil carrega nível.
 
 ---
 
-## 5. AccessScheduleEntity
+## UserGroupEntity
 
-**Localização**: `br.com.archbase.security.persistence.AccessScheduleEntity`
-**Tabela**: `SEGURANCA_HORARIO_ACESSO`
+**Classe**: `br.com.archbase.security.persistence.UserGroupEntity`
+**Tabela**: `SEGURANCA_GRUPO_USUARIO` (auditada)
 
-Define horários permitidos de acesso para usuários, permitindo restrição temporal de login.
+| Campo | Coluna | Tipo Java | Nulável | Observação |
+|-------|--------|-----------|:-------:|------------|
+| `id` | `ID_USUARIO_GRUPO` (40) | `String` | não (PK) | |
+| `code` | `CD_USUARIO_GRUPO` (40) | `String` | sim | |
+| `user` | `ID_USUARIO` | `UserEntity` | sim | `@ManyToOne`. |
+| `group` | `ID_GRUPO` | `GroupEntity` | sim | `@ManyToOne`. |
 
-### Campos
-
-| Campo | Coluna | Tipo | Descrição |
-|-------|--------|------|-----------|
-| `id` | ID_HORARIO_ACESSO | UUID | Identificador único |
-| `description` | DESCRICAO | String(500) | Descrição do horário de acesso |
-
-### Relacionamentos
-
-| Relacionamento | Entidade | Descrição |
-|----------------|----------|-----------|
-| `intervals` | AccessIntervalEntity | Intervalos de tempo específicos (OneToMany) |
-| `users` | UserEntity | Usuários que usam este horário (OneToMany) |
-
-### Uso
-
-AccessSchedule é usado para restringir acesso de usuários a janelas de tempo específicas:
-
-**Casos de Uso**:
-- Horário comercial: segunda a sexta, 8h às 18h
-- Plantão de fim de semana: sábado e domingo, 9h às 13h
-- Janela de manutenção: terça-feira, 2h às 5h (para administradores)
-
-**Exemplo**:
-```java
-AccessScheduleEntity businessHours = AccessScheduleEntity.builder()
-    .description("Horário Comercial")
-    .build();
-
-// Associar ao usuário
-user.setAccessSchedule(businessHours);
-user.setUnlimitedAccessHours(false);  // Importante!
-```
-
-**Importante**: O campo `UserEntity.unlimitedAccessHours` deve ser `false` para que o AccessSchedule seja validado.
+Não há restrição de unicidade mapeada para `(ID_USUARIO, ID_GRUPO)`.
 
 ---
 
-## 6. AccessIntervalEntity
+## Horário de acesso: não é aplicado
 
-**Localização**: `br.com.archbase.security.persistence.AccessIntervalEntity`
-**Tabela**: `SEGURANCA_INTERVALO_ACESSO`
+`AccessScheduleEntity`, `AccessIntervalEntity`, `UserEntity.accessSchedule` e
+`UserEntity.unlimitedAccessHours` existem, são gravados pelos cadastros e trafegam nos DTOs — mas
+**o framework não aplica horário de acesso em lugar nenhum**: nem no login, nem no filtro JWT, nem
+no core de autorização. Um usuário com `BO_HORARIO_LIVRE = 'N'` e um horário restrito entra e usa o
+sistema a qualquer hora, administrador ou não. Se a aplicação precisa da restrição, ela tem de
+implementá-la. As tabelas continuam no esquema por compatibilidade.
 
-Define um intervalo específico de tempo dentro de um horário de acesso.
+## AccessScheduleEntity
 
-### Campos
+**Classe**: `br.com.archbase.security.persistence.AccessScheduleEntity`
+**Tabela**: `SEGURANCA_HORARIO_ACESSO` (não auditada)
 
-| Campo | Coluna | Tipo | Descrição |
-|-------|--------|------|-----------|
-| `id` | ID_INTERVALO_ACESSO | UUID | Identificador único |
-| `dayOfWeek` | DIA_DA_SEMANA | Integer | Dia da semana (1=Domingo, 7=Sábado) |
-| `startTime` | HORA_INICIAL | String | Hora de início (formato: "HH:mm") |
-| `endTime` | HORA_FINAL | String | Hora de término (formato: "HH:mm") |
+| Campo | Coluna | Tipo Java | Nulável | Observação |
+|-------|--------|-----------|:-------:|------------|
+| `id` | `ID_HORARIO_ACESSO` (40) | `String` | não (PK) | |
+| `code` | `CD_HORARIO_ACESSO` (40) | `String` | sim | |
+| `description` | `DESCRICAO` | `String` | sim | |
+| `intervals` | — | `List<AccessIntervalEntity>` | — | `@OneToMany(cascade = ALL, orphanRemoval = true)` com `@JoinColumn(name = "ID_HORARIO_ACESSO")` — a FK fica em `SEGURANCA_INTERVALO_ACESSO`. |
 
-### Relacionamentos
+## AccessIntervalEntity
 
-| Relacionamento | Entidade | Descrição |
-|----------------|----------|-----------|
-| `accessSchedule` | AccessScheduleEntity | Horário de acesso ao qual pertence (ManyToOne) |
+**Classe**: `br.com.archbase.security.persistence.AccessIntervalEntity`
+**Tabela**: `SEGURANCA_INTERVALO_ACESSO` (não auditada)
 
-### Formato de Horários
-
-- **dayOfWeek**: `1` (Domingo) até `7` (Sábado)
-  - Nota: Seguindo `java.time.DayOfWeek`, onde `1 = SUNDAY`
-- **startTime/endTime**: String no formato `"HH:mm"` (24 horas)
-  - Exemplo: `"08:00"`, `"18:30"`
-
-### Exemplo Completo
-
-```java
-// Criar horário de acesso
-AccessScheduleEntity businessHours = AccessScheduleEntity.builder()
-    .description("Horário Comercial (Seg-Sex, 8h-18h)")
-    .build();
-accessScheduleRepository.save(businessHours);
-
-// Criar intervalos (segunda a sexta)
-for (int day = 2; day <= 6; day++) {  // 2=Monday, 6=Friday
-    AccessIntervalEntity interval = AccessIntervalEntity.builder()
-        .accessSchedule(businessHours)
-        .dayOfWeek(day)
-        .startTime("08:00")
-        .endTime("18:00")
-        .build();
-    accessIntervalRepository.save(interval);
-}
-
-// Associar ao usuário
-user.setAccessSchedule(businessHours);
-user.setUnlimitedAccessHours(false);
-userRepository.save(user);
-```
-
-**Validação**: Durante autenticação, o sistema verifica:
-1. Se `user.unlimitedAccessHours == false`
-2. Se hora atual está dentro de algum `AccessIntervalEntity` do dia da semana atual
-3. Login é negado se fora dos intervalos permitidos
+| Campo | Coluna | Tipo Java | Nulável | Observação |
+|-------|--------|-----------|:-------:|------------|
+| `id` | `ID_INTERVALO_ACESSO` (40) | `String` | não (PK) | |
+| `code` | `CD_INTERVALO_ACESSO` (40) | `String` | sim | |
+| `accessSchedule` | `ID_HORARIO_ACESSO` | `AccessScheduleEntity` | sim | `@ManyToOne`, mesma coluna da `@JoinColumn` do lado do horário. |
+| `dayOfWeek` | `DIA_DA_SEMANA` | `Long` | sim | Número; o framework não define a convenção (não há quem leia). |
+| `startTime` | `HORA_INICIAL` | `String` | sim | Texto livre; nenhum formato é validado. |
+| `endTime` | `HORA_FINAL` | `String` | sim | Idem. |
 
 ---
 
-## 7. UserGroupEntity (Relacionamento)
+## Resumo
 
-**Localização**: `br.com.archbase.security.persistence.UserGroupEntity`
-**Tabela**: `SEGURANCA_GRUPO_USUARIO`
-
-Tabela de junção para relacionamento many-to-many entre User e Group.
-
-### Campos
-
-| Campo | Coluna | Tipo | Descrição |
-|-------|--------|------|-----------|
-| `id` | ID_GRUPO_USUARIO | UUID | Identificador único |
-| `user` | ID_USUARIO | UUID (FK) | Referência ao usuário |
-| `group` | ID_GRUPO | UUID (FK) | Referência ao grupo |
-
-### Constraint Único
-
-`(ID_USUARIO, ID_GRUPO)` - Um usuário não pode estar no mesmo grupo duas vezes.
-
-### Uso
-
-```java
-// Adicionar usuário a um grupo
-UserGroupEntity userGroup = UserGroupEntity.builder()
-    .user(user)
-    .group(salesTeam)
-    .build();
-userGroupRepository.save(userGroup);
-
-// Agora o usuário herda permissões do grupo "salesTeam"
-```
-
----
-
-## Resumo das Entidades Core
-
-| Entidade | Propósito | Campos Específicos | Uso Principal |
-|----------|-----------|-------------------|---------------|
-| **SecurityEntity** | Classe base abstrata | Nenhum (abstrata) | Herança polimórfica |
-| **UserEntity** | Usuários individuais | Credenciais, políticas de senha, controle de acesso | Autenticação e autorização |
-| **GroupEntity** | Agrupamentos de usuários | Nenhum | Organização estrutural |
-| **ProfileEntity** | Papéis funcionais | Nenhum | Controle de acesso por função (RBAC) |
-| **AccessScheduleEntity** | Horários de acesso | Descrição | Restrição temporal de acesso |
-| **AccessIntervalEntity** | Intervalos de tempo | Dia, hora inicial, hora final | Definição de janelas de acesso |
-| **UserGroupEntity** | Relacionamento User-Group | User ID, Group ID | Associação many-to-many |
-
----
-
-**Ver também**:
-- [Sistema de Permissões](permission-entities.md) - Permission, Resource, Action
-- [Gerenciamento de Tokens](token-entities.md) - Access tokens e API tokens
-- [Fluxo de Autenticação](../architecture/authentication-system.md) - Como usuários fazem login
-- [Multi-Tenancy](../architecture/multi-tenancy.md) - Isolamento de dados por tenant
+| Classe | Tabela | Colunas próprias |
+|--------|--------|------------------|
+| `SecurityEntity` | `SEGURANCA` | `ID_SEGURANCA`, `CD_SEGURANCA`, `TP_SEGURANCA`, `NOME`, `DESCRICAO` |
+| `UserEntity` | `SEGURANCA` | 21 colunas (tabela acima) |
+| `GroupEntity` | `SEGURANCA` | nenhuma |
+| `ProfileEntity` | `SEGURANCA` | `ACCESS_LEVEL` |
+| `UserGroupEntity` | `SEGURANCA_GRUPO_USUARIO` | `ID_USUARIO_GRUPO`, `CD_USUARIO_GRUPO`, `ID_USUARIO`, `ID_GRUPO` |
+| `AccessScheduleEntity` | `SEGURANCA_HORARIO_ACESSO` | `ID_HORARIO_ACESSO`, `CD_HORARIO_ACESSO`, `DESCRICAO` |
+| `AccessIntervalEntity` | `SEGURANCA_INTERVALO_ACESSO` | `ID_INTERVALO_ACESSO`, `CD_INTERVALO_ACESSO`, `ID_HORARIO_ACESSO`, `DIA_DA_SEMANA`, `HORA_INICIAL`, `HORA_FINAL` |
 
 ---
 

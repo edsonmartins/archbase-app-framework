@@ -107,7 +107,7 @@ listados de uma vez.
 | `archbase.controlplane.legacy-jwt` | `accept` | `accept`: aceita os dois tokens; `reject`: só o do Control Plane |
 | `archbase.controlplane.clock-skew` | `30s` | Tolerância de relógio para `exp` |
 | `archbase.controlplane.seat-required` | `false` | Recusa token de sessão sem `seat` (`NO_SEAT`) |
-| `archbase.controlplane.schema.mode` | `apply` | `apply`: cria na subida a tabela `CONTROLPLANE_USUARIO`; `off`: a aplicação cria |
+| `archbase.controlplane.schema.mode` | `apply` | `apply`: cria na subida as seis tabelas do módulo que faltarem (ver [Tabelas próprias](#tabelas-próprias)); `off`: a aplicação cria |
 | `archbase.controlplane.instance-id` | — | Id da instância; a licença tem de ser dela (`sub`) |
 | `archbase.controlplane.license.path` | — | Arquivo com a licença (JWS), aplicado na subida se for mais nova que a do banco |
 | `archbase.controlplane.grace-period` | `7d` | Carência depois do `exp` da licença (status `GRACE`); depois, modo restrito |
@@ -293,10 +293,28 @@ muito curto, considere aumentá-lo.
   `/refresh-token`, `/register`, `/resetPassword`, `/sendResetPasswordEmail/**` e `/tenants`.
 - O token de API do Archbase (UUID) não é afetado por nenhum dos dois modos.
 
-## Tabela própria
+## Tabelas próprias
 
-`CONTROLPLANE_USUARIO` (vínculo `sub` → usuário local, por tenant), acessada por JDBC e não por JPA: projetos com
-`ddl-auto=validate` não passam a exigi-la por ter o jar no classpath. Com `schema.mode=off`, crie-a com:
+Seis tabelas, todas acessadas por JDBC e não por JPA: projetos com `ddl-auto=validate` não passam a exigi-las por
+ter o jar no classpath. Ficam no banco, e não em arquivo, para que o consumo e o registro de comando aplicado
+entrem na mesma transação do produto.
+
+| Tabela | Criada por | Para que serve |
+|---|---|---|
+| `CONTROLPLANE_USUARIO` | `UserLinkStore` | Vínculo `sub` do Control Plane → usuário local, por tenant |
+| `CONTROLPLANE_LICENCA` | `ControlPlaneStateStore` | A licença da instância (JWS), uma linha só |
+| `CONTROLPLANE_TENANT` | `ControlPlaneStateStore` | O último snapshot de estado de cada tenant, em JSON, com a versão |
+| `CONTROLPLANE_CONSUMO` | `ControlPlaneStateStore` | Consumo metered registrado localmente, até ser reportado ao Control Plane |
+| `CONTROLPLANE_COMANDO` | `ControlPlaneStateStore` | Id (`jti`) de cada comando aplicado — a idempotência do provisionamento |
+| `CONTROLPLANE_META` | `ControlPlaneStateStore` | Chave/valor interno; hoje guarda a última `product-version` cujo manifesto foi publicado |
+
+Com `archbase.controlplane.schema.mode=apply` (padrão), as tabelas que faltam são criadas na subida, depois de
+todos os beans existirem; a existência é conferida pelos metadados do JDBC, e tabela que já existe não é alterada.
+É uma propriedade do módulo, separada de `archbase.security.schema.mode`, e só tem dois valores: `apply` e `off` —
+não há `report`.
+
+Com `schema.mode=off`, crie as seis antes da subida. O tipo `TEXT` abaixo é o do PostgreSQL; o módulo usa
+`LONGTEXT` em MySQL/MariaDB, `NVARCHAR(MAX)` em SQL Server e `CLOB` nos demais.
 
 ```sql
 CREATE TABLE CONTROLPLANE_USUARIO (
@@ -306,6 +324,40 @@ CREATE TABLE CONTROLPLANE_USUARIO (
     DH_VINCULO TIMESTAMP    NOT NULL,
     PRIMARY KEY (TENANT_ID, CP_USER_ID)
 );
+
+CREATE TABLE CONTROLPLANE_LICENCA (
+    ID             VARCHAR(20) NOT NULL PRIMARY KEY,
+    TOKEN          TEXT        NOT NULL,
+    DH_ATUALIZACAO TIMESTAMP   NOT NULL
+);
+
+CREATE TABLE CONTROLPLANE_TENANT (
+    TENANT_ID      VARCHAR(100) NOT NULL PRIMARY KEY,
+    VERSAO         BIGINT       NOT NULL,
+    SNAPSHOT       TEXT         NOT NULL,
+    DH_ATUALIZACAO TIMESTAMP    NOT NULL
+);
+
+CREATE TABLE CONTROLPLANE_CONSUMO (
+    ID         VARCHAR(40)  NOT NULL PRIMARY KEY,
+    TENANT_ID  VARCHAR(100) NOT NULL,
+    CHAVE      VARCHAR(200) NOT NULL,
+    QUANTIDADE BIGINT       NOT NULL,
+    DH_CONSUMO TIMESTAMP    NOT NULL,
+    REPORTADO  INTEGER      NOT NULL
+);
+
+CREATE TABLE CONTROLPLANE_COMANDO (
+    ID           VARCHAR(100) NOT NULL PRIMARY KEY,
+    TIPO         VARCHAR(100) NOT NULL,
+    DH_APLICACAO TIMESTAMP    NOT NULL
+);
+
+CREATE TABLE CONTROLPLANE_META (
+    CHAVE          VARCHAR(100) NOT NULL PRIMARY KEY,
+    VALOR          VARCHAR(500) NOT NULL,
+    DH_ATUALIZACAO TIMESTAMP    NOT NULL
+);
 ```
 
 ## Integração com o archbase-security
@@ -313,3 +365,22 @@ CREATE TABLE CONTROLPLANE_USUARIO (
 O módulo entra pelo ponto de extensão `br.com.archbase.security.auth.external` do `ArchbaseJwtAuthenticationFilter`
 (`ExternalBearerAuthenticator`, `ExternalAuthenticationPolicy`). Sem bean desses tipos, o filtro segue exatamente
 o caminho anterior.
+
+### Convivência com o archbase-security-oidc
+
+Os dois módulos podem estar ligados no mesmo deploy. O filtro consulta os `ExternalBearerAuthenticator` na ordem do
+`@Order`, e **o primeiro cujo `supports()` aceita o token assume a requisição inteira** — os seguintes não são
+consultados, e o fluxo do JWT próprio também não roda:
+
+| Ordem | Autenticador | `supports()` aceita quando |
+|---|---|---|
+| `ORDER_CONTROL_PLANE = 100` | `ControlPlaneBearerAuthenticator` | o cabeçalho do JWS declara `alg` EdDSA |
+| `ORDER_OIDC = 200` | `OidcBearerAuthenticator` | o `iss` do token é um dos provedores configurados |
+
+Na prática: o token do Control Plane é reconhecido antes, e um token de IdP externo, que não é EdDSA, segue para o
+OIDC. Um IdP configurado no OIDC que assine com EdDSA teria os tokens tomados pelo Control Plane e recusados por
+ele. A recusa vem de quem assumiu o token: um token reconhecido e inválido é recusado, não repassado ao próximo.
+
+A `ExternalAuthenticationPolicy` é só do Control Plane (o OIDC não registra uma), então `legacy-jwt=reject` vale
+para o deploy inteiro: com ela, o JWT próprio deixa de autenticar mesmo com o OIDC ligado. Havendo mais de uma
+política, o filtro as combina e basta uma recusar.

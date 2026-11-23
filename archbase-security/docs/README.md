@@ -1,185 +1,132 @@
-# Documentação do Módulo archbase-security
+# Documentação do módulo archbase-security — índice de `docs/`
 
-## Visão Geral
+Esta pasta guarda guias e a descrição das entidades. **As duas referências do módulo ficam fora
+dela:**
 
-O módulo `archbase-security` é um componente fundamental do Archbase Framework, fornecendo uma infraestrutura completa e robusta para autenticação, autorização e gerenciamento de segurança em aplicações empresariais. Este módulo implementa padrões modernos de segurança, incluindo autenticação baseada em JWT, controle de acesso baseado em permissões (RBAC), e suporte completo para arquiteturas multi-tenant.
-
-### Conceitos Fundamentais
-
-#### Domain-Driven Design (DDD)
-Todas as entidades de segurança seguem os princípios de Domain-Driven Design, com clara separação entre:
-- **Entidades de Persistência**: Classes que representam o modelo de dados (package `persistence`)
-- **Entidades de Domínio**: Classes que representam o modelo de negócio (package `domain.entity`)
-- **DTOs**: Objetos de transferência de dados para comunicação com clientes (package `domain.dto`)
-
-#### Multi-Tenancy
-O sistema é projetado desde o início para suportar múltiplas organizações (tenants) compartilhando a mesma infraestrutura, com isolamento completo de dados. Três níveis de granularidade são suportados:
-- **Tenant**: Organização principal
-- **Company**: Sub-organização dentro de um tenant
-- **Project**: Projeto específico dentro de uma empresa
-
-#### RBAC (Role-Based Access Control)
-O controle de acesso é baseado em permissões que conectam entidades de segurança (usuários, grupos, perfis) a ações específicas sobre recursos, com suporte para escopos contextuais.
-
-### Filosofia da Arquitetura
-
-A arquitetura do módulo de segurança segue os seguintes princípios:
-
-1. **Segurança por Padrão**: Todos os endpoints são protegidos por padrão; acesso público deve ser explicitamente declarado
-2. **Flexibilidade Contextual**: Permissões podem ser globais ou restritas a contextos específicos (tenant/company/project)
-3. **Extensibilidade**: Suporte para customizações via delegates e enrichers
-4. **Separação de Responsabilidades**: Clara divisão entre autenticação (quem você é) e autorização (o que você pode fazer)
-5. **Auditabilidade**: Todas as entidades mantêm informações de criação e modificação
+| Documento | Conteúdo |
+|---|---|
+| [../ARQUITETURA.md](../ARQUITETURA.md) | **Modelo de autorização** — os cinco portões, qual anotação usar, por que negou. Comece aqui. |
+| [../readme-security.md](../readme-security.md) | **Autenticação e customização** — login, sessões, logout, MFA, token de API, senha, cadeia de segurança própria |
+| [../MODELO_CORE_AUTORIZACAO.md](../MODELO_CORE_AUTORIZACAO.md) | O desenho do core de autorização |
+| [../../deployment/security-hardening.md](../../deployment/security-hardening.md) | O que ligar em produção e o que cada chave quebra |
 
 ---
 
-## 📚 Guias de Referência
+## Guias — `guides/`
 
-### Entidades de Segurança
+- [Configuração](guides/configuration.md) — propriedades e configuração do módulo
+- [Anotações e uso](guides/annotations-and-usage.md) — `@HasPermission` e as demais anotações
+- [Exemplos de código](guides/code-examples.md) — exemplos completos e casos de uso
+- [Melhores práticas](guides/best-practices.md) — recomendações de desenho e segurança
+- [Troubleshooting](guides/troubleshooting.md) — problemas comuns
 
-Documentação completa sobre o modelo de dados e entidades do sistema de segurança.
+## Entidades — `entities/`
 
-- [Visão Geral das Entidades](entities/overview.md) - Introdução à hierarquia de entidades e estratégia de herança
-- [Entidades Core (User, Group, Profile)](entities/core-entities.md) - Usuários, grupos, perfis e controle de acesso temporal
-- [Sistema de Permissões (Permission, Resource, Action)](entities/permission-entities.md) - Entidades que implementam o RBAC
-- [Gerenciamento de Tokens](entities/token-entities.md) - Access tokens, API tokens e redefinição de senha
+- [Visão geral](entities/overview.md) — hierarquia das entidades e estratégia de herança
+- [Entidades core](entities/core-entities.md) — usuário, grupo, perfil
+- [Entidades de permissão](entities/permission-entities.md) — permissão, recurso, ação
+- [Tokens](entities/token-entities.md) — access token, token de API, redefinição de senha
 
-### Arquitetura do Sistema
+## Keycloak — `keycloak/` (pesquisa histórica)
 
-Documentação sobre os fluxos e padrões arquiteturais do módulo de segurança.
+[keycloak-archbase-integration-decisions.md](keycloak/keycloak-archbase-integration-decisions.md) e
+`keycloak/research/` registram uma pesquisa anterior sobre integração com Keycloak. **As decisões
+de lá não valem.** A integração com IdP externo foi implementada de outro jeito, no módulo
+`archbase-security-oidc` — ver [../../archbase-security-oidc/README.md](../../archbase-security-oidc/README.md).
 
-- [Sistema de Permissões](architecture/permissions-system.md) - Fluxo de avaliação e modelo de escopos
-- [Sistema de Autenticação](architecture/authentication-system.md) - JWT, API tokens e redefinição de senha
-- [Multi-Tenancy](architecture/multi-tenancy.md) - Propagação de contexto e isolamento multi-nível
+## Desatualizados — `architecture/` e `diagrams/`
 
-### Guias de Uso
+> ⚠ **`architecture/*` e `diagrams/*` estão desatualizados e serão arquivados.** Descrevem o modelo
+> anterior ao core de cinco portões, e trazem propriedades, rotas e classes que não existem mais (ou
+> nunca existiram). Não os use como referência. Em vez deles:
+>
+> - autorização → [../ARQUITETURA.md](../ARQUITETURA.md)
+> - autenticação, tokens, reset de senha → [../readme-security.md](../readme-security.md)
 
-Documentação prática sobre como utilizar o módulo em suas aplicações.
-
-- [Configuração](guides/configuration.md) - Propriedades e configuração do módulo
-- [Anotações e Uso Básico](guides/annotations-and-usage.md) - @HasPermission e outras anotações de segurança
-- [Exemplos de Código](guides/code-examples.md) - Exemplos completos e casos de uso
-- [Melhores Práticas](guides/best-practices.md) - Recomendações de design e segurança
-- [Troubleshooting](guides/troubleshooting.md) - Solução de problemas comuns
-
-### Diagramas
-
-Diagramas visuais para entender a estrutura e fluxos do sistema.
-
-- [Índice de Diagramas](diagrams/README.md) - Lista completa de diagramas disponíveis
-- [Relacionamentos de Entidades (ERD)](diagrams/entity-relationships.md) - Diagrama do modelo de dados
-- [Fluxos de Sistema](diagrams/flows.md) - Diagramas de sequência para autenticação e permissões
-- [Escopos de Permissões](diagrams/permission-scopes.md) - Hierarquia de escopos contextuais
+`archive/` guarda o documento original do qual esta pasta foi desmembrada.
 
 ---
 
-## 🚀 Início Rápido
+## Início rápido
 
-### 1. Adicionar Dependência
+### 1. Dependência
 
-Para aplicações básicas:
-```xml
-<dependency>
-    <groupId>br.com.archbase</groupId>
-    <artifactId>archbase-starter-core</artifactId>
-</dependency>
-```
-
-Para aplicações com segurança e multi-tenancy:
 ```xml
 <dependency>
     <groupId>br.com.archbase</groupId>
     <artifactId>archbase-starter</artifactId>
+    <version>${archbase.version}</version>
 </dependency>
 ```
 
-### 2. Configurar Propriedades
+`archbase-starter` traz core, segurança e multitenancy. `archbase-starter-core` sozinho **não**
+traz o módulo de segurança: junte `archbase-starter-security` (ver
+[../README.md](../README.md#como-ativar)).
+
+### 2. Propriedades
 
 ```properties
-# Habilitar segurança
-archbase.security.enabled=true
-archbase.security.jwt.secret=your-secret-key-here
-archbase.security.jwt.expiration=86400000
+# Obrigatórias, sem valor padrão
+archbase.security.jwt.secret-key=${JWT_SECRET}          # Base64 padrão, >= 32 bytes decodificados
+archbase.security.jwt.token-expiration=3600000          # ms
+archbase.security.jwt.refresh-expiration=604800000      # ms
+archbase.security.whitelist=
+archbase.security.cors.allowed-origins=https://app.exemplo.com
+archbase.security.cors.allowed-methods=GET,POST,PUT,PATCH,DELETE,OPTIONS
+archbase.security.cors.allowed-headers=Authorization,Content-Type,X-TENANT-ID,X-COMPANY-ID
+archbase.security.cors.allow-credentials=true
 
-# Habilitar multi-tenancy (opcional)
+# Onde estão os controllers anotados — alimenta o catálogo de capacidades
+archbase.security.scan-packages=com.suaempresa
+
+# Multitenancy (opcional)
 archbase.multitenancy.enabled=true
 ```
 
-### 3. Proteger Endpoints
+`archbase.security.jwt.secret` e `archbase.security.jwt.expiration` não existem.
+
+### 3. Proteger endpoints
 
 ```java
 @RestController
-@RequestMapping("/api/users")
-public class UserController {
+@RequestMapping("/api/v1/users")
+@ArchbaseResource(value = "app.usuario", description = "Usuários")
+public class UsuarioController {
 
     @GetMapping("/{id}")
-    @HasPermission(action = "VIEW", resource = "USER")
-    public UserDto getUser(@PathVariable String id) {
-        // Implementação
-    }
+    @HasPermission(action = "view", description = "Consultar usuário")
+    public UsuarioDto buscar(@PathVariable String id) { ... }
 
     @PostMapping
-    @HasPermission(action = "CREATE", resource = "USER")
-    public UserDto createUser(@RequestBody UserDto user) {
-        // Implementação
-    }
+    @HasPermission(action = "create", description = "Criar usuário")
+    public UsuarioDto criar(@RequestBody UsuarioDto usuario) { ... }
 }
 ```
 
-### 4. Criar Usuário e Permissões
+`description` é obrigatória — sem ela a anotação não compila. `@HasPermission` vai no método;
+o recurso comum vai em `@ArchbaseResource`, na classe.
 
-```java
-// Criar recurso
-ResourceEntity resource = new ResourceEntity();
-resource.setName("USER");
-resource.setType(TipoRecurso.API);
-resourceRepository.save(resource);
+### 4. Catálogo e concessão
 
-// Criar ação
-ActionEntity action = new ActionEntity();
-action.setName("VIEW");
-action.setResource(resource);
-actionRepository.save(action);
+**Não crie `ResourceEntity` e `ActionEntity` à mão.** Na subida, o framework varre
+`archbase.security.scan-packages` e registra no catálogo cada recurso e ação declarados nas
+anotações, com a `description` delas (que na tabela é `NOT NULL`, tanto em `SEGURANCA_RECURSO`
+quanto em `SEGURANCA_ACAO`).
 
-// Criar usuário
-UserEntity user = new UserEntity();
-user.setUserName("john.doe");
-user.setEmail("john@example.com");
-user.setPassword(passwordEncoder.encode("password"));
-userRepository.save(user);
+A concessão é feita pelo admin — pela tela de permissões ou pela API:
 
-// Criar permissão
-PermissionEntity permission = new PermissionEntity();
-permission.setSecurity(user);
-permission.setAction(action);
-// Permissão global (todos os tenants/companies/projects)
-permissionRepository.save(permission);
+```http
+POST /api/v1/resource/permissions
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "securityId": "<id do usuário, grupo ou perfil>",
+  "actionId":   "<id da ação no catálogo>",
+  "type":       "USER"
+}
 ```
 
----
-
-## 📖 Leitura Adicional
-
-- [Documentação Geral do Framework](../readme-security.md)
-- [CLAUDE.md](../../CLAUDE.md) - Guia para desenvolvimento com Claude Code
-
----
-
-## 🔄 Fluxo de Leitura Recomendado
-
-Para novos desenvolvedores, recomendamos a seguinte ordem de leitura:
-
-1. **Começar aqui** - Este README para visão geral
-2. [Entidades Core](entities/core-entities.md) - Entender User, Group, Profile
-3. [Sistema de Permissões](entities/permission-entities.md) - Como funcionam as permissões
-4. [Fluxo de Autenticação](architecture/authentication-system.md) - Como usuários fazem login
-5. [Fluxo de Avaliação de Permissões](architecture/permissions-system.md) - Como permissões são verificadas
-6. [Anotações e Uso](guides/annotations-and-usage.md) - Como usar @HasPermission
-7. [Exemplos de Código](guides/code-examples.md) - Ver implementações práticas
-8. [Melhores Práticas](guides/best-practices.md) - Aprender recomendações
-
----
-
-## 📝 Nota sobre Migração
-
-Este documento foi reorganizado a partir de `security-entities-and-permissions.md` para melhorar a navegabilidade e manutenibilidade. O documento original foi arquivado em `archive/` para referência.
+`type` é `USER`, `GROUP` ou `PROFILE`. `effect` (`GRANT`, o padrão, ou `DENY`), `companyId` e
+`projectId` são opcionais. O endpoint é administrativo: quem pode chamá-lo depende de
+`archbase.security.admin-endpoints.policy`.

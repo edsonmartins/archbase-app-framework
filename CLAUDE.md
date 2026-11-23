@@ -246,7 +246,7 @@ import io.hypersistence.utils.hibernate.type.json.JsonType;
 import org.hibernate.annotations.Type;
 
 @Entity
-public class ProductEntity extends TenantPersistenceEntityBase<ProductEntity, String> {
+public class ProductEntity extends TenantPersistenceEntityBase {
     @Type(JsonType.class)
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> metadata;
@@ -355,8 +355,8 @@ archbase.security.sync.mode=apply                           # apply | report | r
 # admin-endpoints.policy, cujo padrão permit deixaria qualquer autenticado entrar.
 
 # Segunda auditoria (delta 3.1.1 -> 3.3.0). Mesmos defaults compatíveis, mesmo WARN de inerte.
-# Leitura da trilha restrita ao tenant de quem consulta. SecurityEventEntity é a única entidade
-# do módulo sem @TenantId: gravava TENANT_ID e não filtrava na leitura, então admin de um tenant
+# Leitura da trilha restrita ao tenant de quem consulta. SecurityEventEntity não tem @TenantId
+# (como ArchbaseSecurityRevision, a revisão do Envers): gravava TENANT_ID e não filtrava na leitura, então admin de um tenant
 # lia os eventos de todos. Não vira @TenantId porque a purga é @Scheduled e roda sem tenant.
 archbase.security.audit.tenant-scoped=false
 # Segredo HS256 do analytics conferido na subida (warn | fail | off). Nascia "" e ninguém checava:

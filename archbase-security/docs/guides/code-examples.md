@@ -6,458 +6,176 @@
 
 ## Visão Geral
 
-Este guia fornece exemplos completos e executáveis demonstrando os principais casos de uso do módulo `archbase-security`. Cada exemplo inclui código completo, explicações detalhadas e dicas de implementação.
+Exemplos dos principais casos de uso do `archbase-security`, escritos contra a API real do módulo. Onde o
+código é da aplicação (serviços de negócio, DTOs próprios), isso está indicado.
 
 ### Exemplos Cobertos
 
-1. **[Criação de Usuário com Permissões](#1-criação-de-usuário-com-permissões)** - Setup completo de entidades de segurança
-2. **[Uso de @HasPermission em Controllers](#2-uso-de-haspermission-em-controllers)** - Proteção de endpoints REST
-3. **[Configuração Customizada de Segurança](#3-configuração-customizada-de-segurança)** - SecurityConfig avançada
+1. **[Criação de Usuário com Permissões](#1-criação-de-usuário-com-permissões)** - Catálogo, usuário e concessões pelos serviços do framework
+2. **[Uso de @HasPermission em Controllers](#2-uso-de-haspermission-em-controllers)** - Proteção de endpoints REST e escopo
+3. **[Configuração Customizada de Segurança](#3-configuração-customizada-de-segurança)** - Substituir a configuração padrão, auditoria, properties e testes
 4. **[Trabalho com API Tokens](#4-trabalho-com-api-tokens)** - Integração service-to-service
-5. **[Configuração de Horários de Acesso](#5-configuração-de-horários-de-acesso)** - Restrições temporais
+5. **[Configuração de Horários de Acesso](#5-configuração-de-horários-de-acesso)** - Restrições temporais (aplicadas pela aplicação)
 
 ---
 
 ## 1. Criação de Usuário com Permissões
 
-Este exemplo demonstra como criar um usuário completo com recursos, ações e permissões associadas. É ideal para entender o fluxo de setup inicial de entidades de segurança.
+Três peças: o **catálogo** (recurso + ação), o **usuário** e a **concessão** que liga os dois. Cada uma tem
+um caminho próprio no framework, e nenhum deles passa por gravar entidade direto no repositório.
 
-### 1.1 Service de Setup Completo
+### 1.1 O catálogo nasce do código
 
-```java
-package com.example.security.service;
+Recurso e ação não são cadastrados à mão. Na subida, o framework varre os pacotes de
+`archbase.security.scan-packages` e cria um recurso + ação para cada `@HasPermission` encontrado (ver §2):
 
-import br.com.archbase.security.persistence.*;
-import br.com.archbase.security.repository.*;
-import br.com.archbase.ddd.domain.annotations.DomainService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDateTime;
-import java.util.UUID;
-
-/**
- * Service para criação e configuração de usuários com permissões.
- *
- * Este service encapsula toda a lógica de criação de entidades de segurança,
- * incluindo recursos, ações, usuários e permissões, seguindo o padrão
- * Domain-Driven Design.
- */
-@Service
-@DomainService
-public class SecuritySetupService {
-
-    @Autowired
-    private UserJpaRepository userRepository;
-
-    @Autowired
-    private ResourceJpaRepository resourceRepository;
-
-    @Autowired
-    private ActionJpaRepository actionRepository;
-
-    @Autowired
-    private PermissionJpaRepository permissionRepository;
-
-    @Autowired
-    private PasswordEncoder passwordEncoder;
-
-    /**
-     * Cria um usuário completo com permissões de gerenciamento.
-     *
-     * Este método demonstra o fluxo completo:
-     * 1. Criação de recurso (o que está sendo protegido)
-     * 2. Criação de ações no recurso (o que pode ser feito)
-     * 3. Criação do usuário
-     * 4. Atribuição de permissões ao usuário
-     *
-     * @return ID do usuário criado
-     */
-    @Transactional
-    public String createUserWithPermissions() {
-        // === PASSO 1: Criar Recurso ===
-        // Recursos representam entidades ou funcionalidades da aplicação
-        ResourceEntity resource = ResourceEntity.builder()
-            .id(UUID.randomUUID().toString())
-            .code("RES_USER_MANAGEMENT")
-            .name("USER_MANAGEMENT")
-            .description("Gerenciamento de Usuários do Sistema")
-            .active(true)
-            .type(TipoRecurso.API)
-            .tenantId("TENANT_ABC")
-            .createEntityDate(LocalDateTime.now())
-            .createdByUser("SYSTEM")
-            .build();
-        resourceRepository.save(resource);
-
-        // === PASSO 2: Criar Ações no Recurso ===
-        // Ações definem operações específicas que podem ser realizadas no recurso
-
-        // Ação VIEW - Para consulta de dados
-        ActionEntity viewAction = ActionEntity.builder()
-            .id(UUID.randomUUID().toString())
-            .code("ACT_VIEW_USER")
-            .name("VIEW")
-            .description("Visualizar usuários do sistema")
-            .resource(resource)
-            .category("READ")
-            .active(true)
-            .tenantId("TENANT_ABC")
-            .createEntityDate(LocalDateTime.now())
-            .createdByUser("SYSTEM")
-            .build();
-        actionRepository.save(viewAction);
-
-        // Ação CREATE - Para criação de novos registros
-        ActionEntity createAction = ActionEntity.builder()
-            .id(UUID.randomUUID().toString())
-            .code("ACT_CREATE_USER")
-            .name("CREATE")
-            .description("Criar novos usuários no sistema")
-            .resource(resource)
-            .category("WRITE")
-            .active(true)
-            .tenantId("TENANT_ABC")
-            .createEntityDate(LocalDateTime.now())
-            .createdByUser("SYSTEM")
-            .build();
-        actionRepository.save(createAction);
-
-        // Ação UPDATE - Para modificação de registros existentes
-        ActionEntity updateAction = ActionEntity.builder()
-            .id(UUID.randomUUID().toString())
-            .code("ACT_UPDATE_USER")
-            .name("UPDATE")
-            .description("Atualizar dados de usuários existentes")
-            .resource(resource)
-            .category("WRITE")
-            .active(true)
-            .tenantId("TENANT_ABC")
-            .createEntityDate(LocalDateTime.now())
-            .createdByUser("SYSTEM")
-            .build();
-        actionRepository.save(updateAction);
-
-        // Ação DELETE - Para remoção de registros
-        ActionEntity deleteAction = ActionEntity.builder()
-            .id(UUID.randomUUID().toString())
-            .code("ACT_DELETE_USER")
-            .name("DELETE")
-            .description("Excluir usuários do sistema")
-            .resource(resource)
-            .category("DELETE")
-            .active(true)
-            .tenantId("TENANT_ABC")
-            .createEntityDate(LocalDateTime.now())
-            .createdByUser("SYSTEM")
-            .build();
-        actionRepository.save(deleteAction);
-
-        // === PASSO 3: Criar Usuário ===
-        // Usuários são as entidades de segurança que podem fazer login
-        UserEntity user = UserEntity.builder()
-            .id(UUID.randomUUID().toString())
-            .code("USR_JOHN_DOE")
-            .name("John Doe")
-            .description("Gerente de TI - Responsável pelo gerenciamento de usuários")
-            .userName("john.doe")
-            .email("john.doe@example.com")
-            .password(passwordEncoder.encode("SenhaSegura@2024"))
-            .isAdministrator(false)
-            .accountDeactivated(false)
-            .accountLocked(false)
-            .allowPasswordChange(true)
-            .allowMultipleLogins(false)
-            .passwordNeverExpires(false)
-            .unlimitedAccessHours(true)
-            .changePasswordOnNextLogin(false)
-            .tenantId("TENANT_ABC")
-            .createEntityDate(LocalDateTime.now())
-            .createdByUser("SYSTEM")
-            .build();
-        userRepository.save(user);
-
-        // === PASSO 4: Atribuir Permissões ao Usuário ===
-        // Permissões conectam usuários a ações específicas em recursos
-
-        // Permissão VIEW - Escopo: toda a empresa COMPANY_BR
-        // Esta permissão permite visualizar usuários em todos os projetos da empresa
-        PermissionEntity viewPermission = PermissionEntity.builder()
-            .id(UUID.randomUUID().toString())
-            .code("PERM_VIEW_USER_BR")
-            .security(user)
-            .action(viewAction)
-            .tenantId("TENANT_ABC")
-            .companyId("COMPANY_BR")
-            .projectId(null)  // null = Todos os projetos da empresa
-            .createEntityDate(LocalDateTime.now())
-            .createdByUser("SYSTEM")
-            .build();
-        permissionRepository.save(viewPermission);
-
-        // Permissão CREATE - Escopo: projeto específico PROJECT_001
-        // Esta permissão permite criar usuários apenas no projeto 001
-        PermissionEntity createPermission = PermissionEntity.builder()
-            .id(UUID.randomUUID().toString())
-            .code("PERM_CREATE_USER_PROJ1")
-            .security(user)
-            .action(createAction)
-            .tenantId("TENANT_ABC")
-            .companyId("COMPANY_BR")
-            .projectId("PROJECT_001")  // Restrito ao projeto 001
-            .createEntityDate(LocalDateTime.now())
-            .createdByUser("SYSTEM")
-            .build();
-        permissionRepository.save(createPermission);
-
-        // Permissão UPDATE - Escopo: projeto específico PROJECT_001
-        PermissionEntity updatePermission = PermissionEntity.builder()
-            .id(UUID.randomUUID().toString())
-            .code("PERM_UPDATE_USER_PROJ1")
-            .security(user)
-            .action(updateAction)
-            .tenantId("TENANT_ABC")
-            .companyId("COMPANY_BR")
-            .projectId("PROJECT_001")
-            .createEntityDate(LocalDateTime.now())
-            .createdByUser("SYSTEM")
-            .build();
-        permissionRepository.save(updatePermission);
-
-        System.out.println("✓ Usuário criado com sucesso!");
-        System.out.println("  - Username: john.doe");
-        System.out.println("  - Email: john.doe@example.com");
-        System.out.println("  - Pode VISUALIZAR usuários em toda empresa COMPANY_BR");
-        System.out.println("  - Pode CRIAR usuários apenas no PROJECT_001");
-        System.out.println("  - Pode ATUALIZAR usuários apenas no PROJECT_001");
-
-        return user.getId();
-    }
-
-    /**
-     * Cria um usuário administrador com permissões globais.
-     *
-     * Administradores têm acesso irrestrito e não necessitam permissões
-     * específicas, porém é boa prática criar permissões explícitas para
-     * auditoria e controle granular.
-     *
-     * @param tenantId ID do tenant
-     * @return ID do usuário administrador
-     */
-    @Transactional
-    public String createAdminUser(String tenantId) {
-        UserEntity admin = UserEntity.builder()
-            .id(UUID.randomUUID().toString())
-            .code("USR_ADMIN")
-            .name("Administrador do Sistema")
-            .description("Usuário com privilégios administrativos completos")
-            .userName("admin")
-            .email("admin@example.com")
-            .password(passwordEncoder.encode("AdminPass@2024"))
-            .isAdministrator(true)  // Flag de administrador
-            .accountDeactivated(false)
-            .accountLocked(false)
-            .allowPasswordChange(true)
-            .allowMultipleLogins(true)
-            .passwordNeverExpires(true)
-            .unlimitedAccessHours(true)
-            .changePasswordOnNextLogin(false)
-            .tenantId(tenantId)
-            .createEntityDate(LocalDateTime.now())
-            .createdByUser("SYSTEM")
-            .build();
-
-        userRepository.save(admin);
-
-        System.out.println("✓ Usuário administrador criado!");
-        System.out.println("  - Username: admin");
-        System.out.println("  - Acesso irrestrito a todos os recursos");
-
-        return admin.getId();
-    }
-
-    /**
-     * Cria um usuário com acesso somente leitura.
-     *
-     * Útil para relatórios, auditorias e visualizações sem riscos
-     * de modificação de dados.
-     *
-     * @param tenantId ID do tenant
-     * @param companyId ID da empresa (opcional)
-     * @return ID do usuário criado
-     */
-    @Transactional
-    public String createReadOnlyUser(String tenantId, String companyId) {
-        // Buscar ou criar recurso
-        ResourceEntity resource = resourceRepository
-            .findByNameAndTenantId("USER_MANAGEMENT", tenantId)
-            .orElseGet(() -> {
-                ResourceEntity newResource = ResourceEntity.builder()
-                    .id(UUID.randomUUID().toString())
-                    .code("RES_USER_MANAGEMENT")
-                    .name("USER_MANAGEMENT")
-                    .description("Gerenciamento de Usuários")
-                    .active(true)
-                    .type(TipoRecurso.API)
-                    .tenantId(tenantId)
-                    .createEntityDate(LocalDateTime.now())
-                    .createdByUser("SYSTEM")
-                    .build();
-                return resourceRepository.save(newResource);
-            });
-
-        // Buscar ou criar ação VIEW
-        ActionEntity viewAction = actionRepository
-            .findByNameAndResourceId("VIEW", resource.getId())
-            .orElseGet(() -> {
-                ActionEntity newAction = ActionEntity.builder()
-                    .id(UUID.randomUUID().toString())
-                    .code("ACT_VIEW_USER")
-                    .name("VIEW")
-                    .description("Visualizar usuários")
-                    .resource(resource)
-                    .category("READ")
-                    .active(true)
-                    .tenantId(tenantId)
-                    .createEntityDate(LocalDateTime.now())
-                    .createdByUser("SYSTEM")
-                    .build();
-                return actionRepository.save(newAction);
-            });
-
-        // Criar usuário somente leitura
-        UserEntity readOnlyUser = UserEntity.builder()
-            .id(UUID.randomUUID().toString())
-            .code("USR_READONLY")
-            .name("Usuário Somente Leitura")
-            .description("Acesso apenas para visualização de dados")
-            .userName("readonly.user")
-            .email("readonly@example.com")
-            .password(passwordEncoder.encode("ReadOnly@2024"))
-            .isAdministrator(false)
-            .accountDeactivated(false)
-            .accountLocked(false)
-            .allowPasswordChange(true)
-            .allowMultipleLogins(true)
-            .passwordNeverExpires(false)
-            .unlimitedAccessHours(true)
-            .changePasswordOnNextLogin(false)
-            .tenantId(tenantId)
-            .createEntityDate(LocalDateTime.now())
-            .createdByUser("SYSTEM")
-            .build();
-        userRepository.save(readOnlyUser);
-
-        // Criar permissão somente leitura
-        PermissionEntity viewPermission = PermissionEntity.builder()
-            .id(UUID.randomUUID().toString())
-            .code("PERM_VIEW_READONLY")
-            .security(readOnlyUser)
-            .action(viewAction)
-            .tenantId(tenantId)
-            .companyId(companyId)
-            .projectId(null)
-            .createEntityDate(LocalDateTime.now())
-            .createdByUser("SYSTEM")
-            .build();
-        permissionRepository.save(viewPermission);
-
-        System.out.println("✓ Usuário somente leitura criado!");
-        System.out.println("  - Username: readonly.user");
-        System.out.println("  - Pode apenas VISUALIZAR dados");
-
-        return readOnlyUser.getId();
-    }
-}
+```properties
+archbase.security.scan-packages=com.example
 ```
 
-### 1.2 Exemplo de Uso do Service
+A varredura roda fora de requisição e grava no tenant `archbase.app.tenant.default.id`. Para conferir o que
+ela faria sem gravar nada, use `archbase.security.sync.mode=report` e leia o log.
+
+### 1.2 Usuário e concessão pelo serviço
+
+`UserUseCase` (implementado por `UserService`) é o mesmo caminho do `POST /api/v1/user`. Ele confere e-mail
+duplicado, aplica a política de senha (`archbase.security.password.*`), cifra a senha, aplica a trava de
+administrador (`admin-guard`) e chama o `UserServiceListener`.
 
 ```java
 package com.example.security;
 
-import com.example.security.service.SecuritySetupService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.CommandLineRunner;
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Profile;
+import br.com.archbase.security.domain.dto.UserDto;
+import br.com.archbase.security.persistence.ActionEntity;
+import br.com.archbase.security.repository.ActionJpaRepository;
+import br.com.archbase.security.usecase.UserUseCase;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-@SpringBootApplication
-public class SecurityApplication {
+import java.util.UUID;
 
-    @Autowired
-    private SecuritySetupService setupService;
+@Service
+public class SecuritySetupService {
 
-    public static void main(String[] args) {
-        SpringApplication.run(SecurityApplication.class, args);
+    private final UserUseCase users;
+    private final ActionJpaRepository actions;   // só leitura do catálogo
+
+    public SecuritySetupService(UserUseCase users, ActionJpaRepository actions) {
+        this.users = users;
+        this.actions = actions;
     }
 
     /**
-     * Executa setup inicial apenas em perfil de desenvolvimento.
-     * Em produção, use migrations ou scripts SQL.
+     * Cria o usuário (se ainda não existe) e concede "view" em "app.pedido".
+     * Deve ser chamado com o tenant JÁ definido no ArchbaseTenantContext — ver 1.3.
      */
-    @Bean
-    @Profile("dev")
-    public CommandLineRunner initializeSecurityData() {
-        return args -> {
-            System.out.println("=== Inicializando Dados de Segurança ===");
+    @Transactional
+    public String criarOperador(String email, String senhaInicial) {
+        if (users.getUserByEmail(email).isPresent()) {
+            return null;                                   // idempotente: addPermission não confere duplicata
+        }
 
-            // Criar usuário com permissões
-            String userId = setupService.createUserWithPermissions();
-            System.out.println("Usuário criado: " + userId);
+        UserDto dto = UserDto.builder()
+                .id(UUID.randomUUID().toString())          // o caminho DTO -> entidade não gera id
+                .name("John Doe")
+                .userName(email)
+                .email(email)
+                .password(senhaInicial)                    // em claro: o serviço valida e cifra
+                .isAdministrator(false)
+                .accountDeactivated(false)
+                .accountLocked(false)
+                .allowPasswordChange(true)
+                .allowMultipleLogins(false)
+                .passwordNeverExpires(false)
+                .unlimitedAccessHours(true)
+                .changePasswordOnNextLogin(true)
+                .build();
+        UserDto criado = users.createUser(dto);
 
-            // Criar usuário administrador
-            String adminId = setupService.createAdminUser("TENANT_ABC");
-            System.out.println("Admin criado: " + adminId);
+        ActionEntity view = actions.findByActionNameAndResourceName("view", "app.pedido")
+                .orElseThrow(() -> new IllegalStateException(
+                        "Capacidade app.pedido:view não está no catálogo deste tenant"));
 
-            // Criar usuário somente leitura
-            String readOnlyId = setupService.createReadOnlyUser("TENANT_ABC", "COMPANY_BR");
-            System.out.println("Usuário readonly criado: " + readOnlyId);
-
-            System.out.println("=== Setup Concluído ===");
-        };
+        // Concessão em todo o tenant (sem empresa nem projeto)
+        users.addPermission(criado.getId(), view.getId());
+        return criado.getId();
     }
 }
 ```
 
-### 1.3 Dicas de Implementação
+Chamada num seed de desenvolvimento:
 
-**Geração de IDs**:
 ```java
-// Use UUID v4 para garantir unicidade global
-String id = UUID.randomUUID().toString();
-
-// Ou use uma estratégia customizada baseada em timestamp + random
-String customId = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
-    + "-" + UUID.randomUUID().toString().substring(0, 8);
+@Bean
+@Profile("dev")
+CommandLineRunner seedSeguranca(SecuritySetupService setup) {
+    return args -> {
+        ArchbaseTenantContext.setTenantId("tenant-dev");
+        try {
+            setup.criarOperador("john.doe@example.com", System.getenv("SEED_PASSWORD"));
+        } finally {
+            ArchbaseTenantContext.clear();
+        }
+    };
+}
 ```
 
-**Encoding de Senhas**:
+(`ArchbaseTenantContext` está em `br.com.archbase.ddd.context`.)
+
+**Administrador.** Mesmo DTO com `.isAdministrator(true)`. Sem ninguém autenticado (seed, importação), a
+trava de administrador deixa passar e registra um WARN; numa requisição, só um administrador cria ou
+promove outro.
+
+### 1.3 Tenant: vem do contexto, não do builder
+
+Usuário, recurso, ação e permissão estendem `TenantPersistenceEntityBase`, cujo `tenantId` é `@TenantId` do
+Hibernate. Consequências:
+
+- **O tenant é preenchido pelo Hibernate** a partir do tenant corrente (`ArchbaseTenantContext`, ou
+  `archbase.app.tenant.default.id` quando o contexto está vazio). `UserDto` nem tem campo de tenant.
+- **Um valor diferente passado à mão não muda de tenant:** a gravação é recusada com
+  `PropertyValueException` ("assigned tenant id differs from current tenant id").
+- **O tenant é resolvido quando a sessão abre.** Defina o contexto *antes* de entrar no método
+  `@Transactional`, como no runner acima — defini-lo dentro do método é tarde demais.
+- **Leituras só enxergam o tenant corrente.** Se o catálogo não existe no tenant do seed,
+  `findByActionNameAndResourceName` volta vazio.
+
+### 1.4 Concessão com escopo de empresa ou projeto
+
+`addPermission` grava a concessão sem escopo (vale em todo o tenant). Para estreitar a empresa ou projeto, ou
+para gravar uma negação, use o endpoint administrativo que a tela de segurança usa:
+
+```http
+POST /api/v1/resource/permissions
+Authorization: Bearer <jwt de quem administra>
+Content-Type: application/json
+
+{
+  "securityId": "<id do usuário>",
+  "type": "USER",
+  "actionId": "<id da ação>",
+  "companyId": "COMPANY_BR",
+  "projectId": "PROJECT_001",
+  "effect": "GRANT"
+}
+```
+
+- `type`: `USER`, `GROUP` ou `PROFILE`. `effect`: `GRANT` (padrão quando ausente) ou `DENY`.
+- Se já existe concessão para o par (segurança, ação), ela é atualizada. `companyId`/`projectId` ausentes
+  preservam o escopo gravado; string vazia o limpa.
+- O endpoint segue `archbase.security.admin-endpoints.policy`. O serviço por trás
+  (`ResourceService.grantPermission`) exige usuário autenticado, por isso não serve para seed.
+
+### 1.5 Senha
+
+Não codifique a senha antes de passar ao `UserUseCase`: ele mesmo valida e cifra, e uma senha já cifrada
+seria cifrada de novo. O `PasswordEncoder` padrão é `BCryptPasswordEncoder` e só é registrado se a aplicação
+não declarar outro:
+
 ```java
-// Sempre use BCrypt com força adequada (10-12)
 @Bean
 public PasswordEncoder passwordEncoder() {
-    return new BCryptPasswordEncoder(12);
-}
-
-// NUNCA armazene senhas em texto plano
-String hashedPassword = passwordEncoder.encode(plainPassword);
-```
-
-**Transações**:
-```java
-// Use @Transactional para garantir atomicidade
-@Transactional
-public void createComplexSetup() {
-    // Se qualquer operação falhar, todas são revertidas
-    createResource();
-    createActions();
-    createUser();
-    createPermissions();
+    return new BCryptPasswordEncoder(12);   // hashes antigos de força 10 continuam conferindo
 }
 ```
 
@@ -465,810 +183,421 @@ public void createComplexSetup() {
 
 ## 2. Uso de @HasPermission em Controllers
 
-Este exemplo demonstra como proteger endpoints REST usando a anotação `@HasPermission`, implementando controle de acesso fino para operações CRUD.
+`@HasPermission` declara a capacidade que o método exige e alimenta o catálogo (§1.1). Regras da anotação:
 
-### 2.1 Controller REST Completo
+- `@Target(METHOD)`: não compila na classe.
+- `action` e `description` são **obrigatórios**. `description` é o texto que quem administra lê ao conceder.
+- `resource` vem do atributo ou, vazio, de `@ArchbaseResource(value = ..., description = ...)` na classe. Sem
+  nenhum dos dois, o acesso é negado e o erro vai para o log.
+- Opcionais: `label` (rótulo curto no admin), `category` (agrupamento), `minimumLevel` (piso do portão LEVEL,
+  só avaliado com `archbase.security.access-level.enabled=true`), `requires` (dependências informativas,
+  nunca exigidas na decisão).
+- Só um principal `UserEntity` do Archbase é avaliado. Outro principal (de um `UserDetailsService` próprio,
+  de `@WithMockUser`) é negado no portão IDENTITY.
+
+### 2.1 Controller REST
+
+O serviço e os DTOs abaixo são da aplicação.
 
 ```java
-package com.example.api.controller;
+package com.example.pedido;
 
+import br.com.archbase.security.access.AccessLevel;
+import br.com.archbase.security.annotation.ArchbaseResource;
 import br.com.archbase.security.annotation.HasPermission;
-import com.example.api.dto.UserDto;
-import com.example.api.service.UserService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
-/**
- * Controller para gerenciamento de usuários.
- *
- * Todos os endpoints são protegidos por permissões específicas usando
- * a anotação @HasPermission. O contexto de tenant/company/project é
- * obtido automaticamente do ArchbaseTenantContext.
- */
 @RestController
-@RequestMapping("/api/v1/users")
-@Tag(name = "Users", description = "API de Gerenciamento de Usuários")
-public class UserManagementController {
+@RequestMapping("/api/v1/pedidos")
+@ArchbaseResource(value = "app.pedido", description = "Pedidos de venda")
+public class PedidoController {
 
-    @Autowired
-    private UserService userService;
+    private final PedidoService pedidos;
 
-    /**
-     * Lista todos os usuários com paginação.
-     *
-     * Requer: Permissão VIEW no recurso USER_MANAGEMENT
-     * Contexto: Tenant, Company e Project são obtidos automaticamente
-     */
+    public PedidoController(PedidoService pedidos) {
+        this.pedidos = pedidos;
+    }
+
     @GetMapping
-    @HasPermission(
-        action = "VIEW",
-        resource = "USER_MANAGEMENT",
-        description = "List all users with pagination in current context"
-    )
-    @Operation(
-        summary = "List users",
-        description = "Returns a paginated list of users in the current context"
-    )
-    @ApiResponse(responseCode = "200", description = "Users retrieved successfully")
-    @ApiResponse(responseCode = "403", description = "Insufficient permissions")
-    public ResponseEntity<Page<UserDto>> listUsers(
-            @Parameter(description = "Pagination parameters")
-            Pageable pageable) {
-
-        Page<UserDto> users = userService.findAll(pageable);
-        return ResponseEntity.ok(users);
+    @HasPermission(action = "view", description = "Listar pedidos")
+    public Page<PedidoDto> listar(Pageable pageable) {
+        return pedidos.listar(pageable);
     }
 
-    /**
-     * Busca usuário por ID.
-     *
-     * Requer: Permissão VIEW no recurso USER_MANAGEMENT
-     */
     @GetMapping("/{id}")
-    @HasPermission(
-        action = "VIEW",
-        resource = "USER_MANAGEMENT",
-        description = "Get user by ID"
-    )
-    @Operation(summary = "Get user", description = "Returns user details by ID")
-    @ApiResponse(responseCode = "200", description = "User found")
-    @ApiResponse(responseCode = "403", description = "Insufficient permissions")
-    @ApiResponse(responseCode = "404", description = "User not found")
-    public ResponseEntity<UserDto> getUser(
-            @Parameter(description = "User ID")
-            @PathVariable String id) {
-
-        UserDto user = userService.findById(id);
-        return ResponseEntity.ok(user);
+    @HasPermission(action = "view", description = "Listar pedidos")
+    public PedidoDto buscar(@PathVariable String id) {
+        return pedidos.buscar(id);
     }
 
-    /**
-     * Busca usuário por username.
-     *
-     * Requer: Permissão VIEW no recurso USER_MANAGEMENT
-     */
-    @GetMapping("/by-username/{username}")
-    @HasPermission(
-        action = "VIEW",
-        resource = "USER_MANAGEMENT",
-        description = "Get user by username"
-    )
-    @Operation(summary = "Get user by username")
-    public ResponseEntity<UserDto> getUserByUsername(
-            @Parameter(description = "Username")
-            @PathVariable String username) {
-
-        UserDto user = userService.findByUsername(username);
-        return ResponseEntity.ok(user);
-    }
-
-    /**
-     * Cria novo usuário.
-     *
-     * Requer: Permissão CREATE no recurso USER_MANAGEMENT
-     */
     @PostMapping
-    @HasPermission(
-        action = "CREATE",
-        resource = "USER_MANAGEMENT",
-        description = "Create new user"
-    )
-    @Operation(summary = "Create user", description = "Creates a new user")
-    @ApiResponse(responseCode = "201", description = "User created successfully")
-    @ApiResponse(responseCode = "400", description = "Invalid input data")
-    @ApiResponse(responseCode = "403", description = "Insufficient permissions")
-    public ResponseEntity<UserDto> createUser(
-            @Parameter(description = "User data")
-            @RequestBody @Valid UserDto userDto) {
-
-        UserDto createdUser = userService.create(userDto);
-        return ResponseEntity.status(HttpStatus.CREATED).body(createdUser);
+    @HasPermission(action = "create", description = "Criar pedido", requires = "view")
+    public ResponseEntity<PedidoDto> criar(@RequestBody @Valid PedidoDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(pedidos.criar(dto));
     }
 
-    /**
-     * Atualiza dados do usuário.
-     *
-     * Requer: Permissão UPDATE no recurso USER_MANAGEMENT
-     */
     @PutMapping("/{id}")
-    @HasPermission(
-        action = "UPDATE",
-        resource = "USER_MANAGEMENT",
-        description = "Update user data"
-    )
-    @Operation(summary = "Update user")
-    @ApiResponse(responseCode = "200", description = "User updated successfully")
-    @ApiResponse(responseCode = "403", description = "Insufficient permissions")
-    @ApiResponse(responseCode = "404", description = "User not found")
-    public ResponseEntity<UserDto> updateUser(
-            @Parameter(description = "User ID")
-            @PathVariable String id,
-            @Parameter(description = "Updated user data")
-            @RequestBody @Valid UserDto userDto) {
-
-        UserDto updatedUser = userService.update(id, userDto);
-        return ResponseEntity.ok(updatedUser);
+    @HasPermission(action = "update", description = "Alterar pedido", requires = "view")
+    public PedidoDto alterar(@PathVariable String id, @RequestBody @Valid PedidoDto dto) {
+        return pedidos.alterar(id, dto);
     }
 
-    /**
-     * Atualização parcial de usuário (PATCH).
-     *
-     * Requer: Permissão UPDATE no recurso USER_MANAGEMENT
-     */
-    @PatchMapping("/{id}")
-    @HasPermission(
-        action = "UPDATE",
-        resource = "USER_MANAGEMENT",
-        description = "Partial update of user data"
-    )
-    @Operation(summary = "Partial update user")
-    public ResponseEntity<UserDto> patchUser(
-            @PathVariable String id,
-            @RequestBody UserDto userDto) {
-
-        UserDto patchedUser = userService.patch(id, userDto);
-        return ResponseEntity.ok(patchedUser);
-    }
-
-    /**
-     * Exclui usuário.
-     *
-     * Requer: Permissão DELETE no recurso USER_MANAGEMENT
-     */
     @DeleteMapping("/{id}")
-    @HasPermission(
-        action = "DELETE",
-        resource = "USER_MANAGEMENT",
-        description = "Delete user"
-    )
-    @Operation(summary = "Delete user")
-    @ApiResponse(responseCode = "204", description = "User deleted successfully")
-    @ApiResponse(responseCode = "403", description = "Insufficient permissions")
-    @ApiResponse(responseCode = "404", description = "User not found")
-    public ResponseEntity<Void> deleteUser(
-            @Parameter(description = "User ID")
-            @PathVariable String id) {
-
-        userService.delete(id);
+    @HasPermission(action = "delete", description = "Excluir pedido")
+    public ResponseEntity<Void> excluir(@PathVariable String id) {
+        pedidos.excluir(id);
         return ResponseEntity.noContent().build();
     }
 
-    /**
-     * Exporta relatório de usuários em PDF.
-     *
-     * Requer: Permissão EXPORT no recurso USER_MANAGEMENT
-     * Contexto: Empresa fixada em COMPANY_BR
-     */
-    @GetMapping("/export")
-    @HasPermission(
-        action = "EXPORT",
-        resource = "USER_MANAGEMENT",
-        description = "Export users report to PDF",
-        companyId = "COMPANY_BR"  // Contexto fixo
-    )
-    @Operation(summary = "Export users report")
-    @ApiResponse(responseCode = "200", description = "Report generated successfully")
-    @ApiResponse(responseCode = "403", description = "Insufficient permissions")
-    public ResponseEntity<byte[]> exportUsers() {
-        byte[] report = userService.generatePdfReport();
+    @PostMapping("/{id}/aprovar")
+    @HasPermission(action = "aprovar", description = "Aprovar pedido acima da alçada",
+                   label = "Aprovar pedido", category = "Aprovação",
+                   minimumLevel = AccessLevel.SUPERVISOR)
+    public PedidoDto aprovar(@PathVariable String id) {
+        return pedidos.aprovar(id);
+    }
 
+    // Recurso declarado no método vence o da classe
+    @GetMapping("/relatorio")
+    @HasPermission(action = "export", resource = "app.relatorio",
+                   description = "Exportar relatório de pedidos")
+    public ResponseEntity<byte[]> exportar() {
         return ResponseEntity.ok()
-            .header("Content-Type", "application/pdf")
-            .header("Content-Disposition", "attachment; filename=users-report.pdf")
-            .body(report);
-    }
-
-    /**
-     * Ativa/desativa conta de usuário.
-     *
-     * Requer: Permissão ACTIVATE no recurso USER_MANAGEMENT
-     */
-    @PutMapping("/{id}/active")
-    @HasPermission(
-        action = "ACTIVATE",
-        resource = "USER_MANAGEMENT",
-        description = "Activate or deactivate user account"
-    )
-    @Operation(summary = "Toggle user active status")
-    public ResponseEntity<UserDto> toggleUserActive(
-            @PathVariable String id,
-            @Parameter(description = "Active status")
-            @RequestParam boolean active) {
-
-        UserDto updatedUser = userService.setActive(id, active);
-        return ResponseEntity.ok(updatedUser);
-    }
-
-    /**
-     * Bloqueia/desbloqueia conta de usuário.
-     *
-     * Requer: Permissão LOCK no recurso USER_MANAGEMENT
-     */
-    @PutMapping("/{id}/lock")
-    @HasPermission(
-        action = "LOCK",
-        resource = "USER_MANAGEMENT",
-        description = "Lock or unlock user account"
-    )
-    @Operation(summary = "Toggle user lock status")
-    public ResponseEntity<UserDto> toggleUserLock(
-            @PathVariable String id,
-            @Parameter(description = "Lock status")
-            @RequestParam boolean locked) {
-
-        UserDto updatedUser = userService.setLocked(id, locked);
-        return ResponseEntity.ok(updatedUser);
-    }
-
-    /**
-     * Força alteração de senha no próximo login.
-     *
-     * Requer: Permissão UPDATE no recurso USER_MANAGEMENT
-     */
-    @PutMapping("/{id}/force-password-change")
-    @HasPermission(
-        action = "UPDATE",
-        resource = "USER_MANAGEMENT",
-        description = "Force password change on next login"
-    )
-    @Operation(summary = "Force password change")
-    public ResponseEntity<Void> forcePasswordChange(@PathVariable String id) {
-        userService.forcePasswordChange(id);
-        return ResponseEntity.ok().build();
+                .header("Content-Type", "application/pdf")
+                .body(pedidos.relatorioPdf());
     }
 }
 ```
 
-### 2.2 Controller com Contexto Explícito
+Duas anotações com o mesmo `action` no mesmo recurso (`listar` e `buscar`) são a mesma capacidade; mantenha
+a mesma `description`.
+
+### 2.2 Escopo: tenant, empresa e projeto
+
+A anotação aceita `tenantId`, `companyId` e `projectId`. São **literais**, não SpEL. O que cada um vale na
+decisão:
+
+| Atributo | Vazio (padrão) | Preenchido |
+|---|---|---|
+| `tenantId` | Tenant do `ArchbaseTenantContext` | O literal |
+| `companyId` | Empresa do `ArchbaseTenantContext` (`X-COMPANY-ID`) | O literal |
+| `projectId` | Sem estreitamento — não há projeto no contexto | O literal |
+
+Uma concessão alcança o pedido quando, em cada um dos três, um dos lados é nulo ou os dois são iguais. Uma
+concessão sem empresa vale para qualquer empresa; uma concessão para `COMPANY_BR` não vale para `COMPANY_AR`.
 
 ```java
-package com.example.api.controller;
+@GetMapping("/brasil")
+@HasPermission(action = "view", description = "Listar pedidos da operação Brasil",
+               companyId = "COMPANY_BR")
+public List<PedidoDto> listarBrasil() { ... }
 
-import br.com.archbase.security.annotation.HasPermission;
-import com.example.api.dto.ProjectDto;
-import com.example.api.service.ProjectService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-/**
- * Controller com contextos explícitos em alguns endpoints.
- *
- * Útil quando endpoints específicos requerem permissões em
- * contextos fixos independente do usuário autenticado.
- */
-@RestController
-@RequestMapping("/api/v1/projects")
-public class ProjectController {
-
-    @Autowired
-    private ProjectService projectService;
-
-    /**
-     * Lista projetos globais (sem restrição de company).
-     *
-     * Contexto: Apenas tenant é verificado, company e project são ignorados
-     */
-    @GetMapping("/global")
-    @HasPermission(
-        action = "VIEW",
-        resource = "PROJECT",
-        description = "View global projects across all companies"
-        // companyId e projectId omitidos = contexto global no tenant
-    )
-    public ResponseEntity<List<ProjectDto>> listGlobalProjects() {
-        List<ProjectDto> projects = projectService.findGlobalProjects();
-        return ResponseEntity.ok(projects);
-    }
-
-    /**
-     * Lista projetos de uma empresa específica.
-     *
-     * Contexto: Empresa BR fixa
-     */
-    @GetMapping("/company-br")
-    @HasPermission(
-        action = "VIEW",
-        resource = "PROJECT",
-        description = "View projects in company BR only",
-        companyId = "COMPANY_BR"  // Contexto fixo
-    )
-    public ResponseEntity<List<ProjectDto>> listCompanyBRProjects() {
-        List<ProjectDto> projects = projectService.findByCompany("COMPANY_BR");
-        return ResponseEntity.ok(projects);
-    }
-
-    /**
-     * Operação administrativa - requer permissão em contexto de admin.
-     *
-     * Contexto: Tenant ADMIN, Company ADMIN
-     */
-    @PostMapping("/admin/maintenance")
-    @HasPermission(
-        action = "EXECUTE",
-        resource = "ADMIN_OPERATIONS",
-        description = "Execute administrative maintenance",
-        tenantId = "ADMIN_TENANT",
-        companyId = "ADMIN_COMPANY"
-    )
-    public ResponseEntity<Void> executeMaintenanceTask() {
-        projectService.runMaintenanceTask();
-        return ResponseEntity.ok().build();
-    }
-}
+@PostMapping("/{id}/faturar")
+@HasPermission(action = "faturar", description = "Faturar pedido do projeto piloto",
+               projectId = "PROJECT_001")
+public PedidoDto faturar(@PathVariable String id) { ... }
 ```
+
+O que o escopo **não** faz:
+
+- **`tenantId` fixo não dá acesso a outro tenant.** A consulta de permissões só devolve linhas do tenant
+  corrente; um literal diferente dele faz a concessão não casar, e o acesso é negado. Ele só restringe.
+- **`companyId` fixo não troca a empresa dos dados.** Ele decide a autorização; o filtro dos dados continua
+  vindo do `X-COMPANY-ID`. Para conferir que o usuário pertence à empresa do cabeçalho, use
+  `archbase.security.company.validation`.
+- **Administrador ignora o escopo.** `isAdministrator` concede sem consultar as concessões; só uma negação
+  (`DENY`) explícita o alcança.
 
 ### 2.3 Dicas de Implementação
 
-**Propagação de Contexto**:
-```java
-// O contexto é propagado automaticamente via ArchbaseTenantContext
-// Não é necessário passá-lo explicitamente nos parâmetros
+**Contexto.** O tenant e a empresa chegam pelo `ArchbaseTenantContext`, preenchido pelos cabeçalhos
+`X-TENANT-ID`/`X-COMPANY-ID`. Não passe tenant como parâmetro:
 
+```java
 @GetMapping
-@HasPermission(action = "VIEW", resource = "USER")
-public ResponseEntity<List<UserDto>> list() {
-    // userService automaticamente usa o contexto corrente
-    return ResponseEntity.ok(userService.findAll());
+@HasPermission(action = "view", resource = "app.cliente", description = "Listar clientes")
+public List<ClienteDto> listar() {
+    return clientes.listar();   // repositórios filtram pelo tenant corrente
 }
 ```
 
-**Validação de Entrada**:
+**Validação de entrada.** `@Valid` roda **antes** da autorização: o corpo é validado na resolução dos
+argumentos, e o interceptador de `@HasPermission` só age na chamada do método. Quem não tem permissão e manda
+um corpo inválido recebe 400, não 403.
+
 ```java
-// Use @Valid para validar DTOs automaticamente
 @PostMapping
-@HasPermission(action = "CREATE", resource = "USER")
-public ResponseEntity<UserDto> create(@RequestBody @Valid UserDto dto) {
-    // Se validação falhar, retorna 400 Bad Request automaticamente
-    return ResponseEntity.status(HttpStatus.CREATED)
-        .body(userService.create(dto));
+@HasPermission(action = "create", resource = "app.cliente", description = "Criar cliente")
+public ResponseEntity<ClienteDto> criar(@RequestBody @Valid ClienteDto dto) {
+    return ResponseEntity.status(HttpStatus.CREATED).body(clientes.criar(dto));
 }
 ```
 
-**Tratamento de Exceções**:
+**Proxy.** A checagem é um interceptador de método do Spring: vale para chamadas que passam pelo bean.
+Um método anotado chamado de dentro da própria classe não é checado.
+
+**Tratamento da negação.** A negação lança `AuthorizationDeniedException` (subclasse de
+`AccessDeniedException`). Sem tratamento, o `CustomAccessDeniedHandler` do framework responde 403. Para um
+corpo próprio:
+
 ```java
-@ControllerAdvice
+import org.springframework.security.access.AccessDeniedException;
+
+@RestControllerAdvice
 public class SecurityExceptionHandler {
 
     @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<ErrorResponse> handleAccessDenied(
-            AccessDeniedException ex) {
-        ErrorResponse error = new ErrorResponse(
-            "ACCESS_DENIED",
-            "Você não tem permissão para acessar este recurso"
-        );
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
-    }
-
-    @ExceptionHandler(PermissionEvaluationException.class)
-    public ResponseEntity<ErrorResponse> handlePermissionEvaluation(
-            PermissionEvaluationException ex) {
-        ErrorResponse error = new ErrorResponse(
-            "PERMISSION_ERROR",
-            "Erro ao avaliar permissões: " + ex.getMessage()
-        );
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-            .body(error);
+    public ResponseEntity<Map<String, String>> negado(AccessDeniedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                "error", "ACCESS_DENIED",
+                "message", "Você não tem permissão para acessar este recurso"));
     }
 }
 ```
+
+Não há exceção separada para erro *ao avaliar* a permissão: o interceptador registra o erro no log e nega,
+com o mesmo 403.
 
 ---
 
 ## 3. Configuração Customizada de Segurança
 
-Este exemplo demonstra como criar uma configuração de segurança avançada, incluindo SecurityFilterChain, CORS, autenticação customizada e configurações de produção.
+A configuração padrão (`DefaultArchbaseSecurityConfiguration`) já monta a cadeia completa: filtro JWT,
+CORS, sessão stateless, logout, 401/403 e caminhos públicos, tudo controlado por properties
+(ver [Configuração](configuration.md)). Prefira ajustar as properties.
+
+Quando for preciso mudar a cadeia, **não declare um `SecurityFilterChain` solto**. A configuração padrão é
+`@ConditionalOnMissingBean(CustomSecurityConfiguration.class)`: um bean de filtro avulso não a desliga, e as
+duas cadeias passam a coexistir. O caminho é estender `BaseArchbaseSecurityConfiguration` e implementar a
+interface marcadora `CustomSecurityConfiguration`.
 
 ### 3.1 Configuração Principal
 
 ```java
 package com.example.config;
 
-import br.com.archbase.security.filter.ArchbaseJwtAuthenticationFilter;
-import org.springframework.beans.factory.annotation.Autowired;
+import br.com.archbase.security.config.ArchbaseJwtAuthenticationFilter;
+import br.com.archbase.security.config.BaseArchbaseSecurityConfiguration;
+import br.com.archbase.security.config.CustomAccessDeniedHandler;
+import br.com.archbase.security.config.CustomSecurityConfiguration;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.env.Environment;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.AuthenticationProvider;
-import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
-import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.CorsConfigurationSource;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.Arrays;
 import java.util.List;
 
-/**
- * Configuração customizada de segurança para a aplicação.
- *
- * Esta configuração implementa:
- * - JWT authentication filter
- * - CORS configuration (diferente para dev/prod)
- * - Whitelist de endpoints públicos
- * - Session management stateless
- * - HTTPS enforcement (produção)
- */
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity(
-    securedEnabled = true,
-    jsr250Enabled = true,
-    prePostEnabled = true
-)
-public class ApplicationSecurityConfig {
+public class ApplicationSecurityConfig extends BaseArchbaseSecurityConfiguration
+        implements CustomSecurityConfiguration {
 
-    @Autowired
-    private ArchbaseJwtAuthenticationFilter jwtAuthFilter;
+    private final ArchbaseJwtAuthenticationFilter jwtFilter;
+    private final CustomAccessDeniedHandler accessDeniedHandler;
 
-    @Autowired
-    private AuthenticationProvider authenticationProvider;
+    @Value("${app.cors.allowed-origins}")
+    private List<String> allowedOrigins;
 
-    @Autowired
-    private Environment environment;
-
-    @Value("${app.cors.allowed-origins:http://localhost:3000}")
-    private String[] allowedOrigins;
-
-    @Value("${app.security.require-https:false}")
-    private boolean requireHttps;
-
-    /**
-     * Configuração principal do SecurityFilterChain.
-     *
-     * Define:
-     * - Endpoints públicos e protegidos
-     * - Políticas de sessão
-     * - Filtros de autenticação
-     * - Configurações de HTTPS
-     */
-    @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http)
-            throws Exception {
-
-        http
-            // Desabilitar CSRF (stateless API)
-            .csrf(csrf -> csrf.disable())
-
-            // Configurar CORS
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-
-            // Configurar autorização de requisições
-            .authorizeHttpRequests(auth -> auth
-                // === Endpoints Públicos ===
-                // Autenticação
-                .requestMatchers(
-                    "/api/v1/auth/login",
-                    "/api/v1/auth/register",
-                    "/api/v1/auth/refresh-token"
-                ).permitAll()
-
-                // Recuperação de senha
-                .requestMatchers(
-                    "/api/v1/auth/forgot-password",
-                    "/api/v1/auth/reset-password/**"
-                ).permitAll()
-
-                // Health checks
-                .requestMatchers(
-                    "/health",
-                    "/actuator/health",
-                    "/actuator/health/**",
-                    "/actuator/info"
-                ).permitAll()
-
-                // Documentação Swagger/OpenAPI
-                .requestMatchers(
-                    "/swagger-ui/**",
-                    "/swagger-ui.html",
-                    "/v3/api-docs/**",
-                    "/api-docs/**"
-                ).permitAll()
-
-                // Recursos estáticos (se houver)
-                .requestMatchers(
-                    "/static/**",
-                    "/public/**",
-                    "/assets/**"
-                ).permitAll()
-
-                // === Endpoints Protegidos ===
-                // Todos os outros endpoints requerem autenticação
-                .anyRequest().authenticated()
-            )
-
-            // Configurar gerenciamento de sessão (stateless)
-            .sessionManagement(session -> session
-                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            )
-
-            // Configurar provider de autenticação
-            .authenticationProvider(authenticationProvider)
-
-            // Adicionar filtro JWT antes do UsernamePasswordAuthenticationFilter
-            .addFilterBefore(
-                jwtAuthFilter,
-                UsernamePasswordAuthenticationFilter.class
-            );
-
-        // Forçar HTTPS em produção
-        if (requireHttps) {
-            http.requiresChannel(channel -> channel
-                .anyRequest().requiresSecure()
-            );
-        }
-
-        return http.build();
+    public ApplicationSecurityConfig(ArchbaseJwtAuthenticationFilter jwtFilter,
+                                     CustomAccessDeniedHandler accessDeniedHandler) {
+        this.jwtFilter = jwtFilter;
+        this.accessDeniedHandler = accessDeniedHandler;
     }
 
-    /**
-     * Configuração de CORS baseada no ambiente.
-     *
-     * Desenvolvimento: Permite origens configuradas (geralmente localhost)
-     * Produção: Apenas domínios específicos da aplicação
-     */
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-
-        // Origens permitidas
-        if (isDevEnvironment()) {
-            // Dev: Permitir localhost e portas comuns
-            configuration.setAllowedOrigins(Arrays.asList(
-                "http://localhost:3000",
-                "http://localhost:4200",
-                "http://localhost:8080"
-            ));
-        } else {
-            // Prod: Apenas domínios configurados
-            configuration.setAllowedOrigins(Arrays.asList(allowedOrigins));
-        }
-
-        // Métodos HTTP permitidos
-        configuration.setAllowedMethods(Arrays.asList(
-            "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"
-        ));
-
-        // Headers permitidos
-        configuration.setAllowedHeaders(Arrays.asList("*"));
-
-        // Permitir credenciais (cookies, authorization headers)
-        configuration.setAllowCredentials(true);
-
-        // Headers expostos ao cliente
-        configuration.setExposedHeaders(Arrays.asList(
-            "Authorization",
-            "Content-Disposition",
-            "X-Total-Count"
-        ));
-
-        // Cache de preflight requests (em segundos)
-        configuration.setMaxAge(3600L);
-
-        UrlBasedCorsConfigurationSource source =
-            new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
-
-        return source;
+    /** Tudo o que fica acessível sem autenticação. */
+    @Override
+    protected List<String> getWhiteListUrls() {
+        return List.of(
+                "/api/v1/auth/**",            // login, refresh, reset de senha, descoberta de tenant
+                "/api/v1/apiToken/activate",  // link de ativação do token de API
+                "/error",                     // sem ela, um 404/401 vira 403 no redespacho de erro
+                "/actuator/health",
+                "/api/v1/publico/**");
     }
 
-    /**
-     * Configuração do PasswordEncoder.
-     *
-     * BCrypt com força 12 para equilíbrio entre segurança e performance.
-     */
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        // Força 12 = ~300ms por hash (bom equilíbrio)
-        // Força 10 = ~75ms (menos seguro, mais rápido)
-        // Força 14 = ~1200ms (mais seguro, mais lento)
-        return new BCryptPasswordEncoder(12);
+    /** Exceções dentro da whitelist que voltam a exigir autenticação. */
+    @Override
+    protected List<String> getProtectedPathsWithinWhitelist() {
+        return List.of("/api/v1/auth/register");   // sem auto-cadastro anônimo
     }
 
-    /**
-     * Configuração do AuthenticationManager.
-     */
-    @Bean
-    public AuthenticationManager authenticationManager(
-            AuthenticationConfiguration config) throws Exception {
-        return config.getAuthenticationManager();
+    /** Regras depois da whitelist; não alcançam caminhos já liberados nela. */
+    @Override
+    protected void configureAuthorizationRules(HttpSecurity http) throws Exception {
+        http.authorizeHttpRequests(auth -> auth
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                .requestMatchers("/api/v1/interno/**").denyAll()
+                .anyRequest().authenticated());
     }
 
-    /**
-     * Configuração do AuthenticationProvider customizado.
-     *
-     * Usa UserDetailsService do Archbase e PasswordEncoder configurado.
-     */
-    @Bean
-    public AuthenticationProvider authenticationProvider(
-            UserDetailsService userDetailsService,
-            PasswordEncoder passwordEncoder) {
-
-        DaoAuthenticationProvider authProvider =
-            new DaoAuthenticationProvider();
-
-        authProvider.setUserDetailsService(userDetailsService);
-        authProvider.setPasswordEncoder(passwordEncoder);
-
-        // Esconder informação se usuário não existe (segurança)
-        authProvider.setHideUserNotFoundExceptions(true);
-
-        return authProvider;
+    @Override
+    protected ArchbaseJwtAuthenticationFilter getJwtAuthenticationFilter() {
+        return jwtFilter;
     }
 
-    /**
-     * Verifica se está em ambiente de desenvolvimento.
-     */
-    private boolean isDevEnvironment() {
-        return Arrays.asList(environment.getActiveProfiles())
-            .contains("dev");
+    @Override
+    protected CustomAccessDeniedHandler getAccessDeniedHandler() {
+        return accessDeniedHandler;
+    }
+
+    @Override
+    protected List<String> getAllowedOrigins() {
+        return allowedOrigins;
+    }
+
+    @Override
+    protected List<String> getAllowedMethods() {
+        return List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS");
+    }
+
+    @Override
+    protected List<String> getAllowedHeaders() {
+        return List.of("*");
+    }
+
+    @Override
+    protected boolean getAllowCredentials() {
+        return true;
     }
 }
 ```
 
-### 3.2 Configuração de Logging de Segurança
+O que a classe base já faz e não precisa ser repetido: CSRF desligado, CORS com `Authorization` exposto,
+sessão stateless, filtro JWT antes do `UsernamePasswordAuthenticationFilter`, logout em
+`archbase.security.logout.url`, 401 para quem não está autenticado e 403 para quem não tem permissão, e a
+linha `Superfície anônima da API` no log da subida.
 
-```java
-package com.example.config;
+Cuidados:
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.context.event.EventListener;
-import org.springframework.security.authentication.event.*;
-import org.springframework.security.authorization.event.AuthorizationDeniedEvent;
-import org.springframework.stereotype.Component;
+- **As chaves da configuração padrão deixam de valer.** `archbase.security.whitelist`,
+  `archbase.security.cors.*` e `archbase.security.public-paths.*` são lidas pela
+  `DefaultArchbaseSecurityConfiguration`; com a sua, o que vale é o que os métodos acima devolvem.
+- **Mantenha `/api/v1/auth/**` público.** Os endpoints de credencial ficam todos ali: `POST /authenticate`,
+  `POST /refresh-token`, `POST /sendResetPasswordEmail/{email}`, `POST /resetPassword`, `GET /tenants`.
+- **Não use `.hasRole(...)` nem `.hasAuthority(...)` nas regras de URL.** `UserEntity.getAuthorities()`
+  devolve uma coleção vazia, então essas regras negam sempre. Autorização é por `@HasPermission`,
+  `@RequireProfile`, `@RequireRole` e `@RequirePersona`.
+- **Não redeclare autenticação.** `AuthenticationProvider`, `AuthenticationManager`, `UserDetailsService` e
+  `PasswordEncoder` já são registrados pelo framework, todos com `@ConditionalOnMissingBean`. Se precisar
+  trocar o provider, no Spring Security 7.1 o `DaoAuthenticationProvider` só tem o construtor que recebe o
+  `UserDetailsService` (não há mais `setUserDetailsService`):
 
-/**
- * Listener para eventos de segurança.
- *
- * Registra tentativas de login, falhas de autenticação e
- * acessos negados para auditoria e monitoramento.
- */
-@Component
-public class SecurityEventsListener {
+  ```java
+  @Bean
+  public AuthenticationProvider authenticationProvider(UserDetailsService uds, PasswordEncoder encoder) {
+      DaoAuthenticationProvider provider = new DaoAuthenticationProvider(uds);
+      provider.setPasswordEncoder(encoder);
+      return provider;
+  }
+  ```
 
-    private static final Logger logger =
-        LoggerFactory.getLogger(SecurityEventsListener.class);
+  O `UserDetailsService` precisa devolver `UserEntity`: é o principal que `@HasPermission` e a trava de
+  administrador sabem avaliar.
+- **HTTPS** costuma terminar no proxy. Se a aplicação precisar redirecionar, o Spring Security 7.1 oferece
+  `http.redirectToHttps(...)`.
 
-    @EventListener
-    public void onAuthenticationSuccess(
-            AuthenticationSuccessEvent event) {
-        String username = event.getAuthentication().getName();
-        logger.info("Login bem-sucedido: usuário={}", username);
-    }
+### 3.2 Auditoria de Segurança
 
-    @EventListener
-    public void onAuthenticationFailure(
-            AbstractAuthenticationFailureEvent event) {
-        String username = event.getAuthentication().getName();
-        String reason = event.getException().getMessage();
-        logger.warn("Falha de autenticação: usuário={}, motivo={}",
-            username, reason);
-    }
+Em vez de um listener próprio, ligue a trilha do framework. Ela grava em `SEGURANCA_EVENTO`, consultável em
+`GET /api/v1/security/audit/events`, e registra o histórico de alterações de usuário, grupo, perfil,
+permissão, ação e recurso nas tabelas `_AUD`:
 
-    @EventListener
-    public void onAuthorizationDenied(
-            AuthorizationDeniedEvent<?> event) {
-        String username = event.getAuthentication().get().getName();
-        logger.warn("Acesso negado: usuário={}", username);
-    }
-
-    @EventListener
-    public void onLogoutSuccess(LogoutSuccessEvent event) {
-        String username = event.getAuthentication().getName();
-        logger.info("Logout realizado: usuário={}", username);
-    }
-
-    @EventListener
-    public void onBadCredentials(
-            AuthenticationFailureBadCredentialsEvent event) {
-        String username = event.getAuthentication().getName();
-        logger.warn("Credenciais inválidas: usuário={}", username);
-
-        // TODO: Implementar bloqueio de conta após N tentativas
-    }
-}
+```properties
+archbase.security.audit.enabled=true        # crie antes as tabelas: deployment/sql/auditoria-seguranca-*.sql
+archbase.security.audit.tenant-scoped=true
+archbase.security.audit.retention-months=12
 ```
+
+Os eventos que o próprio framework grava:
+
+| Evento | Origem |
+|---|---|
+| `LOGIN_FALHOU` | O serviço de autenticação, com o e-mail digitado e o tipo da falha |
+| `ACESSO_NEGADO` | A decisão de `@HasPermission`, com recurso, ação e o portão que negou |
+| `LOGIN` | Listener de `AuthenticationSuccessEvent` do Spring Security |
+
+Por que não escutar os eventos do Spring na aplicação, como era sugerido aqui antes:
+
+- **Falha de login** não chega como `AbstractAuthenticationFailureEvent` nesse fluxo — por isso o serviço a
+  grava diretamente.
+- **`AuthorizationDeniedEvent`** não é publicado para `@HasPermission`: os interceptadores do framework não
+  configuram publicador de eventos de autorização.
+- **`LogoutSuccessEvent`** não é publicado: o logout do framework não registra o handler que o emite.
+
+O bloqueio após N tentativas falhas já existe: `archbase.security.rate-limit.*`.
 
 ### 3.3 Configuração de Properties
 
 ```properties
 # === application.properties ===
 
-# Segurança
-archbase.security.enabled=true
+# Obrigatórias
 archbase.security.jwt.secret-key=${JWT_SECRET}
-archbase.security.jwt.expiration=3600000
-archbase.security.jwt.refresh-expiration=86400000
-archbase.security.method.enabled=true
-archbase.security.permission.cache.enabled=true
-archbase.security.permission.cache.ttl=300
+archbase.security.jwt.token-expiration=3600000          # 1 hora
+archbase.security.jwt.refresh-expiration=604800000      # 7 dias
 
-# CORS
-app.cors.allowed-origins=${CORS_ORIGINS:http://localhost:3000,http://localhost:4200}
+# Com a configuração customizada do 3.1, a whitelist e o CORS vêm dela; estas chaves só
+# são exigidas pela configuração padrão.
+archbase.security.whitelist=
+archbase.security.cors.allowed-origins=${CORS_ORIGINS:http://localhost:3000}
+archbase.security.cors.allowed-methods=GET,POST,PUT,PATCH,DELETE,OPTIONS
+archbase.security.cors.allowed-headers=*
+archbase.security.cors.allow-credentials=true
 
-# HTTPS (produção)
-app.security.require-https=${REQUIRE_HTTPS:false}
+# Lida pela ApplicationSecurityConfig do 3.1
+app.cors.allowed-origins=${CORS_ORIGINS:http://localhost:3000}
 
-# Multi-tenancy
-archbase.multitenancy.enabled=true
-archbase.multitenancy.scan-packages=com.example
+# Catálogo de @HasPermission
+archbase.security.scan-packages=com.example
 
-# Logging de segurança
+# Tenant
+archbase.app.tenant.default.id=archbase
+
+# Logging
 logging.level.org.springframework.security=INFO
-logging.level.br.com.archbase.security=DEBUG
-logging.level.com.example.config.SecurityEventsListener=INFO
+logging.level.br.com.archbase.security=INFO
 
 # === application-prod.properties ===
 
-# Forçar HTTPS em produção
-app.security.require-https=true
-
-# JWT com expirações curtas
-archbase.security.jwt.expiration=1800000
-archbase.security.jwt.refresh-expiration=43200000
-
-# Logging reduzido
+archbase.security.jwt.token-expiration=1800000          # 30 min
+archbase.security.jwt.refresh-expiration=43200000       # 12 horas
+archbase.security.admin-endpoints.policy=admin-only
+archbase.security.jwt.accept-token-query-param=false
+archbase.app.tenant.fail-on-missing=true
+archbase.app.tenant.accept-query-param=false
+archbase.security.audit.enabled=true
+archbase.security.audit.tenant-scoped=true
 logging.level.org.springframework.security=WARN
-logging.level.br.com.archbase.security=INFO
 ```
+
+A lista completa, com padrões e pré-requisitos de cada proteção, está em [Configuração](configuration.md) e
+no [guia de endurecimento](../../../deployment/security-hardening.md).
 
 ### 3.4 Dicas de Implementação
 
-**Secrets Management**:
-```bash
-# Use variáveis de ambiente em produção
-export JWT_SECRET="your-very-long-and-secure-secret-key-minimum-256-bits"
-export CORS_ORIGINS="https://app.example.com,https://admin.example.com"
-export REQUIRE_HTTPS=true
+**Segredos.**
 
-# Ou use AWS Secrets Manager, Azure Key Vault, etc.
+```bash
+export JWT_SECRET="$(openssl rand -base64 48)"   # Base64 padrão, >= 32 bytes decodificados
+export CORS_ORIGINS="https://app.example.com,https://admin.example.com"
 ```
 
-**Testes de Segurança**:
+**Testes de segurança.** Com Spring Boot 4, `@AutoConfigureMockMvc` está em
+`org.springframework.boot.webmvc.test.autoconfigure` (artefato `spring-boot-webmvc-test`).
+
 ```java
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 @SpringBootTest
 @AutoConfigureMockMvc
 class SecurityConfigTest {
@@ -1277,25 +606,30 @@ class SecurityConfigTest {
     private MockMvc mockMvc;
 
     @Test
-    void shouldAllowPublicEndpoints() throws Exception {
-        mockMvc.perform(get("/api/v1/auth/login"))
-            .andExpect(status().isOk());
+    void rotaDeAutenticacaoEhPublica() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/tenants").param("email", "ninguem@example.com"))
+                .andExpect(status().isOk());
     }
 
     @Test
-    void shouldProtectPrivateEndpoints() throws Exception {
-        mockMvc.perform(get("/api/v1/users"))
-            .andExpect(status().isUnauthorized());
+    void credencialInvalidaDa401() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/authenticate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"ninguem@example.com\",\"password\":\"errada\"}"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
-    @WithMockUser
-    void shouldAllowAuthenticatedAccess() throws Exception {
-        mockMvc.perform(get("/api/v1/users"))
-            .andExpect(status().isOk());
+    void rotaProtegidaSemTokenDa401() throws Exception {
+        mockMvc.perform(get("/api/v1/pedidos"))
+                .andExpect(status().isUnauthorized());
     }
 }
 ```
+
+`@WithMockUser` **não** passa por `@HasPermission`: o principal que ele cria não é um `UserEntity`, e a
+decisão nega no portão IDENTITY (403). Para testar uma rota protegida com sucesso, autentique um usuário real
+(`POST /api/v1/auth/authenticate`) e envie o access token no cabeçalho `Authorization: Bearer ...`.
 
 ---
 

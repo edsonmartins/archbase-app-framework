@@ -6,7 +6,9 @@
 
 ## Introdução
 
-Este guia fornece soluções para problemas comuns encontrados ao trabalhar com o módulo `archbase-security`. As soluções estão organizadas por categoria e incluem sintomas, causas possíveis e passos para resolução.
+Problemas comuns do módulo `archbase-security`, com sintoma, causa e o que fazer. Nomes de
+propriedade, coluna e classe conferidos contra o código da versão 3.5.0. Tabelas e colunas estão em
+[Entidades](../entities/overview.md).
 
 ---
 
@@ -14,352 +16,170 @@ Este guia fornece soluções para problemas comuns encontrados ao trabalhar com 
 
 ### 1.1 Erro: "Token inválido" mesmo com token correto
 
-**Sintomas**:
-- Token parece válido mas autenticação falha
-- Erro "Invalid JWT signature" nos logs
-- Cliente recebe status 401 Unauthorized
-- Token decodifica corretamente em jwt.io mas é rejeitado pela aplicação
+**Sintomas**: 401 em toda requisição; no log, `Erro ao processar token JWT` com
+`SignatureException`, `DecodingException` ou `WeakKeyException`.
 
-**Causas Possíveis**:
+**Causas**:
 
-1. **Chave secreta diferente entre geração e validação**
-   - Token foi gerado com uma chave, mas aplicação está usando outra
-   - Comum após reiniciar aplicação sem variáveis de ambiente configuradas
+1. **Chave diferente entre quem emitiu e quem valida** — outra instância, outro ambiente, ou variável
+   de ambiente ausente depois de um reinício.
+2. **Chave que não é Base64.** `ArchbaseJwtService` decodifica `archbase.security.jwt.secret-key` com
+   `Decoders.BASE64` e assina com HS256. Uma chave com caracteres fora do alfabeto Base64 (como
+   `minha-chave-de-teste`) falha com `DecodingException`; uma chave que decodifica para menos de
+   256 bits falha com `WeakKeyException`.
+3. **Espaço ou quebra de linha** colados na chave.
 
-2. **Token gerado em um ambiente, validado em outro**
-   - Token de desenvolvimento usado em produção
-   - Múltiplas instâncias da aplicação com chaves diferentes
-
-3. **Formato da chave incorreto**
-   - Espaços ou quebras de linha na chave secreta
-   - Codificação de caracteres incorreta
+O erro de chave **não aparece na subida**: `initialize()` só avisa se a chave estiver vazia. Ele
+aparece na primeira emissão de token (o login falha) e na leitura de cada JWT.
 
 **Solução**:
 
 ```bash
-# 1. Verificar chave configurada no ambiente
-echo $JWT_SECRET
+# Gerar uma chave válida: 32 bytes aleatórios em Base64
+openssl rand -base64 32
+```
 
-# 2. Verificar propriedade no application.properties
-cat application.properties | grep jwt.secret
-
-# 3. Verificar que a propriedade está sendo lida corretamente
-# application.properties deve ter:
+```properties
 archbase.security.jwt.secret-key=${JWT_SECRET}
-
-# 4. Testar com chave hardcoded (APENAS PARA DEBUG)
-archbase.security.jwt.secret-key=test-key-for-debugging-only
 ```
 
-**Validação**:
-
-Adicione logging temporário na inicialização da aplicação:
-
-```java
-@Component
-public class JwtSecretValidator implements ApplicationListener<ApplicationReadyEvent> {
-
-    @Value("${archbase.security.jwt.secret-key}")
-    private String secretKey;
-
-    @Override
-    public void onApplicationEvent(ApplicationReadyEvent event) {
-        // Log apenas os primeiros caracteres por segurança
-        log.info("JWT Secret configurado: {}...", secretKey.substring(0, Math.min(10, secretKey.length())));
-    }
-}
-```
+Todas as instâncias que validam o token precisam da **mesma** chave. Não registre a chave em log,
+nem parcialmente.
 
 ---
 
 ### 1.2 Erro: "Access Denied" para administrador
 
-**Sintomas**:
-- Usuário tem `isAdministrator=true` mas acesso é negado
-- Permissões não são bypassadas como esperado
-- Administrador não consegue acessar recursos que deveria ter acesso total
-- Log mostra "Permission denied" mesmo para admin
+**Sintomas**: usuário com `BO_ADMINISTRADOR = 'S'` recebe 403.
 
-**Causas Possíveis**:
+**Causas** (todas conferidas em `DefaultArchbaseAccessEvaluator`):
 
-1. **Conta desativada** (`accountDeactivated=true`)
-   - Conta foi explicitamente desativada
-   - Comum após múltiplas falhas de login
+1. **Conta desativada ou bloqueada.** O atalho de administrador exige `isEnabled()`, que é falso com
+   `BO_CONTA_DESATIVADA = 'S'` ou `CONTA_BLOQUEADA = 'S'`.
+2. **`BO_ADMINISTRADOR` nulo.** É tratado como não-administrador, com `WARN` no log
+   (`Usuário ... está com isAdministrator nulo`).
+3. **Negação explícita.** Uma permissão com `EFFECT = 'DENY'` que alcance a capacidade vence também
+   para o administrador.
+4. **Restrição por perfil, papel ou persona.** `@RequireProfile`, `@RequireRole` e `@RequirePersona`
+   com `allowSystemAdmin = false` negam o administrador que não atende à restrição.
 
-2. **Conta bloqueada** (`accountLocked=true`)
-   - Conta bloqueada por política de segurança
-   - Pode ser bloqueio temporário ou permanente
-
-3. **Método `isEnabled()` retorna `false`**
-   - Usuário não passou por todas as validações de estado
-   - Pode haver lógica customizada verificando outros campos
-
-4. **Horário de acesso fora do permitido**
-   - `AccessScheduleEntity` configurado com horários restritos
-   - Válido mesmo para administradores
+O **horário de acesso não é causa**: `AccessScheduleEntity` e `BO_HORARIO_LIVRE` são gravados mas
+**não são aplicados** pelo framework, para ninguém — ver
+[Entidades Core](../entities/core-entities.md#horário-de-acesso-não-é-aplicado).
 
 **Solução**:
 
 ```sql
--- 1. Verificar status completo da conta
-SELECT
-    id,
-    user_name,
-    bo_administrador,
-    bo_conta_desativada,
-    conta_bloqueada,
-    bo_senha_expirada,
-    dt_expiracao_senha
+-- 1. Estado da conta (o id é texto, coluna ID_SEGURANCA)
+SELECT id_seguranca, user_name, email,
+       bo_administrador, bo_conta_desativada, conta_bloqueada,
+       bo_alterar_senha_proximo_login, bo_senha_nunca_expira, dt_ultima_troca_senha
 FROM seguranca
-WHERE tp_seguranca = 'USUARIO' AND id = 'user-id-here';
+WHERE tp_seguranca = 'USUARIO' AND id_seguranca = 'id-do-usuario';
 
--- 2. Reativar conta se necessário
+-- 2. Reativar, se for o caso
 UPDATE seguranca
-SET
-    bo_conta_desativada = 'N',
-    conta_bloqueada = 'N',
-    bo_senha_expirada = 'N'
-WHERE id = 'user-id-here';
+SET bo_administrador = 'S', bo_conta_desativada = 'N', conta_bloqueada = 'N'
+WHERE tp_seguranca = 'USUARIO' AND id_seguranca = 'id-do-usuario';
 
--- 3. Verificar horários de acesso
-SELECT * FROM schedule_access
-WHERE security_id = 'user-id-here';
-
--- 4. Limpar horários restritivos se necessário
-DELETE FROM schedule_access
-WHERE security_id = 'user-id-here';
+-- 3. Negações que alcançam o usuário diretamente (repita com os ids dos grupos e do perfil)
+SELECT p.id_permissao, r.nome AS recurso, a.nome AS acao, p.company_id, p.project_id
+FROM seguranca_permissao p
+JOIN seguranca_acao a   ON a.id_acao = p.id_acao
+JOIN seguranca_recurso r ON r.id_recurso = a.id_recurso
+WHERE p.id_seguranca = 'id-do-usuario' AND upper(trim(p.effect)) = 'DENY';
 ```
 
-**Debug Programático**:
+Não existe coluna de "senha expirada": a expiração é calculada por `isCredentialsNonExpired()` a
+partir de `BO_ALTERAR_SENHA_PROXIMO_LOGIN`, `BO_SENHA_NUNCA_EXPIRA`, `DT_ULTIMA_TROCA_SENHA` e
+`archbase.security.password.expiration-days`. Senha expirada não aparece como 403 de permissão:
+ela recusa o login e a renovação do token (`CredentialsExpiredException`).
+
+**Debug programático**: em vez de um endpoint próprio, use a simulação do diagnóstico
+(`POST /api/v1/security/diagnostics/simulate`, ver 1.5), que diz em que portão a decisão parou. Se
+precisar de um endpoint, proteja-o pela flag de administrador — **não** com `hasRole(...)`:
+`UserEntity.getAuthorities()` devolve lista vazia, então `hasRole`/`hasAuthority` sempre negam.
 
 ```java
 @GetMapping("/debug/admin-status/{userId}")
-@PreAuthorize("hasRole('SUPER_ADMIN')") // Apenas para super admins
-public Map<String, Object> debugAdminStatus(@PathVariable String userId) {
-    UserEntity user = userRepository.findById(UUID.fromString(userId))
-        .orElseThrow(() -> new EntityNotFoundException("User not found"));
+public ResponseEntity<Map<String, Object>> debugAdminStatus(@PathVariable String userId,
+                                                            Authentication authentication) {
+    boolean chamadorAdmin = ArchbaseCurrentUser.of(authentication)
+            .map(u -> Boolean.TRUE.equals(u.getIsAdministrator()) && u.isEnabled())
+            .orElse(false);
+    if (!chamadorAdmin) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+    }
+    UserEntity user = userJpaRepository.findById(userId)   // id é String
+            .orElseThrow(() -> new EntityNotFoundException("Usuário não encontrado"));
 
-    Map<String, Object> status = new HashMap<>();
+    Map<String, Object> status = new LinkedHashMap<>();
     status.put("isAdministrator", user.getIsAdministrator());
     status.put("isEnabled", user.isEnabled());
-    status.put("accountNonExpired", user.isAccountNonExpired());
     status.put("accountNonLocked", user.isAccountNonLocked());
     status.put("credentialsNonExpired", user.isCredentialsNonExpired());
-    status.put("accountDeactivated", user.getAccountDeactivated());
-    status.put("accountLocked", user.getAccountLocked());
-    status.put("passwordExpired", user.getPasswordExpired());
-
-    return status;
+    status.put("changePasswordOnNextLogin", user.getChangePasswordOnNextLogin());
+    status.put("passwordChangedAt", user.getPasswordChangedAt());
+    return ResponseEntity.ok(status);
 }
 ```
+
+`ArchbaseCurrentUser` está em `br.com.archbase.security.auth`; `UserJpaRepository` em
+`br.com.archbase.security.repository`.
 
 ---
 
 ### 1.3 Erro: Contexto de tenant null em operações assíncronas
 
-**Sintomas**:
-- Operações síncronas funcionam corretamente
-- Operações assíncronas falham com "Tenant context not found"
-- `@Async` methods não têm acesso ao tenant
-- Background jobs falham ao tentar acessar dados específicos do tenant
-- Erro: `IllegalStateException: No tenant context available`
+**Sintomas**: o código síncrono funciona; em `@Async` ou em tarefa de executor o tenant é nulo e as
+consultas voltam vazias ou falham.
 
-**Causa**:
-- Contexto ThreadLocal não é propagado automaticamente para novas threads
-- `ArchbaseTenantContext` usa ThreadLocal que é isolado por thread
-- Spring `@Async` cria novas threads sem copiar o contexto
+**Causa**: `ArchbaseTenantContext` é ThreadLocal. A thread do executor não herda o contexto.
 
-**Solução**:
+**Solução**: o `archbase-starter-multitenancy` já registra um `TaskDecorator`
+(`ArchbaseTenantAwareTaskDecorator`) e um `AsyncConfig` quando a aplicação não declara o seu
+`AsyncConfigurer`. O decorator copia tenant, empresa e, por padrão, o `SecurityContext`
+(`archbase.multitenancy.async.propagate-security-context=true`). O contexto do Archbase tem tenant e
+empresa — não há projeto no `ArchbaseTenantContext`.
 
-Implemente `TaskDecorator` para propagar contexto:
+Se a aplicação cria o próprio executor, aplique o decorator nele:
 
 ```java
-import br.com.archbase.ddd.context.ArchbaseTenantContext;
-import org.springframework.core.task.TaskDecorator;
-import org.springframework.lang.NonNull;
-
-public class TenantAwareTaskDecorator implements TaskDecorator {
-
-    @Override
-    @NonNull
-    public Runnable decorate(@NonNull Runnable runnable) {
-        // Capturar tenant da thread atual
-        String tenantId = ArchbaseTenantContext.getTenantId();
-        String companyId = ArchbaseTenantContext.getCompanyId();
-        String projectId = ArchbaseTenantContext.getProjectId();
-
-        return () -> {
-            try {
-                // Restaurar contexto na nova thread
-                if (tenantId != null) {
-                    ArchbaseTenantContext.setTenantId(tenantId);
-                }
-                if (companyId != null) {
-                    ArchbaseTenantContext.setCompanyId(companyId);
-                }
-                if (projectId != null) {
-                    ArchbaseTenantContext.setProjectId(projectId);
-                }
-
-                // Executar tarefa
-                runnable.run();
-            } finally {
-                // Limpar contexto
-                ArchbaseTenantContext.clear();
-            }
-        };
-    }
+@Bean
+public ThreadPoolTaskExecutor relatoriosExecutor() {
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+    executor.setThreadNamePrefix("relatorios-");
+    executor.setTaskDecorator(new ArchbaseTenantAwareTaskDecorator());
+    executor.initialize();
+    return executor;
 }
 ```
 
-Configure o executor assíncrono:
-
-```java
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.scheduling.annotation.EnableAsync;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
-
-import java.util.concurrent.Executor;
-
-@Configuration
-@EnableAsync
-public class AsyncConfig {
-
-    @Bean(name = "taskExecutor")
-    public Executor taskExecutor() {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(5);
-        executor.setMaxPoolSize(10);
-        executor.setQueueCapacity(100);
-        executor.setThreadNamePrefix("async-");
-
-        // Configurar decorator para propagação de contexto
-        executor.setTaskDecorator(new TenantAwareTaskDecorator());
-
-        executor.initialize();
-        return executor;
-    }
-}
-```
-
-Use o executor configurado:
-
-```java
-@Service
-public class NotificationService {
-
-    @Async("taskExecutor")
-    public void sendNotificationAsync(String message) {
-        // Agora o tenant context está disponível
-        String tenantId = ArchbaseTenantContext.getTenantId();
-        log.info("Sending notification for tenant: {}", tenantId);
-        // ... implementação
-    }
-}
-```
+`@Scheduled` não tem requisição de origem: não há tenant para propagar, e a tarefa tem de definir
+(`ArchbaseTenantContext.setTenantId(...)`) e limpar (`clear()`) o tenant ela mesma.
 
 ---
 
 ### 1.4 Erro: "Token expired" imediatamente após login
 
-**Sintomas**:
-- Token expira segundos após ser gerado
-- Tempo de expiração parece estar incorreto
-- Token válido por apenas alguns segundos ao invés de horas/dias
-- Cliente precisa fazer refresh imediatamente após login
-
-**Causas Possíveis**:
-
-1. **Configuração de expiração em formato errado**
-   - Valor configurado em segundos ao invés de milissegundos
-   - Configuração usa unidade errada
-
-2. **Fuso horário incorreto**
-   - Servidor com relógio dessincronizado
-   - Container Docker sem timezone configurado
-
-3. **Valor muito pequeno por erro de digitação**
-   - Falta de zeros na configuração
-   - Confusão entre minutos e milissegundos
-
-**Solução**:
+**Causa mais comum**: validade configurada em segundos. As duas propriedades são em
+**milissegundos**, e nenhuma tem valor padrão:
 
 ```properties
-# FORMATO CORRETO - Valores em MILISSEGUNDOS
-
-# ❌ ERRADO - 1 hora em segundos (token expira em 3.6 segundos!)
+# ERRADO — 3,6 segundos
 archbase.security.jwt.token-expiration=3600
 
-# ✓ CORRETO - 1 hora em milissegundos
+# 1 hora
 archbase.security.jwt.token-expiration=3600000
-
-# Exemplos de configurações comuns:
-# 15 minutos = 900000 ms
-archbase.security.jwt.token-expiration=900000
-
-# 1 hora = 3600000 ms
-archbase.security.jwt.token-expiration=3600000
-
-# 8 horas = 28800000 ms
-archbase.security.jwt.token-expiration=28800000
-
-# 24 horas = 86400000 ms
-archbase.security.jwt.token-expiration=86400000
-
-# Refresh token - 7 dias = 604800000 ms
+# 7 dias
 archbase.security.jwt.refresh-expiration=604800000
 ```
 
-**Validação do Token**:
+Outras causas: relógio do servidor dessincronizado (o `exp` é gerado em UTC a partir do relógio
+local) ou várias instâncias com relógios diferentes. Confira com `date -u` e NTP.
 
-Crie um endpoint de debug para verificar a expiração:
-
-```java
-@RestController
-@RequestMapping("/api/debug")
-@Profile("dev")
-public class TokenDebugController {
-
-    @Autowired
-    private ArchbaseJwtService jwtService;
-
-    @GetMapping("/token-expiration")
-    public Map<String, Object> checkTokenExpiration(@RequestHeader("Authorization") String authHeader) {
-        String token = authHeader.replace("Bearer ", "");
-
-        Date expiration = jwtService.extractExpiration(token);
-        Date now = new Date();
-        long timeToExpire = expiration.getTime() - now.getTime();
-
-        Map<String, Object> info = new HashMap<>();
-        info.put("currentTime", now);
-        info.put("expirationTime", expiration);
-        info.put("millisecondsToExpire", timeToExpire);
-        info.put("minutesToExpire", timeToExpire / 1000 / 60);
-        info.put("hoursToExpire", timeToExpire / 1000 / 60 / 60);
-        info.put("isExpired", jwtService.isTokenExpired(token));
-
-        return info;
-    }
-}
-```
-
-**Verificar Sincronização de Relógio**:
-
-```bash
-# Verificar data/hora do servidor
-date
-
-# Verificar timezone
-timedatectl
-
-# Para containers Docker, adicione ao docker-compose.yml:
-# environment:
-#   - TZ=America/Sao_Paulo
-# volumes:
-#   - /etc/localtime:/etc/localtime:ro
-```
+Para ver a expiração de um token, decodifique o payload (2.3): o campo `exp` está em segundos desde
+a época.
 
 ---
 
@@ -390,6 +210,12 @@ escrever qualquer coisa.
 de catálogo. A varredura registra `ERROR` apontando a classe e o método na subida. A capacidade é
 exigida em runtime e não existe para ser concedida, então todo não-administrador leva 403 permanente.
 
+> **Os endpoints de diagnóstico citados aqui e em 1.6** (`/api/v1/security/diagnostics/*`) só
+> existem com `archbase.security.diagnostics.enabled=true` (padrão `false`: sem ela o controller nem
+> é registrado). E, mesmo
+> ligados, respondem 403 a quem não tiver `isAdministrator` com a conta habilitada — independente de
+> `archbase.security.admin-endpoints.policy`.
+
 ### 1.6 A permissão está concedida e o usuário continua sem conseguir
 
 **Recurso desativado.** Uma concessão sobre ação ativa de recurso **inativo** funciona hoje — o
@@ -408,212 +234,166 @@ tela de concessão oferece as dependências junto.
 concessão dentro do escopo em que foi declarada. O relatório de efetivo lista a capacidade com
 situação `DENIED`, e a simulação (`POST /diagnostics/simulate`) diz em que portão parou.
 
+### 1.7 401 com `X-TENANT-ID` diferente do tenant do token
+
+**Sintoma**: o mesmo token funciona sem o cabeçalho (ou com o tenant certo) e dá 401 quando o
+cliente manda outro `X-TENANT-ID` — ou `?X-TENANT-ID=` na query, aceito enquanto
+`archbase.app.tenant.accept-query-param=true`.
+
+**Causa**: o cabeçalho entra no contexto **antes** de o token ser conferido. O JWT próprio é procurado
+em `SEGURANCA_TOKEN_ACESSO` (`@TenantId`) e o token de API em `SEGURANCA_TOKEN_API`, ambos no tenant
+do cabeçalho — onde a linha não existe. Sem autenticação, o resultado é **401** para o **JWT próprio
+e para o token de API**. O bloco do filtro que responderia 403 nesse caso nem chega a rodar (ver
+`FiltroDeAutenticacaoComportamentoAtualTest`, `tenantDivergenteNaoAutentica` e
+`tenantDivergenteDa401`).
+
+Só o **token de IdP externo** (Control Plane, OIDC) recebe **403 `TENANT_MISMATCH`**: nesse caminho o
+tenant vem do token e a divergência é conferida explicitamente.
+
+**Solução**: o cliente deve mandar o tenant do próprio token, ou não mandar o cabeçalho — o tenant
+do token (`tenantId` no JWT, `TENANT_ID` na linha do token de API) é a fonte de verdade.
+
+### 1.8 401 com `SESSAO_ENCERRADA`
+
+Corpo `{"status":401,"error":"SESSAO_ENCERRADA",...}`: o JWT tem assinatura válida, mas a linha foi
+revogada — logout, ou outro login do mesmo usuário com `BO_PERMITE_MULTIPLICOS_LOGINS` diferente de
+`'S'` (sessão única: o login novo revoga todos os tokens anteriores). Se o usuário precisa de várias
+sessões, ligue `allowMultipleLogins`.
+
+### 1.9 403 `COMPANY_NOT_ALLOWED`
+
+Com `archbase.security.company.validation=enforce`, o filtro confere o `X-COMPANY-ID` contra o
+usuário autenticado perguntando aos beans `ArchbaseCompanyAccessResolver`
+(`br.com.archbase.security.spi`). Recusa com 403 `COMPANY_NOT_ALLOWED` quando nenhum resolver
+permite, quando o resolver lança exceção, ou quando o principal não é um `UserEntity` local. Em
+requisição anônima, com `enforce`, a empresa é descartada do contexto (sem 403).
+
+- `enforce` sem nenhum resolver registrado **não sobe** (validador de hardening, 1.11).
+- Para medir antes de recusar, use `warn`: registra no log o que seria recusado e deixa passar.
+- O padrão é `off`.
+
+### 1.10 Aplicação não sobe: `Could not resolve placeholder`
+
+Estas propriedades são lidas sem valor padrão e têm de estar definidas:
+
+| Propriedade | Lida em |
+|-------------|---------|
+| `archbase.security.jwt.secret-key` | `ArchbaseJwtService` |
+| `archbase.security.jwt.token-expiration` | `ArchbaseJwtService` |
+| `archbase.security.jwt.refresh-expiration` | `ArchbaseJwtService` |
+| `archbase.security.whitelist` | `DefaultArchbaseSecurityConfiguration` |
+| `archbase.security.cors.allowed-origins` | idem |
+| `archbase.security.cors.allowed-methods` | idem |
+| `archbase.security.cors.allowed-headers` | idem |
+| `archbase.security.cors.allow-credentials` | idem |
+
+As de `whitelist` e `cors.*` só são exigidas quando vale a configuração padrão, isto é, quando a
+aplicação não registra uma `CustomSecurityConfiguration`.
+
+### 1.11 Aplicação não sobe: "Proteções foram habilitadas sem os pré-requisitos atendidos"
+
+É o `ArchbaseSecurityHardeningValidator`, que roda no `ApplicationReadyEvent` e lança
+`IllegalStateException` quando uma proteção ligada não tem como funcionar. A mensagem numera cada
+item e diz o que fazer. Os casos atuais:
+
+- `api-token.purge-plaintext=true` com `hash-enabled=false`, ou com token de API ainda sem hash;
+- `require-role.no-resolver-policy=deny` sem bean `ArchbaseRoleResolver`;
+- `company.validation=enforce` sem bean `ArchbaseCompanyAccessResolver`, ou valor desconhecido;
+- `admin-endpoints.policy=permission` sem recurso + ação `MANAGE` cadastrados para `USER`, `GROUP`,
+  `RESOURCE`, `ACTION`, `USER_PROFILE`, `API_TOKEN`, `ACCESS_TOKEN`;
+- `jwt.strict-token-use=true` com sessões ativas sem `TP_USO_TOKEN`;
+- um endpoint da aplicação mapeado na URL do logout (`archbase.security.logout.url`).
+
+Para diagnóstico, `archbase.security.hardening.validation=warn` troca a falha por `ERROR` no log
+(`off` desliga). Não deixe assim: a proteção continua sem funcionar. Detalhes em
+`deployment/security-hardening.md`.
+
+---
+
 ## 2. Dicas de Debug
 
 ### 2.1 Habilitar Logging Detalhado
 
-Configure níveis de log apropriados para diagnosticar problemas:
-
 ```properties
-# application.properties ou application-dev.properties
-
-# ========================================
-# LOGGING DE SEGURANÇA
-# ========================================
-
-# Módulo de segurança do Archbase (RECOMENDADO)
+# Módulo de segurança
 logging.level.br.com.archbase.security=DEBUG
 
-# Spring Security (DETALHADO)
+# Uma linha por decisão de @HasPermission: "PERMITE (...) via ..." ou "NEGA em <portão> (...)"
+logging.level.br.com.archbase.security.config.AuthorizationAdapters=DEBUG
+
+# Spring Security
 logging.level.org.springframework.security=DEBUG
 
-# Contexto de tenant (MULTI-TENANCY)
-logging.level.br.com.archbase.ddd.context=DEBUG
-
-# SQL queries e parâmetros (BANCO DE DADOS)
-spring.jpa.show-sql=true
-spring.jpa.properties.hibernate.format_sql=true
+# SQL e parâmetros (Hibernate 6/7)
 logging.level.org.hibernate.SQL=DEBUG
-logging.level.org.hibernate.type.descriptor.sql.BasicBinder=TRACE
+logging.level.org.hibernate.orm.jdbc.bind=TRACE
 
-# Filtros HTTP (REQUISIÇÕES)
+# Filtros HTTP
 logging.level.org.springframework.web.filter=DEBUG
-
-# JWT processing (TOKEN)
-logging.level.io.jsonwebtoken=DEBUG
 ```
 
-**Logging Estruturado para Produção**:
-
-```properties
-# application-prod.properties
-
-# Menos verboso em produção
-logging.level.br.com.archbase.security=INFO
-logging.level.org.springframework.security=WARN
-
-# Mas mantém eventos importantes
-logging.level.br.com.archbase.security.audit=INFO
-```
-
----
+`org.hibernate.type.descriptor.sql.BasicBinder` é o logger do Hibernate 5 e não mostra nada no
+Hibernate 6/7. Em produção, volte `br.com.archbase.security` para `INFO`: em `DEBUG` o filtro
+registra tenant e usuário de cada requisição.
 
 ### 2.2 Debugar Avaliação de Permissões
 
-Adicione logging detalhado no serviço de segurança para rastrear o processo de avaliação:
+Não reimplemente o avaliador. A decisão, com o motivo, está disponível em
+`br.com.archbase.security.service.ArchbaseSecurityService` — classe que já existe, não a declare de
+novo:
 
 ```java
-@Service
-@Slf4j
-public class ArchbaseSecurityService {
+@Autowired
+private ArchbaseSecurityService securityService;
 
-    public boolean hasPermission(
-            String userId,
-            String action,
-            String resource,
-            String tenantId,
-            String companyId,
-            String projectId) {
+AccessDecision d = securityService.decide(authentication, "VIEW", "SALES_REPORT_API",
+        tenantId, companyId, projectId);
 
-        log.debug("=== INÍCIO DA AVALIAÇÃO DE PERMISSÃO ===");
-        log.debug("Usuário ID: {}", userId);
-        log.debug("Ação solicitada: {}", action);
-        log.debug("Recurso solicitado: {}", resource);
-        log.debug("Contexto - Tenant: {}, Company: {}, Project: {}",
-            tenantId, companyId, projectId);
-
-        // Buscar usuário
-        UserEntity user = userRepository.findById(UUID.fromString(userId))
-            .orElse(null);
-
-        if (user == null) {
-            log.warn("Usuário não encontrado: {}", userId);
-            return false;
-        }
-
-        log.debug("Usuário encontrado: {}", user.getUserName());
-        log.debug("É administrador: {}", user.getIsAdministrator());
-        log.debug("Conta habilitada: {}", user.isEnabled());
-
-        // Verificar bypass de administrador
-        if (user.getIsAdministrator() && user.isEnabled()) {
-            log.info("PERMISSÃO CONCEDIDA: Usuário é administrador");
-            return true;
-        }
-
-        // Buscar permissões diretas do usuário
-        List<PermissionEntity> userPermissions = permissionRepository
-            .findBySecurityIdAndActionNameAndResourceName(
-                UUID.fromString(userId), action, resource);
-
-        log.debug("Permissões diretas encontradas: {}", userPermissions.size());
-
-        // Buscar grupos do usuário
-        List<GroupEntity> userGroups = groupRepository.findByUserId(UUID.fromString(userId));
-        log.debug("Grupos do usuário: {}", userGroups.size());
-
-        for (GroupEntity group : userGroups) {
-            log.debug("  - Grupo: {} ({})", group.getName(), group.getId());
-        }
-
-        // Buscar permissões dos grupos
-        List<PermissionEntity> groupPermissions = new ArrayList<>();
-        for (GroupEntity group : userGroups) {
-            List<PermissionEntity> perms = permissionRepository
-                .findBySecurityIdAndActionNameAndResourceName(
-                    group.getId(), action, resource);
-            log.debug("Permissões do grupo {}: {}", group.getName(), perms.size());
-            groupPermissions.addAll(perms);
-        }
-
-        // Combinar todas as permissões
-        List<PermissionEntity> allPermissions = new ArrayList<>();
-        allPermissions.addAll(userPermissions);
-        allPermissions.addAll(groupPermissions);
-
-        log.debug("Total de permissões para avaliar: {}", allPermissions.size());
-
-        // Avaliar cada permissão contra o contexto
-        for (PermissionEntity permission : allPermissions) {
-            log.debug("Avaliando permissão ID: {}", permission.getId());
-            log.debug("  Tenant: {} (contexto: {})", permission.getTenantId(), tenantId);
-            log.debug("  Company: {} (contexto: {})", permission.getCompanyId(), companyId);
-            log.debug("  Project: {} (contexto: {})", permission.getProjectId(), projectId);
-
-            boolean matches = matchesContext(permission, tenantId, companyId, projectId);
-            log.debug("  Correspondência: {}", matches);
-
-            if (matches) {
-                log.info("PERMISSÃO CONCEDIDA: Permissão ID {} corresponde ao contexto",
-                    permission.getId());
-                return true;
-            }
-        }
-
-        log.warn("PERMISSÃO NEGADA: Nenhuma permissão correspondente encontrada");
-        log.debug("=== FIM DA AVALIAÇÃO DE PERMISSÃO ===");
-        return false;
-    }
-
-    private boolean matchesContext(
-            PermissionEntity permission,
-            String tenantId,
-            String companyId,
-            String projectId) {
-
-        // Permissão global (todos nulos)
-        if (permission.getTenantId() == null &&
-            permission.getCompanyId() == null &&
-            permission.getProjectId() == null) {
-            log.debug("    -> Permissão GLOBAL");
-            return true;
-        }
-
-        // Verificar tenant
-        if (permission.getTenantId() != null) {
-            if (!permission.getTenantId().equals(tenantId)) {
-                log.debug("    -> Tenant não corresponde");
-                return false;
-            }
-        }
-
-        // Verificar company
-        if (permission.getCompanyId() != null) {
-            if (!permission.getCompanyId().equals(companyId)) {
-                log.debug("    -> Company não corresponde");
-                return false;
-            }
-        }
-
-        // Verificar project
-        if (permission.getProjectId() != null) {
-            if (!permission.getProjectId().equals(projectId)) {
-                log.debug("    -> Project não corresponde");
-                return false;
-            }
-        }
-
-        log.debug("    -> Contexto corresponde!");
-        return true;
-    }
-}
+log.info("{}", d.summary());       // "NEGA em SCOPE (OUT_OF_SCOPE)" / "PERMITE (...) via Perfil X"
+d.chain().forEach(o -> log.info("  {}", o)); // portão a portão
 ```
 
----
+`AccessDecision` é um record com `allowed`, `deniedAt` (o portão), `reasonCode`, `message`,
+`grantedBy`, `grantedByName` e `chain`. Uma negação vinda de `decide(...)` é gravada como
+`ACESSO_NEGADO` em `SEGURANCA_EVENTO` (com `archbase.security.audit.enabled=true`).
+
+Para avaliar **outra pessoa** sem escrever código e sem poluir a trilha, use a simulação (exige o que
+está na nota de 1.5):
+
+```http
+POST /api/v1/security/diagnostics/simulate
+Content-Type: application/json
+
+{ "userId": "id-do-usuario", "resource": "SALES_REPORT_API", "action": "VIEW",
+  "tenantId": "t1", "companyId": null, "projectId": null }
+```
+
+`userId` ou `email`, mais `resource` e `action`, são obrigatórios. A resposta é o mesmo
+`AccessDecision`.
 
 ### 2.3 Inspecionar Token JWT
 
-#### Ferramentas Online
+O que o `ArchbaseJwtService` põe no token: `sub` (`userName`), `iat`, `exp`, `jti`, `token_use`
+(`access`, `refresh` ou `mfa_challenge`) e, se o usuário tiver tenant, `tenantId`. **Não** há claims
+`userId`, `companyId` nem `roles` — a empresa vem do `X-COMPANY-ID`, e os papéis não estão no token.
 
-Use ferramentas para decodificar e validar tokens JWT:
+Para ler o payload, não é preciso endpoint nem site externo (nunca cole token de produção em site
+público):
 
-- **https://jwt.io/** - Decodificador e debugger oficial
-- **https://token.dev/** - Alternativa com recursos adicionais
-- **https://jwt.ms/** - Microsoft JWT decoder
+```bash
+#!/bin/bash
+# decode-jwt.sh — mostra header e payload (não confere assinatura)
+TOKEN=${1#"Bearer "}
+b64url() { local s=$(echo -n "$1" | tr '_-' '/+'); while [ $(( ${#s} % 4 )) -ne 0 ]; do s="$s="; done; echo -n "$s" | base64 -d; }
+echo "=== HEADER ==="; b64url "$(echo "$TOKEN" | cut -d. -f1)" | jq .
+echo "=== PAYLOAD ==="; b64url "$(echo "$TOKEN" | cut -d. -f2)" | jq .
+```
 
-**IMPORTANTE**: Nunca cole tokens de produção em sites públicos!
-
-#### Endpoint de Debug (Apenas Desenvolvimento)
+Se quiser um endpoint de desenvolvimento, use só os métodos **públicos** do serviço:
+`extractUsername`, `extractTenantId`, `extractTokenUse`, `extractExpiration`, `isTokenExpired`,
+`isAccessToken`, `isRefreshToken`, `isTokenValid(token, userDetails)` e
+`extractClaim(token, claims -> ...)`. `extractAllClaims` é privado. Lembre que `extractExpiration` e
+`extractClaim` validam a assinatura e lançam `ExpiredJwtException` em token vencido.
 
 ```java
 @RestController
@@ -621,470 +401,98 @@ Use ferramentas para decodificar e validar tokens JWT:
 @Profile("dev") // APENAS EM DESENVOLVIMENTO
 public class TokenDebugController {
 
-    @Autowired
-    private ArchbaseJwtService jwtService;
+    private final ArchbaseJwtService jwtService;
 
-    @GetMapping("/token-info")
-    public Map<String, Object> getTokenInfo(
-            @RequestHeader("Authorization") String authHeader) {
-
-        String token = authHeader.replace("Bearer ", "");
-
-        Map<String, Object> info = new HashMap<>();
-
-        try {
-            // Claims básicos
-            info.put("username", jwtService.extractUsername(token));
-            info.put("expiration", jwtService.extractExpiration(token));
-            info.put("issuedAt", jwtService.extractIssuedAt(token));
-            info.put("isExpired", jwtService.isTokenExpired(token));
-
-            // Claims customizados
-            Claims claims = jwtService.extractAllClaims(token);
-            info.put("userId", claims.get("userId"));
-            info.put("tenantId", claims.get("tenantId"));
-            info.put("companyId", claims.get("companyId"));
-            info.put("roles", claims.get("roles"));
-
-            // Informações de tempo
-            Date now = new Date();
-            Date expiration = jwtService.extractExpiration(token);
-            long timeToExpire = expiration.getTime() - now.getTime();
-
-            info.put("currentTime", now);
-            info.put("minutesToExpire", timeToExpire / 1000 / 60);
-            info.put("hoursToExpire", timeToExpire / 1000 / 60 / 60);
-
-        } catch (Exception e) {
-            info.put("error", e.getMessage());
-            info.put("errorType", e.getClass().getSimpleName());
-        }
-
-        return info;
+    public TokenDebugController(ArchbaseJwtService jwtService) {
+        this.jwtService = jwtService;
     }
 
-    @GetMapping("/validate-token")
-    public Map<String, Object> validateToken(
-            @RequestHeader("Authorization") String authHeader,
-            @RequestParam String username) {
-
+    @GetMapping("/token-info")
+    public Map<String, Object> tokenInfo(@RequestHeader("Authorization") String authHeader) {
         String token = authHeader.replace("Bearer ", "");
-
-        Map<String, Object> validation = new HashMap<>();
-        validation.put("isValid", jwtService.validateToken(token, username));
-        validation.put("username", jwtService.extractUsername(token));
-        validation.put("isExpired", jwtService.isTokenExpired(token));
-
-        return validation;
+        Map<String, Object> info = new LinkedHashMap<>();
+        info.put("isExpired", jwtService.isTokenExpired(token));   // não lança
+        try {
+            info.put("username", jwtService.extractUsername(token));
+            info.put("tenantId", jwtService.extractTenantId(token));
+            info.put("tokenUse", jwtService.extractTokenUse(token));
+            info.put("expiration", jwtService.extractExpiration(token));
+            info.put("jti", jwtService.extractClaim(token, Claims::getId));
+        } catch (JwtException e) {
+            info.put("error", e.getClass().getSimpleName() + ": " + e.getMessage());
+        }
+        return info;
     }
 }
 ```
 
-#### Script de Shell para Decodificar JWT
-
-```bash
-#!/bin/bash
-# decode-jwt.sh
-
-TOKEN=$1
-
-if [ -z "$TOKEN" ]; then
-    echo "Uso: ./decode-jwt.sh <token>"
-    exit 1
-fi
-
-# Remover Bearer se presente
-TOKEN=${TOKEN#"Bearer "}
-
-# Decodificar header
-HEADER=$(echo $TOKEN | cut -d '.' -f 1)
-echo "=== HEADER ==="
-echo $HEADER | base64 -d 2>/dev/null | jq .
-
-# Decodificar payload
-PAYLOAD=$(echo $TOKEN | cut -d '.' -f 2)
-echo -e "\n=== PAYLOAD ==="
-echo $PAYLOAD | base64 -d 2>/dev/null | jq .
-
-# Mostrar signature (não decodificada)
-SIGNATURE=$(echo $TOKEN | cut -d '.' -f 3)
-echo -e "\n=== SIGNATURE ==="
-echo $SIGNATURE
-```
+Um token decodificável e não vencido ainda pode ser recusado: o filtro exige também a linha em
+`SEGURANCA_TOKEN_ACESSO` sem `TOKEN_REVOGADO`/`TOKEN_EXPIRADO`, no tenant do contexto (ver 1.7 e 1.8).
 
 ---
 
 ## 3. Monitoramento
 
-### 3.1 Métricas Recomendadas
+**O módulo de segurança não publica métricas.** Não há `MeterRegistry`, contador nem timer em
+`archbase-security`; nomes como `security.authentication.failures` ou `security.tokens.active` não
+existem, e alertas Prometheus escritos contra eles nunca disparam. (O `archbase-controlplane` tem as
+suas próprias métricas, opt-in — ver o README dele.)
 
-Implemente métricas usando Spring Boot Actuator e Micrometer:
+O que existe para observar segurança:
 
-```java
-@Component
-public class SecurityMetrics {
+- **`SEGURANCA_EVENTO`** — login, falha de login, logout, acesso negado e simulação, com usuário,
+  origem e o portão que recusou. Gravada só com `archbase.security.audit.enabled=true`. Consulta por
+  `GET /api/v1/security/audit/events` (administrador). Em multi-tenant, ligue
+  `archbase.security.audit.tenant-scoped=true`; sem ela, administrador de um tenant lê os eventos de
+  todos.
+- **Trilha do Envers** (`*_AUD` + `SEGURANCA_REVISAO`) — quem mudou usuário, grupo, perfil,
+  permissão, ação e recurso. Mesma chave `audit.enabled`, e as tabelas têm de existir antes.
+- **Logs**: `NÃO AUTENTICADO` (entry point, 401), `Acesso cross-tenant NEGADO`, `Acesso à empresa
+  NEGADO`, `[segurança] ...` na subida (proteções inertes e pré-requisitos).
 
-    private final Counter authenticationAttempts;
-    private final Counter authenticationSuccesses;
-    private final Counter authenticationFailures;
-    private final Counter permissionChecks;
-    private final Counter permissionGrants;
-    private final Counter permissionDenials;
-    private final Timer authenticationTime;
-    private final Timer permissionCheckTime;
-    private final Gauge activeTokens;
-
-    public SecurityMetrics(MeterRegistry registry, AccessTokenRepository tokenRepository) {
-
-        // Contadores de autenticação
-        this.authenticationAttempts = Counter.builder("security.authentication.attempts")
-            .description("Total de tentativas de autenticação")
-            .tag("type", "login")
-            .register(registry);
-
-        this.authenticationSuccesses = Counter.builder("security.authentication.successes")
-            .description("Autenticações bem-sucedidas")
-            .tag("type", "login")
-            .register(registry);
-
-        this.authenticationFailures = Counter.builder("security.authentication.failures")
-            .description("Falhas de autenticação")
-            .tag("type", "login")
-            .register(registry);
-
-        // Contadores de permissão
-        this.permissionChecks = Counter.builder("security.permission.checks")
-            .description("Total de verificações de permissão")
-            .register(registry);
-
-        this.permissionGrants = Counter.builder("security.permission.grants")
-            .description("Permissões concedidas")
-            .register(registry);
-
-        this.permissionDenials = Counter.builder("security.permission.denials")
-            .description("Permissões negadas")
-            .register(registry);
-
-        // Timers de performance
-        this.authenticationTime = Timer.builder("security.authentication.time")
-            .description("Tempo de processamento de autenticação")
-            .register(registry);
-
-        this.permissionCheckTime = Timer.builder("security.permission.check.time")
-            .description("Tempo de verificação de permissão")
-            .register(registry);
-
-        // Gauge de tokens ativos
-        this.activeTokens = Gauge.builder("security.tokens.active", tokenRepository, repo -> {
-            return repo.countActiveTokens();
-        })
-        .description("Número de tokens ativos no sistema")
-        .register(registry);
-    }
-
-    // Métodos de registro
-    public void recordAuthenticationAttempt() {
-        authenticationAttempts.increment();
-    }
-
-    public void recordAuthenticationSuccess() {
-        authenticationSuccesses.increment();
-    }
-
-    public void recordAuthenticationFailure() {
-        authenticationFailures.increment();
-    }
-
-    public void recordPermissionCheck() {
-        permissionChecks.increment();
-    }
-
-    public void recordPermissionGrant() {
-        permissionGrants.increment();
-    }
-
-    public void recordPermissionDenial() {
-        permissionDenials.increment();
-    }
-
-    public Timer.Sample startAuthenticationTimer() {
-        return Timer.start(registry);
-    }
-
-    public void stopAuthenticationTimer(Timer.Sample sample) {
-        sample.stop(authenticationTime);
-    }
-
-    public Timer.Sample startPermissionCheckTimer() {
-        return Timer.start(registry);
-    }
-
-    public void stopPermissionCheckTimer(Timer.Sample sample) {
-        sample.stop(permissionCheckTime);
-    }
-}
-```
-
-**Integração com Serviço de Autenticação**:
-
-```java
-@Service
-public class ArchbaseAuthenticationService {
-
-    @Autowired
-    private SecurityMetrics metrics;
-
-    public AuthenticationResponse authenticate(AuthenticationRequest request) {
-        metrics.recordAuthenticationAttempt();
-        Timer.Sample sample = metrics.startAuthenticationTimer();
-
-        try {
-            // Lógica de autenticação
-            AuthenticationResponse response = performAuthentication(request);
-
-            metrics.recordAuthenticationSuccess();
-            return response;
-
-        } catch (AuthenticationException e) {
-            metrics.recordAuthenticationFailure();
-            throw e;
-
-        } finally {
-            metrics.stopAuthenticationTimer(sample);
-        }
-    }
-}
-```
-
----
-
-### 3.2 Alertas
-
-Configure alertas para detectar problemas de segurança proativamente:
-
-#### Alertas Críticos (Resposta Imediata)
-
-1. **Taxa de falhas de autenticação elevada**
-   - **Métrica**: `rate(security_authentication_failures_total[5m]) > 10`
-   - **Condição**: Mais de 10 falhas por minuto em 5 minutos
-   - **Ação**: Possível ataque de força bruta
-
-2. **Spike em negações de permissão**
-   - **Métrica**: `rate(security_permission_denials_total[5m]) > 50`
-   - **Condição**: Mais de 50 negações por minuto em 5 minutos
-   - **Ação**: Possível tentativa de privilege escalation
-
-3. **Tokens expirados não limpos**
-   - **Métrica**: `security_tokens_expired_not_cleaned > 10000`
-   - **Condição**: Mais de 10.000 tokens expirados no banco
-   - **Ação**: Job de limpeza não está funcionando
-
-#### Alertas de Atenção (Monitoramento)
-
-4. **Tempo de autenticação elevado**
-   - **Métrica**: `histogram_quantile(0.95, security_authentication_time) > 2`
-   - **Condição**: P95 acima de 2 segundos
-   - **Ação**: Performance degradada
-
-5. **Usuários com muitos tokens ativos**
-   - **Métrica**: `security_tokens_per_user > 20`
-   - **Condição**: Usuário com mais de 20 tokens ativos
-   - **Ação**: Possível vazamento de tokens
-
-6. **Taxa de sucesso de autenticação baixa**
-   - **Métrica**: `security_authentication_successes / security_authentication_attempts < 0.8`
-   - **Condição**: Menos de 80% de sucesso
-   - **Ação**: Problema de integração ou UX
-
-#### Exemplo de Configuração Prometheus
-
-```yaml
-# prometheus-alerts.yml
-
-groups:
-  - name: security
-    interval: 30s
-    rules:
-      # Alerta crítico - Ataque de força bruta
-      - alert: HighAuthenticationFailureRate
-        expr: rate(security_authentication_failures_total[5m]) > 10
-        for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Taxa elevada de falhas de autenticação"
-          description: "{{ $value }} falhas por segundo nos últimos 5 minutos"
-
-      # Alerta crítico - Tentativa de escalação de privilégios
-      - alert: HighPermissionDenialRate
-        expr: rate(security_permission_denials_total[5m]) > 50
-        for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Spike em negações de permissão"
-          description: "{{ $value }} negações por segundo nos últimos 5 minutos"
-
-      # Alerta atenção - Performance degradada
-      - alert: SlowAuthentication
-        expr: histogram_quantile(0.95, rate(security_authentication_time_bucket[5m])) > 2
-        for: 10m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Autenticação lenta"
-          description: "P95 de tempo de autenticação: {{ $value }}s"
-
-      # Alerta atenção - Limpeza de tokens não funcionando
-      - alert: ExpiredTokensNotCleaned
-        expr: security_tokens_expired_count > 10000
-        for: 1h
-        labels:
-          severity: warning
-        annotations:
-          summary: "Tokens expirados acumulando"
-          description: "{{ $value }} tokens expirados no banco de dados"
-```
-
-#### Dashboard Grafana
-
-```json
-{
-  "dashboard": {
-    "title": "Archbase Security Monitoring",
-    "panels": [
-      {
-        "title": "Taxa de Autenticação",
-        "targets": [
-          {
-            "expr": "rate(security_authentication_attempts_total[5m])",
-            "legendFormat": "Tentativas"
-          },
-          {
-            "expr": "rate(security_authentication_successes_total[5m])",
-            "legendFormat": "Sucessos"
-          },
-          {
-            "expr": "rate(security_authentication_failures_total[5m])",
-            "legendFormat": "Falhas"
-          }
-        ]
-      },
-      {
-        "title": "Verificações de Permissão",
-        "targets": [
-          {
-            "expr": "rate(security_permission_checks_total[5m])",
-            "legendFormat": "Verificações"
-          },
-          {
-            "expr": "rate(security_permission_grants_total[5m])",
-            "legendFormat": "Concedidas"
-          },
-          {
-            "expr": "rate(security_permission_denials_total[5m])",
-            "legendFormat": "Negadas"
-          }
-        ]
-      },
-      {
-        "title": "Tokens Ativos",
-        "targets": [
-          {
-            "expr": "security_tokens_active",
-            "legendFormat": "Tokens Ativos"
-          }
-        ]
-      },
-      {
-        "title": "Performance - P95",
-        "targets": [
-          {
-            "expr": "histogram_quantile(0.95, rate(security_authentication_time_bucket[5m]))",
-            "legendFormat": "Autenticação"
-          },
-          {
-            "expr": "histogram_quantile(0.95, rate(security_permission_check_time_bucket[5m]))",
-            "legendFormat": "Verificação Permissão"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+Se a aplicação quer métricas, derive-as desses eventos, ou instrumente os pontos que ela mesma
+controla.
 
 ---
 
 ## 4. Checklist de Troubleshooting
 
-Use este checklist quando encontrar problemas:
-
 ### Problemas de Autenticação
 
-- [ ] Verificar se JWT secret está configurado corretamente
-- [ ] Confirmar que os tempos de expiração estão em milissegundos
-- [ ] Validar que o token não está expirado
-- [ ] Verificar sincronização de relógio do servidor
-- [ ] Conferir se o usuário existe no banco de dados
-- [ ] Validar que a conta não está desativada ou bloqueada
-- [ ] Verificar logs de erro detalhados
-- [ ] Testar decodificação do token em jwt.io
+- [ ] `archbase.security.jwt.secret-key` em Base64, ≥ 256 bits, igual em todas as instâncias
+- [ ] `token-expiration` e `refresh-expiration` em milissegundos
+- [ ] Relógio do servidor sincronizado
+- [ ] Conta sem `BO_CONTA_DESATIVADA`/`CONTA_BLOQUEADA` e credenciais não expiradas
+- [ ] `X-TENANT-ID` igual ao tenant do token, ou ausente (1.7)
+- [ ] Token não revogado por outro login de sessão única (1.8)
 
 ### Problemas de Autorização
 
-- [ ] Confirmar que o usuário tem a permissão necessária
-- [ ] Verificar se o contexto (tenant/company/project) está correto
-- [ ] Validar que grupos do usuário têm as permissões
-- [ ] Conferir se horários de acesso estão configurados
-- [ ] Verificar se cache de permissões está atualizado
-- [ ] Validar que recursos e ações estão cadastrados
-- [ ] Confirmar que anotação @HasPermission está correta
-- [ ] Revisar logs de avaliação de permissões
+- [ ] A capacidade existe no catálogo e está ativa (1.5)
+- [ ] Há concessão no usuário, num grupo dele ou no perfil
+- [ ] Nenhum `DENY` alcança a capacidade (vale também para administrador)
+- [ ] `COMPANY_ID`/`PROJECT_ID` da concessão compatíveis com a requisição
+- [ ] `@HasPermission` com `action`, `description` e recurso resolvível
+- [ ] Simulação do diagnóstico consultada (2.2)
 
 ### Problemas de Multi-Tenancy
 
-- [ ] Verificar que multi-tenancy está habilitado
-- [ ] Confirmar que tenant context está sendo setado
-- [ ] Validar propagação de contexto em operações assíncronas
-- [ ] Verificar configuração de TaskDecorator
-- [ ] Confirmar que entidades herdam de TenantPersistenceEntityBase
-- [ ] Validar que filtros JPA estão aplicados
-- [ ] Revisar logs de contexto de tenant
-
-### Problemas de Performance
-
-- [ ] Verificar índices no banco de dados
-- [ ] Validar que cache de permissões está habilitado
-- [ ] Conferir pool de conexões do banco
-- [ ] Revisar queries N+1
-- [ ] Verificar se há locks no banco de dados
-- [ ] Monitorar uso de memória e CPU
-- [ ] Analisar métricas de tempo de resposta
+- [ ] Tenant chega pelo cabeçalho ou pelo token
+- [ ] Executores próprios com `ArchbaseTenantAwareTaskDecorator` (1.3)
+- [ ] `@Scheduled` define e limpa o tenant por conta própria
+- [ ] Entidades da aplicação estendem `TenantPersistenceEntityBase`
 
 ---
 
 ## 5. Recursos Adicionais
 
-### Documentação Relacionada
-
-- [Configuração](configuration.md) - Propriedades e configurações
-- [Sistema de Autenticação](../architecture/authentication-system.md) - Fluxos de autenticação
-- [Sistema de Permissões](../architecture/permissions-system.md) - Avaliação de permissões
-- [Multi-Tenancy](../architecture/multi-tenancy.md) - Propagação de contexto
-
-### Ferramentas Úteis
-
-- **JWT.io** - https://jwt.io/ - Decodificador de tokens
-- **Spring Boot Actuator** - Monitoramento e métricas
-- **Prometheus** - Coleta de métricas
-- **Grafana** - Visualização de dashboards
-
-### Suporte
-
-Para questões adicionais ou suporte técnico:
+- [Configuração](configuration.md)
+- [Entidades](../entities/overview.md)
+- [Sistema de Autenticação](../architecture/authentication-system.md)
+- [Sistema de Permissões](../architecture/permissions-system.md)
+- [Multi-Tenancy](../architecture/multi-tenancy.md)
+- Endurecimento: `deployment/security-hardening.md`
 - Documentação principal: [readme-security.md](../../readme-security.md)
-- Repositório: [Archbase Framework](https://github.com/edsonmartins/archbase-app-framework)
 
 ---
 

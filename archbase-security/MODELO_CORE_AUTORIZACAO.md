@@ -1,8 +1,19 @@
 # Unified authorization core — implementation plan
 
-Status: **plano aprovado, implementação não iniciada**
+Status: **implementado (fases 0 a G)**, no pacote `br.com.archbase.security.access` e em
+`br.com.archbase.security.diagnostics`.
 Substitui as opções em aberto de [`PROPOSTA_MODELO_AUTORIZACAO.md`](PROPOSTA_MODELO_AUTORIZACAO.md),
 que fica como registro do levantamento.
+
+| Pendente | Situação no código |
+|---|---|
+| **Fase H** — interceptador único | Não implementada. Continuam um `AuthorizationManager` por anotação (`CustomAuthorizationManager`, `ProfileAuthorizationManager`, `RoleAuthorizationManager`, `PersonaAuthorizationManager`), cada um delegando ao avaliador |
+| Cache de sujeito por requisição | Não implementado. `ArchbaseAccessSubjectLoader` consulta a cada decisão |
+| Varredura do catálogo por tenant | Não implementada. Ver [O que ficou fora da fase F](#o-que-ficou-fora-da-fase-f) |
+
+> **Leitura.** Este é o plano, escrito antes do código. Onde o texto diz "hoje", descreve o código
+> anterior ao core. Onde a implementação divergiu do plano, a divergência está marcada no lugar. A
+> referência do que está em vigor é [ARQUITETURA.md](ARQUITETURA.md).
 
 > **Convenção.** Código e schema do framework são em inglês. Documentação e mensagens ao
 > desenvolvedor, em português. O que a proposta anterior chamava de *patamar* aparece aqui como
@@ -59,6 +70,13 @@ mostra.**
 
 **A regra que organiza tudo: os portões 1 a 4 só sabem negar. Só o portão 5 concede.**
 
+> **Implementado:** a numeração nomeia os portões, não é a ordem de execução. Em
+> `DefaultArchbaseAccessEvaluator.decide` a sequência é IDENTITY → RESTRICTION → atalho do
+> administrador → busca no catálogo e negação explícita → SCOPE → LEVEL → GRANT. O IDENTITY não
+> confere conta ativa (quem barra conta desativada é o filtro de autenticação). O SCOPE estreita só
+> por empresa e projeto: o tenant é o discriminador `@TenantId` da permissão. Detalhe em
+> [ARQUITETURA.md — Ordem real de execução](ARQUITETURA.md#ordem-real-de-execução).
+
 Restrição e catálogo nunca competem, porque fazem coisas de natureza diferente — uma tranca, a
 outra abre. Uma tranca fechada não é contornável por concessão nenhuma. É isso que responde ao
 risco de alguém atribuir uma capacidade a quem não devia.
@@ -74,6 +92,12 @@ No core, `isAdministrator` vira **duas propriedades do sujeito**: concessão uni
 `AccessLevel` máximo no portão 4. Continua passando em tudo que passava, mas sujeito a escopo
 (portão 2) e a restrição explícita (portão 3) — um admin do tenant A deixa de alcançar o tenant B
 por esquecimento de contexto.
+
+> **Implementado de outro jeito.** O administrador **não** ficou sujeito a escopo. Depois das
+> trancas (portão 3), o administrador ativo encerra a decisão com `GRANTED_ADMINISTRATOR`, sem
+> avaliar SCOPE nem LEVEL. Sujeitá-lo ao escopo continua no plano, atrás de flag. O que o alcança é
+> a **negação explícita**: antes de conceder, o atalho procura uma permissão `DENY` que o atinja e,
+> se houver, nega com `EXPLICIT_DENY`.
 
 **Ressalva de compatibilidade:** `@RequireProfile` e `@RequirePersona` têm hoje `allowSystemAdmin()`
 com default `true`, e liberam o administrador **antes** de checar o perfil. Sob "portões só negam",
@@ -101,9 +125,14 @@ Uma regra, uma frase, explicável sem diagrama: *o perfil libera para o time int
 usuário tira daquela pessoa.* É o caso que hoje obriga a criar um grupo paralelo só para excluir
 alguém.
 
-**Interação com escopo:** um `DENY` só vence dentro do escopo em que foi declarado. `DENY` com
-`tenantId = A` não afeta o tenant B. Um `DENY` sem escopo vence em todos — mesma semântica que o
-`GRANT` já tem em `allowAllTenantsAndCompaniesAndProjects()`.
+**Interação com escopo:** um `DENY` só vence dentro do escopo em que foi declarado. Um `DENY` sem
+escopo vence em todos.
+
+> **Implementado:** `PermissionEntity` não tem campo `tenantId` de escopo — o que existia colidia com
+> o discriminador herdado e nunca funcionou. O estreitamento é por `COMPANY_ID` e `PROJECT_ID`, e para
+> a negação a regra é a oposta da concessão: um `DENY` estreitado só vale se a requisição confirmar
+> aquela empresa ou projeto. Entre tenants, o isolamento é do `@TenantId`: um `DENY` do tenant A
+> nunca é lido no tenant B. A negação também alcança o administrador.
 
 ---
 
@@ -117,11 +146,19 @@ O mínimo precisa ser editável no admin, como as ações são hoje. Duas coluna
 - **`SEGURANCA_PERFIL.ACCESS_LEVEL`** — um perfil por usuário, logo um nível por usuário. Encaixa
   sem tabela nova.
 
+> **Implementado de outro jeito.** Não há herança do mínimo: `SEGURANCA_RECURSO` não tem coluna de
+> nível, e `MINIMUM_LEVEL` nulo é ausência de piso — o portão LEVEL passa direto. Com várias ações
+> casando, vale o maior mínimo entre elas. O nível do perfil mora em `SEGURANCA.ACCESS_LEVEL` (ver
+> [Schema](#schema)).
+
 A escala é ordinal e curta. O core precisa do `compareTo`, não dos nomes:
 
 ```java
-public enum AccessLevel { READER, OPERATOR, SUPERVISOR, TENANT_ADMIN }
+public enum AccessLevel { NONE, READER, OPERATOR, SUPERVISOR, TENANT_ADMIN }
 ```
+
+`NONE` é "sem piso": é o padrão de `@HasPermission.minimumLevel`, e `AccessLevel.isUnset` trata
+`null` e `NONE` igualmente — nenhum dos dois exige nível.
 
 ### O que é fixo e o que é vocabulário do cliente
 
@@ -173,15 +210,29 @@ apareceu no logout durante a auditoria.
 
 ## Diagnóstico na view
 
-Três endpoints, todos alimentados pelo mesmo avaliador.
+Todos alimentados pelo mesmo avaliador, em `ArchbaseAccessDiagnosticsController`, sob
+`/api/v1/security/diagnostics`:
+
+| Rota | Pergunta |
+|---|---|
+| `POST simulate` | "esta pessoa conseguiria fazer isto?" |
+| `GET users/{userId}/effective` · `GET effective?email=` | "o que esta pessoa pode?" |
+| `GET overview` | contadores do tenant e estado das proteções |
+| `GET overview/{metric}` | os itens por trás de um contador |
+| `GET tree/{branch}` | um ramo da árvore de objetos de segurança |
+| `GET groups/{groupId}` · `GET profiles/{profileId}` | quem está no grupo/perfil e o que cada um acaba tendo |
+| `GET actions/{actionId}/reach` | quem alcança uma capacidade |
+
+O `coverage` que o plano previa (endpoints anotados × catálogo × órfãos) **não foi implementado**.
 
 ### Simulação — "esta pessoa consegue fazer isto?"
 
 ```
-POST /api/v1/security/simulate
+POST /api/v1/security/diagnostics/simulate
 { "userId": "...", "resource": "tms.ordemservico", "action": "aprovar_custo" }
+  (ou "email" no lugar de "userId"; "tenantId" e "companyId" opcionais)
 
-→ AccessDecision completo, com a cadeia dos cinco portões
+→ AccessDecision completo, com a cadeia dos portões
 ```
 
 Avalia sem executar nada. Responde não só *se* pode, mas **em que portão parou e por quê** — que é
@@ -190,24 +241,25 @@ o que hoje obriga a abrir grupo por grupo.
 ### Efetivo — "o que esta pessoa pode?"
 
 ```
-GET /api/v1/security/users/{id}/effective
-→ lista achatada: capability, origem, nível exigido, situação
+GET /api/v1/security/diagnostics/users/{id}/effective
+GET /api/v1/security/diagnostics/effective?email=...
+→ lista achatada: capability, origem, situação
 ```
 
-Aceita `?requireActive=true` para responder *"o que ela ainda poderia depois de ligarmos o filtro"*
-— é o relatório que precede a virada da flag.
+O plano previa `?requireActive=true`. A implementação não tem o parâmetro: cada linha traz a
+situação, e `INERT` marca exatamente o que deixaria de valer com `require-active=true` — é o
+relatório que precede a virada da flag.
 
-### Panorama
+### Proteção
 
-```
-GET /api/v1/security/overview     contadores e saúde
-GET /api/v1/security/coverage     endpoints anotados × catálogo × órfãos
-```
+**Estes endpoints revelam a estrutura de acesso e precisam ser protegidos como tal.** O plano
+falava em `AccessLevel` mínimo `TENANT_ADMIN` sob o recurso `security.diagnostics`; o implementado
+é mais simples e mais duro:
 
-**Estes endpoints revelam a estrutura de acesso e precisam ser protegidos como tal**: `AccessLevel`
-mínimo `TENANT_ADMIN`, sob o recurso `security.diagnostics`, e desligados por padrão. Simulação é
-ferramenta de diagnóstico, não de reconhecimento. A resposta nunca inclui dado pessoal além do
-identificador consultado.
+- o controller só é registrado com `archbase.security.diagnostics.enabled=true`
+  (`@ConditionalOnProperty`) — desligado por padrão;
+- cada rota exige `isAdministrator` ativo, verificado no próprio controller, sem depender de
+  `admin-endpoints.policy` nem do catálogo.
 
 ---
 
@@ -259,6 +311,9 @@ de fato decide por capacidade, `permission`, já passa pelo core através de `ha
 de um usuário sobre um recurso. Unificá-lo exige a operação "listar capacidades de um sujeito", que
 é exatamente o que o endpoint de efetivo constrói. Feito na fase B, seria escrito duas vezes.
 
+Feito: o adapter usa hoje o `ArchbaseCapabilityReader`, a mesma leitura do diagnóstico, no lugar da
+consulta QueryDSL própria. O filtro preservado é o de antes, `action.active`.
+
 ### A correção que precede o piloto
 
 `ArchbaseSecurityService:25` faz `(UserEntity) authentication.getPrincipal()` sem verificação. Em
@@ -292,6 +347,23 @@ moram todos em `seguranca` — e a coluna só faz sentido nas linhas de perfil.
 - nomes de coluna nessas tabelas são mistos (`NOME`, `BO_ATIVA` em português; `COMPANY_ID`,
   `PROJECT_ID` em inglês). As novas seguem o inglês, alinhadas às mais recentes.
 
+### Depois do core: o inicializador de esquema
+
+O `R__` deixou de ser o único caminho. `ArchbaseSecuritySchemaInitializer` (pacote
+`br.com.archbase.security.schema`) confere, na subida, o mapeamento das 16 entidades do módulo
+contra o banco e cria só o que falta, com DDL derivado pelo Hibernate no dialeto em uso — sem
+depender de PostgreSQL nem de Flyway.
+
+```properties
+archbase.security.schema.mode=apply          # apply (padrão) | report (só loga o DDL) | off
+archbase.security.schema.fail-on-error=false # true = não sobe se o DDL falhar
+```
+
+Limites: só DDL aditivo (não remove, não altera tipo, não toca em tabela fora das 16), e roda
+**depois** de o `EntityManagerFactory` subir — com `ddl-auto=validate`, o que falta faz o boot falhar
+antes dele. O `R__` continua valendo para quem usa Flyway, que roda antes da validação. Detalhes em
+[deployment/esquema-de-seguranca.md](../deployment/esquema-de-seguranca.md).
+
 ---
 
 ## Compatibilidade
@@ -315,7 +387,8 @@ archbase.security.permission.require-active=false      # alinha o backend ao fro
 archbase.security.access-level.enabled=false            # liga o portão 4
 archbase.security.access-level.default=READER           # nível de quem não tem perfil
 archbase.security.sync.mode=apply                       # apply | report | refresh
-archbase.security.diagnostics.enabled=false             # expõe overview/effective/simulate
+archbase.security.diagnostics.enabled=false             # expõe /api/v1/security/diagnostics/*
+archbase.security.schema.mode=apply                     # apply | report | off — inicializador de esquema
 ```
 
 Duas flags que o plano previa e que a implementação dispensou:
@@ -328,7 +401,8 @@ Duas flags que o plano previa e que a implementação dispensou:
   barra, e não há o que configurar.
 
 `require-active` é o mais sensível: ligá-lo **tira acesso** de quem depende de permissão sobre ação
-inativa — 57% das concessões no gestor-rq. Rodar `effective?requireActive=true` antes, nome a nome.
+inativa — 57% das concessões no gestor-rq. Rodar o relatório de efetivo antes, nome a nome: as
+linhas `INERT` são as que deixam de valer.
 Note que ligá-lo **aproxima** o backend do que a tela já faz.
 
 ---
@@ -349,9 +423,12 @@ anotações mudaria ordem de execução e semântica de falha de aplicações em
 mesmo passo que troca o motor é risco em cima de risco.
 
 **Resolução.** Fases A–B unificam a lógica; a unificação do interceptador vira **fase H**, atrás de
-flag, depois de o core estar em produção. Até lá, as decisões parciais são compostas em um traço
-por requisição, que é o que os endpoints de diagnóstico leem. Registrado como limitação conhecida,
-não como pendência esquecida.
+flag, depois de o core estar em produção. Registrado como limitação conhecida, não como pendência
+esquecida.
+
+> **Situação:** a fase H não foi implementada, e o traço por requisição que comporia as decisões
+> parciais também não existe no código. Os endpoints de diagnóstico não leem traço: chamam o
+> avaliador de novo (simulação) ou listam pelo `ArchbaseCapabilityReader` (efetivo).
 
 ### 2. "Portões só negam" quebraria `allowSystemAdmin`
 
@@ -371,7 +448,9 @@ regra diferente da do `PermissionJpaRepository` — filtra `action.active`. É o
 frontend usa. Um core que unifica só o lado do `@HasPermission` deixa metade do problema de pé, e é
 a metade que hoje está em produção.
 
-**Resolução.** `ResourcePersistenceAdapter` entra na fase B. E a conclusão da auditoria fica mais
+**Resolução.** `ResourcePersistenceAdapter` entra no core — na fase C, e não na B, pelo motivo
+explicado em [O que ficou fora da fase B](#o-que-ficou-fora-da-fase-b-e-por-quê); hoje ele lê pelo
+`ArchbaseCapabilityReader`. E a conclusão da auditoria fica mais
 precisa: ligar `@HasPermission` hoje concede **mais** que a UI, não menos.
 
 ### 4. `AccessSubject` a partir de `userId` é armadilha de lazy loading
@@ -399,7 +478,10 @@ diante de um `GRANT` global. Sem definir, cada implementação escolhe — e o r
 que vaza entre tenants, ou uma que não funciona.
 
 **Resolução.** `DENY` vence dentro do escopo em que foi declarado; sem escopo, vence em todos.
-Mesma semântica que o `GRANT` já tem.
+
+> **Implementado:** com regra própria, e não a do `GRANT`. O escopo de tenant da permissão não existe
+> (o tenant é o discriminador `@TenantId`, então a negação nunca vaza entre tenants); um `DENY`
+> estreitado por empresa ou projeto só vale quando a requisição confirma aquela empresa ou projeto.
 
 ### 7. Um alarme falso que eu ia carregar para o plano
 
@@ -419,7 +501,7 @@ Mesma semântica que o `GRANT` já tem.
 
 - **Desempenho.** O core acrescenta uma consulta de sujeito por decisão. Onde hoje há uma consulta
   por `@HasPermission`, passa a haver duas. Cache de sujeito por requisição resolve, mas não está
-  desenhado, e não estimei o impacto sob carga.
+  desenhado nem implementado, e não estimei o impacto sob carga.
 - **Multi-tenant na varredura.** A fase F diz "execução por tenant" sem definir de onde sai a lista
   de tenants — o framework não tem esse registro hoje. Precisa de desenho próprio antes de virar
   tarefa.
