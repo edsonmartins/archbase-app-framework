@@ -130,6 +130,23 @@ public class ArchbaseAuthenticationService {
 
     @Transactional
     public void register(RegisterNewUser request) {
+        registerUser(request);
+    }
+
+    /**
+     * Cria o usuário e chama {@link AuthenticationBusinessDelegate#onUserRegistered} <b>uma vez</b>, com os dados do
+     * cadastro mais {@link RegisterNewUser#getAdditionalData()}.
+     * <p>
+     * O {@code /register} chamava o delegate duas vezes: aqui, com os dados básicos, e de novo no controller, com o
+     * {@code additionalData} — a entidade de negócio podia nascer duplicada, e a segunda falha devolvia 400 com o
+     * usuário já criado.
+     *
+     * @return o id devolvido pelo delegate; {@code null} sem delegate ou se ele falhar (o registro não falha por isso)
+     * @since 3.5.0
+     */
+    @Transactional
+    public String registerUser(RegisterNewUser request) {
+        String businessEntityId = null;
         Optional<UserEntity> byEmail = repository.findByEmail(request.getEmail());
         List<Group> groups = groupService.findByNames(request.getGroupNames());
         Optional<Profile> profile = userProfileService.findByName(request.getProfileName());
@@ -166,7 +183,7 @@ public class ArchbaseAuthenticationService {
             if (businessDelegate != null) {
                 try {
                     Map<String, Object> registrationData = createRegistrationDataMap(request);
-                    String businessEntityId = businessDelegate.onUserRegistered(createdUser.toDomain(), registrationData);
+                    businessEntityId = businessDelegate.onUserRegistered(createdUser.toDomain(), registrationData);
                     log.debug("Business delegate criou entidade de negócio com ID: {} para usuário: {}",
                             businessEntityId, createdUser.getEmail());
                 } catch (Exception e) {
@@ -178,6 +195,7 @@ public class ArchbaseAuthenticationService {
         } else {
             throw new ArchbaseValidationException("Usuário já existe.");
         }
+        return businessEntityId;
     }
 
     @Transactional
@@ -201,7 +219,7 @@ public class ArchbaseAuthenticationService {
                     tenant = (String) opts.get(0)[0];
                 } else if (opts.size() > 1) {
                     // Múltiplos tenants: o frontend deve exibir o seletor de tenant.
-                    throw new ArchbaseValidationException("Selecione o tenant para efetuar login");
+                    throw new br.com.archbase.security.exception.ArchbaseTenantSelectionRequiredException();
                 }
                 // Se vazio: mantém tenant nulo (caminho existente de "usuário não encontrado").
             }
@@ -673,6 +691,13 @@ public class ArchbaseAuthenticationService {
     public void resetPassword(PasswordResetRequest request) {
         Optional<UserEntity> usuarioOptional = repository.findByEmail(request.getEmail());
         if(usuarioOptional.isEmpty()) {
+            if (preventUserEnumeration) {
+                // Mesma resposta de token errado, e a tentativa conta: "não encontrado" aqui desfazia a
+                // proteção que o envio do e-mail (sendResetPasswordEmail) já dava.
+                rateLimiter.recordFailure(ArchbaseAuthRateLimiter.key("reset", request.getEmail()));
+                log.info("Redefinição de senha para e-mail não cadastrado (resposta uniforme)");
+                throw new ArchbaseValidationException("Token de redefinição de senha inválido.");
+            }
             throw new ArchbaseValidationException(String.format("Usuário com email %s não foi encontrado.", request.getEmail()));
         }
         UserEntity user = usuarioOptional.get();
@@ -922,6 +947,17 @@ public class ArchbaseAuthenticationService {
             throw new BadCredentialsException("Conta de usuário inativa ou bloqueada");
         }
 
+        // O provedor social substitui a SENHA, não o segundo fator. Sem esta checagem, quem ativou MFA
+        // tinha o segundo fator contornado por qualquer login social com o mesmo e-mail. Mesmo desafio
+        // do login por senha; o cliente completa em POST /auth/mfa/verify.
+        if (mfaService != null && mfaService.isMfaEnabled(user)) {
+            log.debug("MFA requerido para usuário {} no login sem senha, emitindo desafio", user.getEmail());
+            return AuthenticationResponse.builder()
+                    .mfaRequired(true)
+                    .challengeToken(jwtService.generateMfaChallengeToken(user).token())
+                    .build();
+        }
+
         // Revogar tokens antigos
         revokeAllUserTokens(user);
 
@@ -997,6 +1033,11 @@ public class ArchbaseAuthenticationService {
      */
     private Map<String, Object> createRegistrationDataMap(RegisterNewUser request) {
         Map<String, Object> data = new HashMap<>();
+        // Os dados da aplicação entram primeiro: os campos do cadastro, gravados abaixo, prevalecem numa colisão
+        // de chave — o delegate não pode ler um "email" ou "isAdministrator" diferente do que foi gravado.
+        if (request.getAdditionalData() != null) {
+            data.putAll(request.getAdditionalData());
+        }
         data.put("name", request.getName());
         data.put("description", request.getDescription());
         data.put("email", request.getEmail());

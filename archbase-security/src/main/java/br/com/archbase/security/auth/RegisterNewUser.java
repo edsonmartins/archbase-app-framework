@@ -30,4 +30,17 @@ public class RegisterNewUser {
   private Boolean isAdministrator;
   private String profileName;
   private List<String> groupNames;
+  /** Dados da aplicação repassados ao {@code AuthenticationBusinessDelegate.onUserRegistered}. @since 3.5.0 */
+  private java.util.Map<String, Object> additionalData;
+
+  /** O construtor com todos os campos de antes da 3.5.0, mantido para quem o chama diretamente. */
+  public RegisterNewUser(String name, String description, String userName, String email, String password,
+                         byte[] avatar, Boolean changePasswordOnNextLogin, Boolean allowPasswordChange,
+                         Boolean allowMultipleLogins, Boolean passwordNeverExpires, Boolean accountDeactivated,
+                         Boolean accountLocked, Boolean unlimitedAccessHours, Boolean isAdministrator,
+                         String profileName, List<String> groupNames) {
+    this(name, description, userName, email, password, avatar, changePasswordOnNextLogin, allowPasswordChange,
+            allowMultipleLogins, passwordNeverExpires, accountDeactivated, accountLocked, unlimitedAccessHours,
+            isAdministrator, profileName, groupNames, null);
+  }
 }
