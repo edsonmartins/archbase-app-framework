@@ -145,6 +145,21 @@ class OidcStartupValidatorTest {
     }
 
     @Test
+    @DisplayName("back-channel com max-age ou token-lifetime fora da faixa: recusa")
+    void backchannel() {
+        recusa(com("idp", p -> {
+            p.getLogout().getBackchannel().setEnabled(true);
+            p.getLogout().getBackchannel().setMaxAge(java.time.Duration.ofHours(1));
+        }), "max-age");
+        recusa(com("idp", p -> {
+            p.getLogout().getBackchannel().setEnabled(true);
+            p.getLogout().getBackchannel().setTokenLifetime(java.time.Duration.ofDays(90));
+        }), "token-lifetime");
+        assertThatCode(() -> OidcStartupValidator.validate(com("idp", p ->
+                p.getLogout().getBackchannel().setEnabled(true)))).doesNotThrowAnyException();
+    }
+
+    @Test
     @DisplayName("id de provedor fora do formato da coluna: recusa")
     void idInvalido() {
         recusa(com("Meu IdP", p -> { }), "id deve ter");

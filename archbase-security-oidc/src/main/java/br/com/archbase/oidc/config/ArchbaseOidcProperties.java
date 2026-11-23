@@ -437,12 +437,85 @@ public class ArchbaseOidcProperties {
          */
         private String endSessionUri;
 
+        private final Backchannel backchannel = new Backchannel();
+
         public String getEndSessionUri() {
             return endSessionUri;
         }
 
         public void setEndSessionUri(String endSessionUri) {
             this.endSessionUri = endSessionUri;
+        }
+
+        public Backchannel getBackchannel() {
+            return backchannel;
+        }
+    }
+
+    /**
+     * Logout avisado pelo IdP (OIDC Back-Channel Logout 1.0): o IdP chama
+     * {@code POST /api/v1/auth/oidc/backchannel-logout} com um {@code logout_token} assinado, e os tokens daquele
+     * usuário (ou daquela sessão, pelo {@code sid}) emitidos até o aviso deixam de valer aqui.
+     */
+    public static class Backchannel {
+        /** Desligado por padrão: o endpoint recusa avisos deste provedor e nenhuma consulta extra é feita. */
+        private boolean enabled;
+        /**
+         * {@code aud} aceitos no {@code logout_token} — é o {@code client_id} da aplicação no IdP, que pode ser
+         * diferente do {@code aud} do access token. Vazio = usa {@code audiences} do provedor.
+         */
+        private List<String> audiences = new ArrayList<>();
+        /** Idade máxima do {@code logout_token} pelo {@code iat}: aviso velho é recusado. */
+        private Duration maxAge = Duration.ofMinutes(5);
+        /**
+         * Por quanto tempo o corte vale. Precisa cobrir a vida do access token mais longo que o IdP emite: depois
+         * disso o registro é apagado e um token anterior ao logout, se ainda estivesse no prazo, voltaria a valer.
+         */
+        private Duration tokenLifetime = Duration.ofHours(24);
+        /**
+         * Também revoga as sessões locais (troca de token, login por senha) dos usuários vinculados a esse
+         * {@code sub}. Só funciona com {@code claims.subject=sub}: é o único identificador que o aviso traz.
+         */
+        private boolean revokeLocalSessions = true;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public List<String> getAudiences() {
+            return audiences;
+        }
+
+        public void setAudiences(List<String> audiences) {
+            this.audiences = audiences;
+        }
+
+        public Duration getMaxAge() {
+            return maxAge;
+        }
+
+        public void setMaxAge(Duration maxAge) {
+            this.maxAge = maxAge;
+        }
+
+        public Duration getTokenLifetime() {
+            return tokenLifetime;
+        }
+
+        public void setTokenLifetime(Duration tokenLifetime) {
+            this.tokenLifetime = tokenLifetime;
+        }
+
+        public boolean isRevokeLocalSessions() {
+            return revokeLocalSessions;
+        }
+
+        public void setRevokeLocalSessions(boolean revokeLocalSessions) {
+            this.revokeLocalSessions = revokeLocalSessions;
         }
     }
 

@@ -103,6 +103,15 @@ public class ExternalIdentityStore {
                 tenantId, userId);
     }
 
+    /** Vínculos de um sujeito do provedor em todos os tenants (o aviso de logout do IdP não diz o tenant). */
+    public List<Link> findBySubject(String providerId, String subject) {
+        return jdbc.query("SELECT PROVIDER_ID, TENANT_ID, SUBJECT, USER_ID, DH_VINCULO FROM " + TABLE
+                        + " WHERE PROVIDER_ID = ? AND SUBJECT = ?",
+                (rs, i) -> new Link(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4),
+                        rs.getTimestamp(5).toInstant()),
+                providerId, subject);
+    }
+
     /** @return se havia vínculo para remover */
     public boolean unlink(String providerId, String tenantId, String subject) {
         int removed = jdbc.update("DELETE FROM " + TABLE + " WHERE PROVIDER_ID = ? AND TENANT_ID = ? AND SUBJECT = ?",

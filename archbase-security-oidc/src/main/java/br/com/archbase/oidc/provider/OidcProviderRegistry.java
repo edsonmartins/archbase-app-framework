@@ -41,12 +41,17 @@ public class OidcProviderRegistry {
     public static final String ERROR_ISSUER = "invalid_issuer";
     public static final String ERROR_AUDIENCE = "invalid_audience";
     public static final String ERROR_REQUIRED_CLAIM = "missing_required_claim";
+    public static final String ERROR_LOGOUT_TOKEN = "invalid_logout_token";
+
+    /** Membro de {@code events} que identifica um logout token (Back-Channel Logout 1.0, §2.4). */
+    public static final String BACKCHANNEL_LOGOUT_EVENT = "http://schemas.openid.net/event/backchannel-logout";
 
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(5);
 
     private final Map<String, Provider> providers;
     private final Map<String, Pattern> issuerPatterns = new ConcurrentHashMap<>();
     private final Map<String, JwtDecoder> decoders = new ConcurrentHashMap<>();
+    private final Map<String, JwtDecoder> logoutDecoders = new ConcurrentHashMap<>();
     private final Clock clock;
 
     public OidcProviderRegistry(ArchbaseOidcProperties properties, Clock clock) {
@@ -88,7 +93,69 @@ public class OidcProviderRegistry {
         return decoders.computeIfAbsent(providerId, id -> build(id, providers.get(id)));
     }
 
+    /**
+     * Decoder do {@code logout_token} do Back-Channel Logout: mesmas chaves, algoritmos e emissor do access token,
+     * mas o {@code aud} é o de {@code logout.backchannel.audiences}, os {@code required-claims} não se aplicam (são do
+     * access token) e as regras de tempo e de conteúdo são as da especificação (§2.6).
+     */
+    public JwtDecoder logoutDecoder(String providerId) {
+        return logoutDecoders.computeIfAbsent(providerId, id -> {
+            Provider p = providers.get(id);
+            NimbusJwtDecoder decoder = nimbus(p);
+            List<String> audiences = p.getLogout().getBackchannel().getAudiences() == null
+                    || p.getLogout().getBackchannel().getAudiences().isEmpty()
+                    ? p.getAudiences() : p.getLogout().getBackchannel().getAudiences();
+            decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(List.of(
+                    jwt -> validateIssuer(id, p, jwt),
+                    jwt -> validateAudience(audiences, jwt),
+                    jwt -> validateLogoutClaims(p, jwt))));
+            return decoder;
+        });
+    }
+
+    private OAuth2TokenValidatorResult validateLogoutClaims(Provider p, Jwt jwt) {
+        Instant now = clock.instant();
+        Duration skew = p.getClockSkew();
+        Instant iat = jwt.getIssuedAt();
+        if (iat == null) {
+            return fail(ERROR_LOGOUT_TOKEN, "logout_token sem iat");
+        }
+        if (iat.isAfter(now.plus(skew))) {
+            return fail(ERROR_LOGOUT_TOKEN, "logout_token emitido no futuro");
+        }
+        if (iat.isBefore(now.minus(p.getLogout().getBackchannel().getMaxAge()).minus(skew))) {
+            return fail(ERROR_LOGOUT_TOKEN, "logout_token velho demais (iat)");
+        }
+        // exp é obrigatório na versão final da especificação, mas IdPs anteriores não o emitem; o iat já limita.
+        if (jwt.getExpiresAt() != null && now.minus(skew).isAfter(jwt.getExpiresAt())) {
+            return fail(ERROR_LOGOUT_TOKEN, "logout_token expirado");
+        }
+        Object events = jwt.getClaims().get("events");
+        if (!(events instanceof Map<?, ?> map) || !(map.get(BACKCHANNEL_LOGOUT_EVENT) instanceof Map<?, ?>)) {
+            return fail(ERROR_LOGOUT_TOKEN, "logout_token sem o evento de back-channel logout");
+        }
+        // nonce proibido: é o que impede um ID token de ser usado como aviso de logout.
+        if (jwt.getClaims().containsKey("nonce")) {
+            return fail(ERROR_LOGOUT_TOKEN, "logout_token não pode ter nonce");
+        }
+        if (blankClaim(jwt, "sub") && blankClaim(jwt, "sid")) {
+            return fail(ERROR_LOGOUT_TOKEN, "logout_token sem sub nem sid");
+        }
+        return OAuth2TokenValidatorResult.success();
+    }
+
+    private static boolean blankClaim(Jwt jwt, String name) {
+        String v = jwt.getClaimAsString(name);
+        return v == null || v.isBlank();
+    }
+
     private JwtDecoder build(String id, Provider p) {
+        NimbusJwtDecoder decoder = nimbus(p);
+        decoder.setJwtValidator(validator(id, p));
+        return decoder;
+    }
+
+    private static NimbusJwtDecoder nimbus(Provider p) {
         SimpleClientHttpRequestFactory http = new SimpleClientHttpRequestFactory();
         http.setConnectTimeout(HTTP_TIMEOUT);
         http.setReadTimeout(HTTP_TIMEOUT);
@@ -106,7 +173,6 @@ public class OidcProviderRegistry {
                 // Muitos IdPs emitem typ=JWT, outros at+jwt (RFC 9068), outros nada: não é critério aqui.
                 .validateType(false)
                 .build();
-        decoder.setJwtValidator(validator(id, p));
         return decoder;
     }
 
@@ -114,7 +180,7 @@ public class OidcProviderRegistry {
         List<OAuth2TokenValidator<Jwt>> validators = new ArrayList<>();
         validators.add(this::validateTimestamps);
         validators.add(jwt -> validateIssuer(id, p, jwt));
-        validators.add(jwt -> validateAudience(p, jwt));
+        validators.add(jwt -> validateAudience(p.getAudiences(), jwt));
         validators.add(jwt -> validateRequiredClaims(p, jwt));
         return new DelegatingOAuth2TokenValidator<>(validators);
     }
@@ -152,9 +218,9 @@ public class OidcProviderRegistry {
         return OAuth2TokenValidatorResult.success();
     }
 
-    private static OAuth2TokenValidatorResult validateAudience(Provider p, Jwt jwt) {
+    private static OAuth2TokenValidatorResult validateAudience(List<String> accepted, Jwt jwt) {
         List<String> aud = jwt.getAudience();
-        if (aud != null && aud.stream().anyMatch(p.getAudiences()::contains)) {
+        if (aud != null && aud.stream().anyMatch(accepted::contains)) {
             return OAuth2TokenValidatorResult.success();
         }
         return fail(ERROR_AUDIENCE, "Token não foi emitido para esta aplicação (aud)");
