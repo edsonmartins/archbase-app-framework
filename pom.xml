@@ -84,6 +84,7 @@
         <module>archbase-architecture</module>
         <module>archbase-security</module>
         <module>archbase-controlplane</module>
+        <module>archbase-security-oidc</module>
         <module>archbase-multitenancy</module>
         <module>archbase-test-utils</module>
         <module>archbase-logging</module>
