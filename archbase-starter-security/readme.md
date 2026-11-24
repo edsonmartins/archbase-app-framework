@@ -13,18 +13,18 @@ rotina que cria as tabelas de segurança.
 
 Não há BOM do Archbase: declare a versão explícita e use a mesma em todos os módulos Archbase.
 
-## Não use sozinho
+## O que traz
 
-Este starter depende só de `archbase-security`. Os serviços, filtros e avaliadores do módulo
-(`br.com.archbase.security.*`) entram no contexto pela varredura do **`archbase-starter-core`**
-(ver [readme](../archbase-starter-core/readme.md#a-varredura-de-pacotes)), que este starter não traz. Sem ela, a
-`DefaultArchbaseSecurityConfiguration` importada aqui pede o `ArchbaseJwtAuthenticationFilter`, que é `@Component`
-e não foi registrado.
+| Dependência | Para quê |
+|---|---|
+| `archbase-security` | O módulo |
+| `archbase-starter-multitenancy` | Resolvedor de tenant do Hibernate: as entidades de segurança usam `@TenantId` e não gravam sem ele |
+| `spring-boot-starter-validation` | Implementação de EL para o Hibernate Validator; sem ela o `EntityManagerFactory` não sobe |
 
-Use o [`archbase-starter`](../archbase-starter/readme.md), ou declare `archbase-starter-core` junto, e não ponha
-`archbase.web.mvc.enabled=false`. A alternativa é a aplicação fazer por conta própria o que o starter-core faz: varrer
-`br.com.archbase.security` e registrar as entidades de `br.com.archbase.security.persistence` e os repositórios de
-`br.com.archbase.security.repository`.
+Funciona sozinho, sem o `archbase-starter-core` (desde a 3.5.0; antes os componentes de segurança só entravam pela
+varredura do core). Sem o core, a aplicação declara os próprios repositórios com `@EnableJpaRepositories`: ao
+declarar os de segurança, o starter faz o Spring Boot desistir da varredura automática de repositórios. Quem
+quer tudo pronto usa o [`archbase-starter`](../archbase-starter/readme.md).
 
 ## Auto-configuração
 
@@ -32,18 +32,19 @@ Use o [`archbase-starter`](../archbase-starter/readme.md), ou declare `archbase-
 |---|---|---|
 | `ArchbaseSecurityAutoConfiguration` | `SecurityFilterChain` no classpath e `archbase.security.enabled` (padrão `true`) | Importa `ArchbaseSecurityApplicationConfig`, `DefaultArchbaseSecurityConfiguration` (cadeia padrão; não é aplicada se houver bean `CustomSecurityConfiguration`) e `MethodSecurityConfig` (`prePostEnabled`) |
 | `ArchbaseSecuritySchemaAutoConfiguration` | `DataSource` no classpath e `archbase.security.enabled` (padrão `true`) | Importa `ArchbaseSecuritySchemaConfiguration`: compara as entidades de segurança com o banco na subida e cria o que falta. Um bean `ArchbaseSecuritySchemaInitializer` da aplicação substitui o padrão |
+| `ArchbaseSecurityComponentsAutoConfiguration` | `archbase.security.enabled` (padrão `true`) | Varre `br.com.archbase.security` (serviços, filtro JWT, avaliadores, controllers), soma `br.com.archbase.security.persistence` aos pacotes de entidade e declara os repositórios de `br.com.archbase.security.repository` — **só se** a aplicação ainda não os declarou. Varrer o mesmo pacote que a aplicação já varre não duplica beans |
+| `ArchbaseSecurityDisabledWarningAutoConfiguration` | `archbase.security.enabled=false` | Só registra um WARN na subida |
 | `ArchbaseCryptoAutoConfiguration` | nenhuma — sempre registrada | `ArchbaseCryptoService` (AES-GCM, chave em `archbase.security.crypto.key`), `ArchbaseEncryptedStringConverter`, `ArchbaseColumnReencryptor`; cada um substituível por bean próprio |
 
-### `archbase.security.enabled=false` não desliga tudo
+### `archbase.security.enabled=false`
 
-A propriedade só controla as duas primeiras auto-configurações. Continuam ativos:
+Nenhum componente do módulo é registrado — filtro, autorização, endpoints de autenticação, repositórios — e as
+propriedades obrigatórias deixam de ser exigidas. Continua ativa só a cripto (`ArchbaseCryptoAutoConfiguration`
+não tem condição). Com o Spring Security no classpath, vale a cadeia padrão do Spring Boot, que exige autenticação
+em todas as rotas; a subida registra um WARN dizendo isso.
 
-- a cripto (`ArchbaseCryptoAutoConfiguration` não tem condição);
-- tudo o que a varredura do `archbase-starter-core` encontra em `br.com.archbase.security`, inclusive as classes
-  `@Configuration` do módulo — a varredura não consulta essa propriedade.
-
-Com o `archbase-starter`, portanto, `enabled=false` não deixa a aplicação sem segurança configurada nem dispensa as
-propriedades obrigatórias.
+> Até a 3.5.0 a propriedade era ignorada com o `archbase-starter-core`: a varredura dele registrava a segurança
+> do Archbase assim mesmo. Quem tinha `false` e contava com a segurança precisa remover a linha.
 
 ## Propriedades obrigatórias
 

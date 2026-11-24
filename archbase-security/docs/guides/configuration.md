@@ -91,7 +91,7 @@ O refresh precisa ser bem maior que o access token. Valores de referência:
 
 | Propriedade | Padrão | O que faz |
 |---|---|---|
-| `archbase.security.enabled` | `true` | Liga a auto-configuração do starter (`ArchbaseSecurityApplicationConfig`, `DefaultArchbaseSecurityConfiguration`, `MethodSecurityConfig`) e a do esquema de segurança. |
+| `archbase.security.enabled` | `true` | Liga os componentes do módulo (varredura de `br.com.archbase.security`, repositórios, `ArchbaseSecurityApplicationConfig`, `DefaultArchbaseSecurityConfiguration`, `MethodSecurityConfig`) e o esquema de segurança. `false` não registra nada disso — vale a cadeia padrão do Spring Boot — e dispensa as propriedades obrigatórias. Até a 3.5.0 era ignorada com o `archbase-starter-core`. |
 | `archbase.security.public-paths.actuator` | `true` | Libera `/actuator/**`. Com `management.endpoints.web.exposure.include=*`, expõe `env`, `configprops` e `heapdump`. Em produção, desligue e libere só `/actuator/health` pela `whitelist`. |
 | `archbase.security.public-paths.registration` | `true` | Auto-cadastro anônimo em `POST /api/v1/auth/register`. Com `false`, essa rota passa a exigir autenticação; o resto de `/api/v1/auth/**` continua anônimo. |
 | `archbase.security.public-paths.swagger` | `true` | Libera `/v3/api-docs/**`, `/swagger-ui/**`, `/swagger-ui.html`, `/swagger-resources/**`, `/webjars/**` e as rotas do Swagger v2. |

@@ -21,13 +21,15 @@ Hibernate), está no [README do módulo](../archbase-multitenancy/README.md).
 ## Auto-configuração
 
 `ArchbaseMultitenancyAutoConfiguration`, ativa com `CurrentTenantIdentifierResolver` (Hibernate) no classpath e
-`archbase.multitenancy.enabled` (padrão `true`). Também anota `@EnableAsync`.
+`archbase.multitenancy.enabled` (padrão `true`). Também anota `@EnableAsync` e roda antes da auto-configuração de
+tarefas do Spring Boot (ver `archbaseTenantAwareAsyncConfigurer` abaixo).
 
 | Registra | Condição | O que é |
 |---|---|---|
+| Varredura de `br.com.archbase.multitenancy` | — | Resolvedor de tenant do Hibernate (`ArchbaseCurrentTenantIdentifierResolverImpl`), `TenantProperties` (`archbase.app.tenant.default.id`) e aspecto de empresa. O starter-core varre o mesmo pacote; os dois juntos não duplicam beans |
 | `ArchbaseTenantRequestInterceptor` | — | Interceptor MVC: lê `X-TENANT-ID` e `X-COMPANY-ID`, limpa o contexto ao fim da requisição |
 | `tenantAwareTaskDecorator` | sem bean `TaskDecorator` | `ArchbaseTenantAwareTaskDecorator`: copia tenant, empresa e (opcional) `SecurityContext` para a thread da tarefa |
-| `asyncConfig` | sem bean `AsyncConfigurer` | `AsyncConfig`: executor do `@Async` (7 a 42 threads, fila 11, prefixo `TenantAwareTaskExecutor-`) com o decorator acima |
+| `archbaseTenantAwareAsyncConfigurer` | sem bean `AsyncConfigurer` | Não escolhe executor: o `@Async` usa o que o Spring escolheria (um único `TaskExecutor`, senão o bean `taskExecutor`). Só quando o Spring cairia no fallback — com o `archbase-starter` há dois executores e nenhum se chama `taskExecutor` — entra o mesmo `SimpleAsyncTaskExecutor` (uma thread por tarefa), agora com o decorator |
 
 | Propriedade | Padrão | O que faz |
 |---|---|---|
@@ -35,22 +37,16 @@ Hibernate), está no [README do módulo](../archbase-multitenancy/README.md).
 | `archbase.app.tenant.accept-query-param` | `true` | Interceptor aceita `X-TENANT-ID`/`X-COMPANY-ID` na query string quando o cabeçalho está ausente |
 | `archbase.multitenancy.async.propagate-security-context` | `true` | Leva o usuário autenticado para dentro do `@Async` |
 
-## O que não vem deste starter
+## Sozinho
 
-O resolvedor de tenant do Hibernate (`ArchbaseCurrentTenantIdentifierResolverImpl`), o `TenantProperties`
-(`archbase.app.tenant.default.id`) e o aspecto que liga o filtro de empresa são `@Component` do
-`archbase-multitenancy`. **Nenhuma auto-configuração os registra**: eles entram pela varredura do
-[`archbase-starter-core`](../archbase-starter-core/readme.md#a-varredura-de-pacotes), que inclui
-`br.com.archbase.multitenancy`.
+Funciona sem o `archbase-starter-core` desde a 3.5.0: antes o resolvedor de tenant só entrava pela varredura do
+core, e este starter punha o tenant no contexto sem que o Hibernate tivesse quem o lesse.
 
-Consequências:
+`archbase.multitenancy.enabled=false` desliga esta auto-configuração inteira. Com o starter-core presente, o
+resolvedor e o aspecto continuam ativos pela varredura dele — as entidades com `@TenantId` não gravam sem resolvedor.
 
-- Este starter sozinho, sem o starter-core (ou sem a aplicação varrer `br.com.archbase.multitenancy`), põe o tenant
-  no contexto mas o Hibernate não tem quem o leia.
-- `archbase.multitenancy.enabled=false` desliga só o interceptor e a propagação para `@Async`. Com o starter-core
-  presente, o resolvedor e o aspecto continuam ativos.
-
-Use o [`archbase-starter`](../archbase-starter/readme.md), que traz os dois.
+> A `AsyncConfig` (executor de 7 a 42 threads, fila 11) está deprecada: nunca entrou no contexto com o
+> `archbase-starter`, porque a condição dela encontrava a própria classe e o Spring a descartava.
 
 ## Referência
 
