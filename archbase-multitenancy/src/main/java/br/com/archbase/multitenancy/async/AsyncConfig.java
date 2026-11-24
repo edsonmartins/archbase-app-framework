@@ -2,13 +2,8 @@ package br.com.archbase.multitenancy.async;
 
 import java.util.concurrent.Executor;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.beans.factory.config.BeanDefinition;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Role;
 import org.springframework.scheduling.annotation.AsyncConfigurer;
 import org.springframework.scheduling.annotation.AsyncConfigurerSupport;
-import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 /**
@@ -17,11 +12,14 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * <p>Ativada apenas se a aplicação não definir seu próprio {@link AsyncConfigurer}.
  * Para sobrescrever, basta criar uma classe {@code @Configuration} que implemente
  * {@link AsyncConfigurer} no projeto da aplicação.</p>
+ *
+ * @deprecated Nunca chegou ao contexto com o {@code archbase-starter}: registrada pela varredura, a condição
+ * {@code @ConditionalOnMissingBean(AsyncConfigurer.class)} encontra a própria classe e o Spring a descarta. O
+ * {@code @Async} sempre rodou no executor do {@code archbase-starter-core}, que a partir da 3.5.0 aplica o
+ * {@code TaskDecorator} de tenant. Sem as anotações de configuração desde a 3.5.0 — o efeito era nenhum, e a definição
+ * varrida atrapalhava o {@code ArchbaseTenantAwareAsyncConfigurer}. Mantida só por compatibilidade binária.
  */
-@Configuration
-@EnableAsync
-@Role(BeanDefinition.ROLE_INFRASTRUCTURE)
-@ConditionalOnMissingBean(AsyncConfigurer.class)
+@Deprecated(since = "3.5.0", forRemoval = true)
 public class AsyncConfig extends AsyncConfigurerSupport {
 
     /**

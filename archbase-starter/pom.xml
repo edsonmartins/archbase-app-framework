@@ -28,6 +28,17 @@
             <artifactId>archbase-starter-multitenancy</artifactId>
             <version>3.5.0</version>
         </dependency>
+        <!-- Sobe o starter completo como o consumidor o recebe, sem varrer br.com.archbase. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
 

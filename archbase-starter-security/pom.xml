@@ -18,6 +18,20 @@
             <artifactId>archbase-security</artifactId>
             <version>3.5.0</version>
         </dependency>
+        <!-- As entidades de segurança usam @TenantId: sem o resolvedor de tenant registrado pelo starter de
+             multitenancy, o Hibernate não tem como preencher o discriminador e nenhuma gravação funciona. -->
+        <dependency>
+            <groupId>br.com.archbase</groupId>
+            <artifactId>archbase-starter-multitenancy</artifactId>
+            <version>3.5.0</version>
+        </dependency>
+        <!-- Implementação de EL para o Hibernate Validator. As entidades de segurança têm restrições de validação e,
+             sem EL, o EntityManagerFactory não sobe. Com o archbase-starter ela chega pelo starter-core; declarada
+             aqui para que este starter funcione sozinho. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
         <!-- Para verificar que as auto-configurações deste starter realmente são aplicadas. Este
              módulo é só declaração: sem teste, um erro de digitação no arquivo .imports passaria
              despercebido até alguém notar, em produção, que nada foi configurado. -->
@@ -29,6 +43,12 @@
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- A aplicação real declara o próprio servidor web; o teste de subida faz o mesmo. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
