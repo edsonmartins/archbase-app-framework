@@ -70,7 +70,7 @@ dependency **and** enables them.
 | `archbase-security-oidc` | **Opt-in.** External IdP (ArchGuard, Keycloak, Entra ID, Auth0, Okta): bearer validation, token exchange, introspection, logout, back-channel logout, migration between IdPs (`archbase.security.oidc.*`) |
 | `archbase-controlplane` | **Opt-in.** Control Plane integration: session token (Ed25519/JWKS), license, entitlements, seats, restricted mode, MQTT provisioning via `TenantProvisioner`, Micrometer metrics + vmalert rules |
 | `archbase-multitenancy` | Tenant interceptor, service aspect, tenant-aware task decorator (column isolation with `@TenantId`) |
-| `archbase-query` | RSQL for JPA (`ArchbaseRSQLJPASupport`), row-level security filter |
+| `archbase-query` | RSQL for JPA (`ArchbaseRSQLJPASupport`); the row-level security classes are inert (not wired) |
 | `archbase-query-contract` | Adapter to `rsql-jpa-search` (`archbase.query.contract.enabled`) |
 | `archbase-event-driven-spec` / `archbase-event-driven` | CQRS contracts and annotations / command, query and event buses |
 | `archbase-workflow-process` | Workflow engine (`WorkFlowEngine`, `WorkFlowEngineBuilder`): sequential, parallel, conditional, repeat |
@@ -79,7 +79,7 @@ dependency **and** enables them.
 | `archbase-shared-kernel` / `archbase-value-objects` | Common value objects (CPF, CNPJ, Email, Telefone, Endereço) and converters |
 | `archbase-architecture` / `archbase-architecture-rules` | Hexagonal, layered and onion annotations / Taikai-ArchUnit rules |
 | `archbase-modular-monolith` | Module boundaries, integration events, health checks (`archbase.modulith.*`) |
-| `archbase-hypersistence` | Advanced Hibernate types (JSON, arrays, ranges), TSID, optimized repositories |
+| `archbase-hypersistence` | Hypersistence Utils dependency (JSON, arrays, ranges), SQL statement count assertions |
 | `archbase-analytics` | Audited proxy to the Cube semantic layer, saved queries (`archbase.analytics.*`) |
 | `archbase-offline-sync` | Batch sync protocol for offline clients |
 | `archbase-error-handling` | `@ControllerAdvice` with standardized error responses |
@@ -120,8 +120,11 @@ dependency **and** enables them.
    - Commands dispatched via `CommandBus`
    - Events published through `EventBus`
    - Queries handled by `QueryBus`
-   - Handlers auto-discovered via `@CommandHandler`, `@EventHandler`, `@QueryHandler`
-   - Handler discovery enabled with `@HandlerScan` on configuration classes
+   - In-memory and synchronous; no auto-configuration: the application `@Import`s `MessageBusSpringConfiguration`
+   - Handlers are classes implementing `CommandHandler` / `QueryHandler`, found by `@HandlerScan` package scan and
+     mapped with `@CommandMapping` / `@QueryMapping`; the method annotations `@CommandHandler`, `@QueryHandler`,
+     `@EventHandler` and `@EventSubscribe` are **not read**
+   - `EventBus` is not a bean: `SimpleEventBus` calls each `Subscriber` on the publishing thread
 
 5. **Workflow Engine**
    - Sequential, parallel, conditional, and repeat flows
@@ -137,9 +140,9 @@ dependency **and** enables them.
    - JSON column types for PostgreSQL (jsonb), MySQL (json), Oracle, and H2
    - PostgreSQL array types (text[], int[], uuid[], etc.)
    - PostgreSQL range types (daterange, int4range, numrange, etc.)
-   - Optimized repository methods: `persist()`, `merge()`, `update()`
    - N+1 query detection with `SQLStatementCountAssertions`
-   - TSID (Time-Sorted ID) generator
+   - `ArchbaseHypersistenceRepository` (`persist`/`merge`/`update`) is **not wired** by the framework; see
+     `archbase-hypersistence/README.md`
 
 ### Module Dependencies
 
@@ -209,20 +212,22 @@ class they apply to every method, and a method-level annotation overrides the cl
 the roles it checks belong to the application domain, not to Archbase. Without that bean the
 behaviour is controlled by `archbase.security.require-role.no-resolver-policy`.
 
-4. **Event Handling:**
+4. **Command and Query Handling** (`archbase-event-driven/README.md`):
 ```java
 @Configuration
+@Import(MessageBusSpringConfiguration.class)
 @HandlerScan(basePackages = "com.yourcompany.handlers")
 public class HandlerConfig {
 }
 
-@Component
-public class YourEventHandler {
-    @EventHandler
-    public void handle(YourDomainEvent event) {
-        // Handle event
-    }
+// Not a @Component: the bus creates a new instance per dispatch, with dependency injection
+@QueryMapping(FindOrder.class)
+public class FindOrderHandler implements QueryHandler<FindOrder, OrderDto> {
+    @Override
+    public OrderDto handle(FindOrder query) { ... }
 }
+
+OrderDto dto = queryBus.dispatch(new FindOrder("42"));
 ```
 
 5. **Specification Pattern and RSQL:**
@@ -257,17 +262,8 @@ public class ProductEntity extends TenantPersistenceEntityBase {
 }
 ```
 
-7. **Optimized Repository with Hypersistence:**
-```java
-public interface ProductRepository
-    extends ArchbaseCommonJpaRepository<ProductEntity, String, Long>,
-            ArchbaseHypersistenceRepository<ProductEntity, String> {
-}
-
-// Usage - persist() is more efficient than save() for new entities
-repository.persist(newEntity);  // No SELECT before INSERT
-repository.update(existingEntity);  // No SELECT before UPDATE
-```
+7. **Inserting without the SELECT of `save()`:** `ArchbaseHypersistenceRepository` is not wired to
+   `ArchbaseCommonJpaRepository` (no implementation path); call `EntityManager.persist` directly.
 
 ### Configuration Properties
 
@@ -427,10 +423,7 @@ archbase.rsql.max-page-size=1000
 
 # Hypersistence Utils
 archbase.hypersistence.enabled=true
-archbase.hypersistence.json.enabled=true
-archbase.hypersistence.postgresql.array-types-enabled=true
-archbase.hypersistence.postgresql.range-types-enabled=true
-archbase.hypersistence.repository.enhanced-methods-enabled=false
+# json.*, postgresql.* and repository.* are declared but have no effect (only logged at startup)
 ```
 
 ### Testing Approach
@@ -449,9 +442,9 @@ archbase.hypersistence.repository.enhanced-methods-enabled=false
    and `@Secured` are **ignored silently** and leave the endpoint protected only by the filter chain.
 3. **Entity Validation**: Domain entities (`DomainEntityBase`) implement `validate()` returning `ValidationResult`;
    JPA persistence bases do not declare it
-4. **Event Ordering**: Events are processed asynchronously; don't rely on ordering unless using saga pattern
+4. **Event Ordering**: `SimpleEventBus` delivers synchronously, on the publishing thread, with no defined order among subscribers
 5. **Repository Methods**: Prefer RSQL filters over custom queries for better API consistency
-6. **Handler Discovery**: Use `@HandlerScan` to enable auto-discovery of `@CommandHandler`, `@EventHandler`, and `@QueryHandler` annotated methods
+6. **Handler Discovery**: `@HandlerScan` finds classes implementing `CommandHandler`/`QueryHandler`; the method annotations are not read
 7. **Specification Composition**: Specifications can be composed using `and()`, `or()`, and `not()` for complex queries
 8. **Hypersistence Types**: JSON types work with all databases; Array and Range types work only with PostgreSQL. Use `@Type(JsonType.class)` with `@Column(columnDefinition = "jsonb")` for JSON columns
 9. **Optimized Persistence**: Use `persist()` for new entities and `update()` for existing ones to avoid unnecessary SELECT queries before INSERT/UPDATE

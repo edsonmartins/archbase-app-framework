@@ -65,7 +65,7 @@ As três últimas só têm efeito com `archbase.web.mvc.enabled=true`, porque s�
 e registra `br.com.archbase.security.persistence` como pacote de entidades.
 
 **Segurança não entra por aqui** desde a 3.5.0: quem registra os componentes do `archbase-security` é o
-[`archbase-starter-security`](../archbase-starter-security/readme.md), respeitando `archbase.security.enabled`. Fica
+[`archbase-starter-security`](../archbase-starter-security/README.md), respeitando `archbase.security.enabled`. Fica
 um caminho de compatibilidade para quem usa este starter com o jar `archbase-security` **sem** o starter de
 segurança: a varredura de `br.com.archbase.security` e os repositórios continuam aqui, agora também condicionados a
 `archbase.security.enabled` (e, como antes, a `archbase.web.mvc.enabled`).
@@ -89,5 +89,5 @@ lê `X-TENANT-ID` não vem: ele é do `archbase-starter-multitenancy`. Detalhes 
 ## Referência
 
 - Módulos e padrões do framework: [CLAUDE.md](../CLAUDE.md)
-- Segurança: [archbase-starter-security](../archbase-starter-security/readme.md)
+- Segurança: [archbase-starter-security](../archbase-starter-security/README.md)
 - Tenant: [archbase-multitenancy](../archbase-multitenancy/README.md)

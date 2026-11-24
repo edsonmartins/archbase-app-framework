@@ -1,0 +1,168 @@
+# archbase-modular-monolith
+
+Apoio a monólito modular: declaração de módulos com `@Module`, registro e ordem de inicialização por dependência,
+ciclo de vida, eventos de integração em memória, chamadas síncronas entre módulos por um gateway e regras ArchUnit
+de fronteira entre módulos.
+
+```xml
+<dependency>
+    <groupId>br.com.archbase</groupId>
+    <artifactId>archbase-modular-monolith</artifactId>
+    <version>3.5.0</version>
+</dependency>
+```
+
+Traz `archbase-domain-driven-design-spec`, `archbase-event-driven`, `archbase-architecture-rules` (escopo
+compile), `spring-boot-starter`, `spring-boot-starter-actuator`, `spring-boot-health`,
+`spring-boot-starter-data-jpa`, `tools.jackson.core:jackson-databind` e `com.tngtech.archunit:archunit` **1.0.1**
+(ver limitações).
+
+## Auto-configuração
+
+`ModuleAutoConfiguration`, registrada em `AutoConfiguration.imports`. Liga por padrão: basta o jar no classpath.
+
+| Propriedade | Padrão | Efeito |
+|---|---|---|
+| `archbase.modulith.enabled` | `true` | `false` desliga a auto-configuração inteira |
+| `archbase.modulith.validate-dependencies-on-startup` | `true` | Valida dependências ausentes e ciclos antes de iniciar os módulos |
+| `archbase.modulith.event-bus.thread-pool-size` | `10` | Threads do `IntegrationEventBus` |
+| `archbase.modulith.gateway.thread-pool-size` | `10` | Threads do `ModuleGateway` |
+| `archbase.modulith.health-checks-enabled` | `true` | Condição do `ModuleHealthIndicator`, que só existe se a aplicação varrer o pacote (ver abaixo) |
+| `archbase.modulith.scan-packages` | vazio | Sem efeito: não é lida |
+| `archbase.modulith.metrics-enabled` | `true` | Sem efeito: não há métricas |
+| `archbase.modulith.event-bus.use-outbox` | `true` | Sem efeito: não é lida |
+| `archbase.modulith.gateway.default-timeout-seconds` | `30` | Sem efeito: o timeout padrão é fixo em 30 s no código |
+
+Beans registrados:
+
+| Bean | Condição | Tipo |
+|---|---|---|
+| `moduleRegistry` | `@ConditionalOnMissingBean` | `DefaultModuleRegistry` |
+| `integrationEventBus` | `@ConditionalOnMissingBean` | `SimpleIntegrationEventBus("main", pool fixo, ObjectMapper)` |
+| `moduleGateway` | `@ConditionalOnMissingBean` | `SimpleModuleGateway(registry, pool fixo)` |
+| `modulithObjectMapper` | `@ConditionalOnMissingBean` (`tools.jackson.databind.ObjectMapper`) | `JsonMapper` com `findAndAddModules` |
+| `moduleDiscoveryListener` | sempre | `ModuleAutoConfiguration.ModuleDiscoveryListener` |
+
+`ModuleHealthIndicator` é um `@Component` em `br.com.archbase.modulith.spring` e **não** é registrado pela
+auto-configuração. Para ter o indicador em `/actuator/health`, a aplicação varre esse pacote ou declara o bean.
+
+`@EnableModularMonolith` só faz `@Import(ModuleAutoConfiguration.class)`. Seus atributos (`basePackages`,
+`validateDependenciesOnStartup`, `enableHealthChecks`, `enableMetrics`, `defaultCommunicationMode`) não são lidos;
+use as propriedades acima.
+
+## Módulos
+
+`@Module` (`br.com.archbase.modulith.annotations`) é meta-anotada com `@Component`: a classe precisa estar no
+component scan da aplicação. Atributos: `name` (obrigatório), `version` (`"1.0.0"`), `dependsOn` (nomes de
+módulos), `description`, `enabled` (`true`), `order` (`0`).
+
+No `ContextRefreshedEvent` do próprio contexto, `ModuleDiscoveryListener`:
+
+1. registra no `ModuleRegistry` um `ModuleDescriptor` por bean com `@Module` (nome repetido lança
+   `ModuleRegistrationException`);
+2. com `validate-dependencies-on-startup`, chama `validateDependencies()`, que lança `ModuleDependencyException`
+   para dependência não registrada ou ciclo;
+3. inicia os módulos habilitados em ordem topológica (empate: `order`, depois nome): estado `STARTING`, chama
+   `onStart(ModuleContext)` se o bean implementar `ModuleLifecycle`, estado `STARTED`. Exceção: estado `FAILED`,
+   `onError`, e `ModuleException` relançada.
+
+```java
+@Module(name = "pedidos", dependsOn = "clientes")
+public class PedidosModule implements ModuleLifecycle {
+
+    @Override
+    public void onStart(ModuleContext context) {
+        context.getIntegrationEventBus().subscribe(ClienteBloqueado.class, this::suspenderPedidos);
+        ((SimpleModuleGateway) context.getModuleGateway())
+                .registerHandler("pedidos", TotalDoCliente.class, req -> calcularTotal(req.clienteId()));
+    }
+
+    @Override
+    public boolean isHealthy() {
+        return true;
+    }
+}
+```
+
+`ModuleContext` dá acesso ao descritor, ao registry, ao gateway, ao barramento, a `getBean(...)` do
+`ApplicationContext`, a atributos (`setAttribute`/`getAttribute`) e a `isModuleAvailable(nome)`.
+
+## Eventos de integração
+
+Eventos implementam `IntegrationEvent` (`communication.contracts`, estende `Serializable`): obrigatórios
+`getAggregateId()` e `getAggregateType()`; `getEventType()` (padrão: nome simples da classe), `getOccurredAt()`,
+`getEventId()`, `getSourceModule()` e `getVersion()` têm default.
+
+```java
+public record ClienteBloqueado(String clienteId) implements IntegrationEvent {
+    public String getAggregateId() { return clienteId; }
+    public String getAggregateType() { return "cliente"; }
+}
+
+integrationEventBus.publish(new ClienteBloqueado("42"));
+```
+
+`SimpleIntegrationEventBus`:
+
+- `publish`: entrega a cada assinante do tipo **exato** do evento, cada um numa tarefa do pool. Exceção do assinante
+  é logada e descartada; quem publica não fica sabendo.
+- `publishReliably(evento, entityManager)`: faz `persist` de um `OutboxEventRecord` (tabela `outbox_event`) com o
+  JSON do evento e em seguida chama `publish`, sem esperar o commit.
+- `subscribe(tipo, handler)`, `subscribe(tipo, sourceModule, handler)`, `unsubscribe`, `unsubscribeAll`.
+
+## Gateway entre módulos
+
+`ModuleGateway.execute(modulo, request)` (timeout de 30 s), `execute(modulo, request, Duration)`,
+`executeAsync(...)`, `isModuleAvailable(nome)` (registrado, `STARTED` e habilitado) e `waitForModule(nome, Duration)`.
+O pedido implementa `ModuleRequest<R>`; o handler é `ModuleRequestHandler<T, R>`, procurado pela classe exata do
+pedido. Erros: `ModuleNotFoundException` (módulo indisponível), `ModuleRequestException` (sem handler ou falha
+verificada), `ModuleRequestTimeoutException`; `RuntimeException` do handler é relançada como está.
+
+`registerHandler` e `unregisterHandler` existem só em `SimpleModuleGateway`, não na interface.
+
+## Regras ArchUnit
+
+Pacote `br.com.archbase.modulith.rules`, métodos estáticos que devolvem `ArchRule`:
+
+- `ModuleBoundaryRules`: `modulesShouldNotHaveCyclicDependencies(padraoDeSlice)`,
+  `internalApisShouldResideInInternalPackages()`, `internalPackageClassesShouldNotBePublic()`,
+  `moduleClassesShouldBeConfigurations()`, `moduleApisShouldBeInterfaces()`, `integrationEventsShouldBeImmutable()`,
+  `modulesShouldNotAccessOtherModulesInternals(pacoteBase)` e `checkAll(classes, padrao)` (ciclos, `@InternalApi`,
+  `@ModuleApi`, imutabilidade).
+- `ModuleDependencyRules`: `moduleShouldNotDependOn`, `moduleShouldOnlyDependOn`,
+  `modulesShouldHaveAcyclicDependencies` e o builder `forModules(base).forbid(a, b).allow(a, b...).check(classes)`.
+- `IntegrationEventRules`: implementar `IntegrationEvent`, ser serializável, ser imutável, nome `*Event`, pacotes
+  permitidos.
+
+```java
+JavaClasses classes = new ClassFileImporter().importPackages("com.acme.app");
+ModuleBoundaryRules.modulesShouldNotHaveCyclicDependencies("com.acme.app.modules.(*)..").check(classes);
+```
+
+## Limitações
+
+- **ArchUnit 1.0.1 não lê Java 25.** O módulo declara `archunit` 1.0.1, e é essa versão que vai para a aplicação.
+  Ela importa zero classes de bytecode Java 25, e as regras acima falham com "failed to check any classes" (ou,
+  com `allowEmptyShould(true)`/`archRule.failOnEmptyShould=false`, passam sem examinar nada). Declare
+  `com.tngtech.archunit:archunit` 1.4.2 no projeto para usar as regras.
+- **`subscribe(tipo, sourceModule, handler)` não filtra por origem do evento:** compara `sourceModule` com o nome do
+  próprio barramento (`"main"` no bean da auto-configuração). Assinatura com qualquer outro `sourceModule` nunca
+  recebe evento.
+- **`ModuleLifecycle.onStop()` nunca é chamado**, e `getShutdownOrder()` não é usado.
+- **Módulo desabilitado derruba o health:** com `enabled = false`, o módulo fica registrado e não iniciado, e
+  `getHealth` o reporta como não saudável; o `ModuleHealthIndicator` responde `DOWN`.
+- **Outbox sem relay e com tabela disputada:** nada lê `outbox_event`. `OutboxEventRecord` é entidade aninhada em
+  `SimpleIntegrationEventBus` (precisa estar no scan de entidades) e usa a mesma tabela que o `OutboxEvent` de
+  `archbase-event-driven` mapeia pela nomenclatura padrão, com `timestamp` `Instant` lá `Long` e `id` texto.
+- `moduleClassesShouldBeConfigurations()` exige `@Configuration` ou `@Component` **diretos**: uma classe só com
+  `@Module` viola a regra, embora seja componente (conferido).
+- `modulesShouldNotAccessOtherModulesInternals(base)` proíbe dependência de qualquer `..internal..`, inclusive do
+  próprio módulo.
+- `@ModuleDependency`/`@ModuleDependencies`, `@IntegrationEvent` (`reliable`, `retentionMinutes` etc.) e
+  `@InternalApi.severity` não são lidos em tempo de execução; só `dependsOn` de `@Module` entra no grafo.
+
+## Referência
+
+- [`archbase-event-driven`](../archbase-event-driven/README.md): barramentos CQRS e o `OutboxEvent`.
+- [`archbase-architecture-rules`](../archbase-architecture-rules/README.md): regras gerais de arquitetura e a nota
+  sobre a versão do ArchUnit.

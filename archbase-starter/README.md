@@ -17,9 +17,9 @@ declarado com a versão explícita. Use a **mesma versão** em todos os módulos
 
 | Dependência | Doc |
 |---|---|
-| `archbase-starter-core` | [readme](../archbase-starter-core/readme.md) |
-| `archbase-starter-security` | [readme](../archbase-starter-security/readme.md) |
-| `archbase-starter-multitenancy` | [readme](../archbase-starter-multitenancy/readme.md) |
+| `archbase-starter-core` | [readme](../archbase-starter-core/README.md) |
+| `archbase-starter-security` | [readme](../archbase-starter-security/README.md) |
+| `archbase-starter-multitenancy` | [readme](../archbase-starter-multitenancy/README.md) |
 
 É a combinação recomendada para aplicação com login e tenant. Cada starter registra o que é seu e também funciona
 sozinho; este agregador junta os três e acrescenta o que só o core tem (registro dos repositórios da aplicação
