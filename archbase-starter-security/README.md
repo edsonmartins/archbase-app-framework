@@ -24,7 +24,7 @@ Não há BOM do Archbase: declare a versão explícita e use a mesma em todos os
 Funciona sozinho, sem o `archbase-starter-core` (desde a 3.5.0; antes os componentes de segurança só entravam pela
 varredura do core). Sem o core, a aplicação declara os próprios repositórios com `@EnableJpaRepositories`: ao
 declarar os de segurança, o starter faz o Spring Boot desistir da varredura automática de repositórios. Quem
-quer tudo pronto usa o [`archbase-starter`](../archbase-starter/readme.md).
+quer tudo pronto usa o [`archbase-starter`](../archbase-starter/README.md).
 
 ## Auto-configuração
 

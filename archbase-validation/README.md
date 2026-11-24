@@ -91,6 +91,5 @@ class KotlinValidatorBoy : AbstractValidator<Boy> {
 5. [ValidationResult](documentation/7-validation-methods.md)
 6. [PredicateBuilder](documentation/8-predicate-builder.md)
 7. [FunctionBuilder](documentation/9-function-builder.md)
-8. Examples
-   - [Samples](src/test/java/br/com/fluentvalidator/ValidatorTest.java)
-   - [Spring support samples](src/test/java/br/com/fluentvalidator/spring/ValidatorSpringTest.java)
+8. Examples: the classes shown in the guides (`Parent`, `Child`, `ValidatorParent` etc.) are not shipped in this
+   repository; the module has no tests.

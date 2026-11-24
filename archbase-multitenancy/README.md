@@ -18,8 +18,8 @@ O módulo não tem auto-configuração própria; quem o registra são os starter
 
 | Peças | Registradas por |
 |---|---|
-| Resolvedor, aspecto de empresa, `TenantProperties` | Varredura de `br.com.archbase.multitenancy`, feita pelo [`archbase-starter-multitenancy`](../archbase-starter-multitenancy/readme.md) e também pelo [`archbase-starter-core`](../archbase-starter-core/readme.md#a-varredura-de-pacotes). As duas juntas não duplicam beans |
-| Interceptor, decorator de tarefa, `ArchbaseTenantAwareAsyncConfigurer` | [`archbase-starter-multitenancy`](../archbase-starter-multitenancy/readme.md) (com `archbase.multitenancy.enabled`, padrão `true`) |
+| Resolvedor, aspecto de empresa, `TenantProperties` | Varredura de `br.com.archbase.multitenancy`, feita pelo [`archbase-starter-multitenancy`](../archbase-starter-multitenancy/README.md) e também pelo [`archbase-starter-core`](../archbase-starter-core/README.md#a-varredura-de-pacotes). As duas juntas não duplicam beans |
+| Interceptor, decorator de tarefa, `ArchbaseTenantAwareAsyncConfigurer` | [`archbase-starter-multitenancy`](../archbase-starter-multitenancy/README.md) (com `archbase.multitenancy.enabled`, padrão `true`) |
 
 O `archbase-starter-multitenancy` funciona sozinho desde a 3.5.0. `archbase.multitenancy.enabled=false` desliga o
 starter, mas com o `archbase-starter-core` presente o resolvedor e o aspecto continuam ativos pela varredura dele.

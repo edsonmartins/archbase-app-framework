@@ -50,7 +50,7 @@ repositories {
 
 Create a domain model or you can call it entity to be validated on later. For example, a Parent, Child, Boy and Girl instance is created as below.
 
-### [Parent](../src/test/java/br/com/fluentvalidator/model/Parent.java)
+### Parent
 
 ```java
 public class Parent {
@@ -98,7 +98,7 @@ public class Parent {
 }
 ```
 
-### [Child](../src/test/java/br/com/fluentvalidator/model/Child.java)
+### Child
 
 ```java
 public abstract class Child {
@@ -131,7 +131,7 @@ public abstract class Child {
 }
 ```
 
-### [Girl](../src/test/java/br/com/fluentvalidator/model/Girl.java)
+### Girl
 
 ```java
 public class Girl extends Child {
@@ -149,7 +149,7 @@ public class Girl extends Child {
 }
 ```
 
-### [Boy](../src/test/java/br/com/fluentvalidator/model/Boy.java)
+### Boy
 
 ```java
 public class Boy extends Child {

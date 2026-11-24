@@ -14,7 +14,7 @@
 - **Multi-tenancy** - Isolamento por coluna (`@TenantId`), tenant do token como fonte de verdade
 - **Segurança** - JWT, autorização em cinco portões com `@HasPermission`, MFA, token de API, trilha de auditoria
 - **IdP externo** (opt-in) - ArchGuard, Keycloak, Entra ID, Auth0, Okta via `archbase-security-oidc`
-- **Event-Driven** - CQRS com buses separados para Commands, Queries e Events
+- **Event-Driven** - barramentos em memória para comandos, consultas e eventos
 - **Query Flexível** - Suporte a RSQL para filtros dinâmicos
 - **Validação** - Framework de validação com fluent interface
 - **Workflow Engine** - Orquestração de processos de negócio
@@ -173,24 +173,24 @@ Os principais:
 
 | Módulo | Descrição |
 |--------|-----------|
-| `archbase-starter` | Agrega `starter-core`, `starter-security` e `starter-multitenancy` |
-| `archbase-starter-core` | Auto-configuração MVC, RSQL, validação e propagação de contexto em threads |
-| `archbase-starter-security` | Autenticação, autorização, esquema de segurança (`archbase.security.schema.mode`) |
-| `archbase-starter-multitenancy` | Interceptor e aspecto de tenant |
-| `archbase-domain-driven-design-spec` | Contratos DDD: `Repository`, `AggregateRoot`, bases de entidade, `ArchbaseTenantContext` |
-| `archbase-domain-driven-design` | Implementação JPA dos repositórios |
-| `archbase-query` | RSQL para JPA |
-| `archbase-security` | `@HasPermission`, core de autorização, MFA, token de API, trilha de auditoria |
+| [`archbase-starter`](archbase-starter/README.md) | Agrega `starter-core`, `starter-security` e `starter-multitenancy` |
+| [`archbase-starter-core`](archbase-starter-core/README.md) | Auto-configuração MVC, RSQL, validação e propagação de contexto em threads |
+| [`archbase-starter-security`](archbase-starter-security/README.md) | Autenticação, autorização, esquema de segurança (`archbase.security.schema.mode`) |
+| [`archbase-starter-multitenancy`](archbase-starter-multitenancy/README.md) | Interceptor e aspecto de tenant |
+| [`archbase-domain-driven-design-spec`](archbase-domain-driven-design-spec/README.md) | Contratos DDD: `Repository`, `AggregateRoot`, bases de entidade, `ArchbaseTenantContext` |
+| [`archbase-domain-driven-design`](archbase-domain-driven-design/README.md) | Implementação JPA dos repositórios |
+| [`archbase-query`](archbase-query/README.md) | RSQL para JPA |
+| [`archbase-security`](archbase-security/README.md) | `@HasPermission`, core de autorização, MFA, token de API, trilha de auditoria |
 | [`archbase-security-oidc`](archbase-security-oidc/README.md) | IdP externo (opt-in): ArchGuard, Keycloak, Entra ID, Auth0, Okta |
-| `archbase-controlplane` | Integração com o Control Plane: licença, assentos, provisionamento (opt-in) |
-| `archbase-multitenancy` | Isolamento de tenant e contexto |
-| `archbase-event-driven` | CQRS com Command/Query/Event buses |
-| `archbase-workflow-process` | Motor de workflow |
-| `archbase-plugin-manager` | Carregamento dinâmico de plugins |
-| `archbase-validation` | Validação fluente |
-| `archbase-error-handling` | Tratamento centralizado de erros |
-| `archbase-hypersistence` | Tipos JSON, array e range, repositório otimizado |
-| `archbase-analytics` | Proxy auditado para a camada semântica Cube (opt-in) |
+| [`archbase-controlplane`](archbase-controlplane/README.md) | Integração com o Control Plane: licença, assentos, provisionamento (opt-in) |
+| [`archbase-multitenancy`](archbase-multitenancy/README.md) | Isolamento de tenant e contexto |
+| [`archbase-event-driven`](archbase-event-driven/README.md) | Barramentos em memória de comando, consulta e evento |
+| [`archbase-workflow-process`](archbase-workflow-process/README.md) | Motor de workflow |
+| [`archbase-plugin-manager`](archbase-plugin-manager/README.md) | Carregamento dinâmico de plugins |
+| [`archbase-validation`](archbase-validation/README.md) | Validação fluente |
+| [`archbase-error-handling`](archbase-error-handling/README.md) | Tratamento centralizado de erros |
+| [`archbase-hypersistence`](archbase-hypersistence/README.md) | Hypersistence Utils (tipos JSON, array e range) e contagem de SQL em testes |
+| [`archbase-analytics`](archbase-analytics/README.md) | Proxy auditado para a camada semântica Cube (opt-in) |
 
 ## Arquitetura
 
@@ -210,28 +210,28 @@ public class Produto extends TenantPersistenceEntityBase {
 }
 ```
 
-### CQRS com Event Bus
+### Comandos e consultas
 
 ```java
 @Configuration
+@Import(MessageBusSpringConfiguration.class)
 @HandlerScan(basePackages = "com.minhaempresa.handlers")
 public class HandlerConfig {
 }
 
-@Component
-public class CriarProdutoHandler {
-    @CommandHandler
-    public UUID handle(CriarProdutoCommand command) {
+// Não é @Component: o barramento cria uma instância por despacho, com injeção de dependências
+@CommandMapping(CriarProdutoCommand.class)
+public class CriarProdutoHandler implements CommandHandler<CriarProdutoCommand, String> {
+    @Override
+    public String handle(CriarProdutoCommand command) {
         // Lógica do comando
         return id;
     }
-
-    @EventHandler
-    public void on(ProdutoCriadoEvent event) {
-        // Reage ao evento
-    }
 }
 ```
+
+Os barramentos são em memória e síncronos. Detalhes e limitações no
+[README do archbase-event-driven](archbase-event-driven/README.md).
 
 ### Autenticação Programática
 
