@@ -27,23 +27,13 @@ dela:**
 - [Entidades de permissão](entities/permission-entities.md) — permissão, recurso, ação
 - [Tokens](entities/token-entities.md) — access token, token de API, redefinição de senha
 
-## Keycloak — `keycloak/` (pesquisa histórica)
+## Arquivo — `archive/`
 
-[keycloak-archbase-integration-decisions.md](keycloak/keycloak-archbase-integration-decisions.md) e
-`keycloak/research/` registram uma pesquisa anterior sobre integração com Keycloak. **As decisões
-de lá não valem.** A integração com IdP externo foi implementada de outro jeito, no módulo
-`archbase-security-oidc` — ver [../../archbase-security-oidc/README.md](../../archbase-security-oidc/README.md).
-
-## Desatualizados — `architecture/` e `diagrams/`
-
-> ⚠ **`architecture/*` e `diagrams/*` estão desatualizados e serão arquivados.** Descrevem o modelo
-> anterior ao core de cinco portões, e trazem propriedades, rotas e classes que não existem mais (ou
-> nunca existiram). Não os use como referência. Em vez deles:
->
-> - autorização → [../ARQUITETURA.md](../ARQUITETURA.md)
-> - autenticação, tokens, reset de senha → [../readme-security.md](../readme-security.md)
-
-`archive/` guarda o documento original do qual esta pasta foi desmembrada.
+[`archive/`](archive/README.md) guarda documentos superados, mantidos só como registro: a descrição do
+modelo anterior ao core de cinco portões (`architecture/`, `diagrams/`), a pesquisa sobre Keycloak cujas
+decisões não foram adotadas (`keycloak/`), o levantamento que originou o core
+(`PROPOSTA_MODELO_AUTORIZACAO.md`) e a documentação antiga dos starters. **Não os use como referência.**
+O IdP externo está em [../../archbase-security-oidc/README.md](../../archbase-security-oidc/README.md).
 
 ---
 

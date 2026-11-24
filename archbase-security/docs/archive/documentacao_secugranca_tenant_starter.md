@@ -1,4 +1,15 @@
 # Índice
+
+> ### ⚠ Arquivado — não use como referência
+>
+> Documentação antiga dos starters de segurança e multi-tenancy (coordenadas `com.archbase`, propriedades que não existem).
+>
+> Em vez deste documento:
+> - autenticação: [readme-security.md](../../readme-security.md)
+> - autorização: [ARQUITETURA.md](../../ARQUITETURA.md)
+> - propriedades: [configuration.md](../guides/configuration.md)
+> - multi-tenancy: [README.md](../../../archbase-multitenancy/README.md)
+
 - [Módulo Archbase-Security](#módulo-archbase-security)
     - [Principais Funcionalidades](#principais-funcionalidades)
     - [Controle de Acesso Flexível](#controle-de-acesso-flexível)

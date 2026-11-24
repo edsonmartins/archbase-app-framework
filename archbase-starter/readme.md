@@ -1,25 +1,72 @@
+# archbase-starter
 
-# Archbase-Starter
-
-O `archbase-starter` é o módulo base que facilita a integração e configuração de todos os módulos básicos necessários para uma aplicação Spring Boot seguindo as práticas recomendadas da Archbase. Este starter inclui configurações essenciais que são comuns a todas as aplicações.
-
-## Funcionalidades Incluídas
-- Configurações básicas de Spring Boot.
-- Integração com `archbase-starter-core`, `archbase-starter-security`, e `archbase-starter-multitenancy`.
-
-## Configuração
-
-Este starter não requer configurações específicas, pois serve principalmente como um agregador de outros starters. Ele automaticamente configura seu projeto para usar os módulos Core, Security e Multitenancy, caso sejam incluídos no classpath.
-
-## Uso Básico
-
-Inclua o `archbase-starter` em seu arquivo `pom.xml` para começar a usar:
+Agregador. Não tem código próprio além de uma classe de configuração: só junta os três starters de base.
 
 ```xml
 <dependency>
-    <groupId>com.archbase</groupId>
+    <groupId>br.com.archbase</groupId>
     <artifactId>archbase-starter</artifactId>
-    <version>1.0.0</version>
+    <version>3.5.0</version>
 </dependency>
 ```
-Este starter não necessita de configurações adicionais para uso básico.
+
+Não há BOM do Archbase: o pom raiz herda do `spring-boot-starter-parent` e cada artefato `br.com.archbase` é
+declarado com a versão explícita. Use a **mesma versão** em todos os módulos Archbase da aplicação.
+
+## O que traz
+
+| Dependência | Doc |
+|---|---|
+| `archbase-starter-core` | [readme](../archbase-starter-core/readme.md) |
+| `archbase-starter-security` | [readme](../archbase-starter-security/readme.md) |
+| `archbase-starter-multitenancy` | [readme](../archbase-starter-multitenancy/readme.md) |
+
+É a combinação recomendada para aplicação com login e tenant. O `archbase-starter-security` **não funciona
+sozinho**: os beans do `archbase-security` são registrados pela varredura que o `archbase-starter-core` faz (ver
+o readme do security). Este agregador resolve isso por trazer os dois.
+
+## O que liga por padrão
+
+O `ArchbaseStarterAutoConfiguration` importa as auto-configurações dos três starters, que também são
+registradas por cada um deles. Na prática, com este starter e nenhuma propriedade de liga/desliga:
+
+| Recurso | Propriedade | Padrão |
+|---|---|---|
+| Configuração MVC, varredura de pacotes do framework, auditoria JPA | `archbase.web.mvc.enabled` | `true` |
+| Suporte RSQL | `archbase.rsql.enabled` | `true` |
+| Segurança (JWT, cadeia de filtros, segurança por método, esquema de segurança) | `archbase.security.enabled` | `true` |
+| Interceptor de tenant e propagação de contexto para `@Async` | `archbase.multitenancy.enabled` | `true` |
+
+Detalhes, e o que **não** é desligado por essas propriedades, nos readmes de cada starter.
+
+## Propriedades obrigatórias
+
+As do `archbase-security`, que não têm valor padrão — sem elas a aplicação não sobe:
+
+```properties
+archbase.security.jwt.secret-key=${JWT_SECRET}        # Base64 padrão, >= 32 bytes decodificados
+archbase.security.jwt.token-expiration=3600000        # ms
+archbase.security.jwt.refresh-expiration=604800000    # ms
+archbase.security.whitelist=                          # vazio é válido
+archbase.security.cors.allowed-origins=https://app.exemplo.com
+archbase.security.cors.allowed-methods=GET,POST,PUT,PATCH,DELETE,OPTIONS
+archbase.security.cors.allowed-headers=*
+archbase.security.cors.allow-credentials=true
+```
+
+Recomendado configurar também `archbase.app.tenant.default.id` (ver
+[archbase-multitenancy](../archbase-multitenancy/README.md#sem-tenant-no-contexto)).
+
+## O que não vem
+
+Módulos opt-in ficam fora deste starter e só são carregados se a aplicação adicionar a dependência:
+`archbase-security-oidc` ([README](../archbase-security-oidc/README.md)), `archbase-controlplane`
+([README](../archbase-controlplane/README.md)), hypersistence, flyway, analytics, offline-sync, mensageria
+(starters próprios). Lista completa de módulos no [CLAUDE.md](../CLAUDE.md).
+
+## Referência
+
+- Propriedades de segurança e tenant: [archbase-security/docs/guides/configuration.md](../archbase-security/docs/guides/configuration.md)
+- Autenticação: [archbase-security/readme-security.md](../archbase-security/readme-security.md)
+- Autorização: [archbase-security/ARQUITETURA.md](../archbase-security/ARQUITETURA.md)
+- Ligar as proteções em produção: [deployment/security-hardening.md](../deployment/security-hardening.md)

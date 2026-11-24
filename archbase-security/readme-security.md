@@ -616,7 +616,7 @@ Dois módulos opt-in implementam a SPI:
 - **`archbase-controlplane`** — token de sessão do Control Plane, licença e assentos. Ver
   [../archbase-controlplane/README.md](../archbase-controlplane/README.md).
 
-A pesquisa em `docs/keycloak/` é histórica; as decisões de lá não valem para a implementação.
+A pesquisa em `docs/archive/keycloak/` é histórica; as decisões de lá não valem para a implementação.
 
 ---
 

@@ -1,3 +1,13 @@
+> ### ⚠ Arquivado — não use como referência
+>
+> Descreve o modelo anterior ao core de cinco portões e traz propriedades, rotas e classes que não existem mais ou nunca existiram.
+>
+> Em vez deste documento:
+> - autorização: [ARQUITETURA.md](../../../ARQUITETURA.md)
+> - autenticação, tokens, senha: [readme-security.md](../../../readme-security.md)
+> - propriedades: [configuration.md](../../guides/configuration.md)
+> - multi-tenancy: [README.md](../../../../archbase-multitenancy/README.md)
+
 [← Voltar ao Índice](../README.md) | [Próximo: Sistema de Autenticação →](authentication-system.md)
 
 ---
@@ -527,8 +537,8 @@ Ver: [Fluxo de Avaliação de Permissões](../diagrams/flows.md#permission-evalu
 **Ver também**:
 - [Sistema de Autenticação](authentication-system.md) - Como usuários são autenticados
 - [Multi-Tenancy](multi-tenancy.md) - Propagação de contexto de tenant
-- [Anotação @HasPermission](../guides/annotations-and-usage.md) - Como usar em código
-- [Entidades de Permissão](../entities/permission-entities.md) - Modelo de dados
+- [Anotação @HasPermission](../../guides/annotations-and-usage.md) - Como usar em código
+- [Entidades de Permissão](../../entities/permission-entities.md) - Modelo de dados
 
 ---
 

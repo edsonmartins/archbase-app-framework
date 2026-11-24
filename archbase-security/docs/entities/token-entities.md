@@ -1,4 +1,4 @@
-[← Anterior: Sistema de Permissões](permission-entities.md) | [Voltar ao Índice](../README.md) | [Próximo: Sistema de Autenticação →](../architecture/authentication-system.md)
+[← Anterior: Sistema de Permissões](permission-entities.md) | [Voltar ao Índice](../README.md) | [Próximo: Autenticação →](../../readme-security.md)
 
 ---
 
@@ -143,4 +143,4 @@ As três não têm valor padrão: sem elas a aplicação não sobe (placeholder 
 
 ---
 
-[← Anterior: Sistema de Permissões](permission-entities.md) | [Voltar ao Índice](../README.md) | [Próximo: Sistema de Autenticação →](../architecture/authentication-system.md)
+[← Anterior: Sistema de Permissões](permission-entities.md) | [Voltar ao Índice](../README.md) | [Próximo: Autenticação →](../../readme-security.md)

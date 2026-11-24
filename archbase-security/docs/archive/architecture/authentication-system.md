@@ -1,3 +1,13 @@
+> ### ⚠ Arquivado — não use como referência
+>
+> Descreve o modelo anterior ao core de cinco portões e traz propriedades, rotas e classes que não existem mais ou nunca existiram.
+>
+> Em vez deste documento:
+> - autorização: [ARQUITETURA.md](../../../ARQUITETURA.md)
+> - autenticação, tokens, senha: [readme-security.md](../../../readme-security.md)
+> - propriedades: [configuration.md](../../guides/configuration.md)
+> - multi-tenancy: [README.md](../../../../archbase-multitenancy/README.md)
+
 [← Anterior: Sistema de Permissões](permissions-system.md) | [Voltar ao Índice](../README.md) | [Próximo: Multi-Tenancy →](multi-tenancy.md)
 
 ---
@@ -1196,8 +1206,8 @@ Cliente                  Filter                 JWT Service          Repository 
 **Ver também**:
 - [Sistema de Permissões](permissions-system.md) - Como permissões são avaliadas após autenticação
 - [Multi-Tenancy](multi-tenancy.md) - Propagação de contexto de tenant em autenticação
-- [Entidades de Segurança](../entities/security-entities.md) - Modelo de dados completo
-- [Guia de Uso](../guides/authentication-guide.md) - Exemplos práticos de implementação
+- [Entidades de Segurança](../../entities/security-entities.md) - Modelo de dados completo
+- [Guia de Uso](../../guides/authentication-guide.md) - Exemplos práticos de implementação
 
 ---
 

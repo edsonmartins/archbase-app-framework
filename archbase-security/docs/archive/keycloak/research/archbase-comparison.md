@@ -1,5 +1,13 @@
 # Análise Comparativa: Archbase vs Keycloak
 
+> ### ⚠ Arquivado — não use como referência
+>
+> Pesquisa anterior sobre integração com Keycloak. As decisões daqui não foram adotadas: o IdP externo foi implementado de outro jeito, no módulo `archbase-security-oidc`.
+>
+> Em vez deste documento:
+> - IdP externo (Keycloak, ArchGuard, Entra ID, Auth0, Okta): [README.md](../../../../../archbase-security-oidc/README.md)
+> - autorização: [ARQUITETURA.md](../../../../ARQUITETURA.md)
+
 ## Índice
 
 1. [Introdução](#introdução)
@@ -734,8 +742,8 @@ archbase:
 
 ### Documentação Archbase
 
-- [Visão Geral das Entidades](../../entities/overview.md)
-- [Sistema de Permissões](../../entities/permission-entities.md)
+- [Visão Geral das Entidades](../../../entities/overview.md)
+- [Sistema de Permissões](../../../entities/permission-entities.md)
 - [Arquitetura de Multi-Tenancy](../../architecture/multi-tenancy.md)
 - [Guias de Configuração](./configuration.md)
 

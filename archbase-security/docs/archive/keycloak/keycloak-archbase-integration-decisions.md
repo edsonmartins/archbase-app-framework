@@ -1,5 +1,13 @@
 # Decisões de Integração Keycloak-Archbase
 
+> ### ⚠ Arquivado — não use como referência
+>
+> Pesquisa anterior sobre integração com Keycloak. As decisões daqui não foram adotadas: o IdP externo foi implementado de outro jeito, no módulo `archbase-security-oidc`.
+>
+> Em vez deste documento:
+> - IdP externo (Keycloak, ArchGuard, Entra ID, Auth0, Okta): [README.md](../../../../archbase-security-oidc/README.md)
+> - autorização: [ARQUITETURA.md](../../../ARQUITETURA.md)
+
 ## Estrutura de Dados e Nomenclatura
 
 ---

@@ -1,5 +1,14 @@
 # Documentação de Entidades de Segurança e Permissões
 
+> ### ⚠ Arquivado — não use como referência
+>
+> Documento original do qual `docs/` foi desmembrado; descreve o modelo anterior ao core de cinco portões.
+>
+> Em vez deste documento:
+> - autorização: [ARQUITETURA.md](../../ARQUITETURA.md)
+> - autenticação: [readme-security.md](../../readme-security.md)
+> - entidades: [overview.md](../entities/overview.md)
+
 ## 1. Introdução e Visão Geral
 
 ### 1.1 Descrição do Módulo archbase-security
