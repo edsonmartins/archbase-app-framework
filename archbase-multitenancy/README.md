@@ -9,20 +9,20 @@ empresa dentro do tenant. Não há suporte a banco ou esquema separado por tenan
 | Interceptor | `ArchbaseTenantRequestInterceptor` | Lê `X-TENANT-ID` / `X-COMPANY-ID` da requisição para o contexto |
 | Resolvedor do Hibernate | `ArchbaseCurrentTenantIdentifierResolverImpl` | Diz ao Hibernate qual é o tenant atual |
 | Aspecto de empresa | `ArchbaseTenantServiceAspect` | Liga o filtro `companyFilter` em chamadas de repositório |
-| Tarefas assíncronas | `ArchbaseTenantAwareTaskDecorator`, `AsyncConfig` | Levam o contexto para a thread do `@Async` |
+| Tarefas assíncronas | `ArchbaseTenantAwareTaskDecorator`, `ArchbaseTenantAwareAsyncConfigurer` | Levam o contexto para a thread do `@Async` |
 | Tenant padrão | `TenantProperties` | `archbase.app.tenant.default.id` |
 
 ## Como as peças entram no contexto
 
-O módulo não tem auto-configuração própria. São dois caminhos, e uma aplicação normalmente precisa dos dois:
+O módulo não tem auto-configuração própria; quem o registra são os starters:
 
 | Peças | Registradas por |
 |---|---|
-| Resolvedor, aspecto de empresa, `TenantProperties`, `AsyncConfig` | Varredura de `br.com.archbase.multitenancy` feita pelo [`archbase-starter-core`](../archbase-starter-core/readme.md#a-varredura-de-pacotes) (com `archbase.web.mvc.enabled`, padrão `true`) |
-| Interceptor, decorator de tarefa, `AsyncConfig` | [`archbase-starter-multitenancy`](../archbase-starter-multitenancy/readme.md) (com `archbase.multitenancy.enabled`, padrão `true`) |
+| Resolvedor, aspecto de empresa, `TenantProperties` | Varredura de `br.com.archbase.multitenancy`, feita pelo [`archbase-starter-multitenancy`](../archbase-starter-multitenancy/readme.md) e também pelo [`archbase-starter-core`](../archbase-starter-core/readme.md#a-varredura-de-pacotes). As duas juntas não duplicam beans |
+| Interceptor, decorator de tarefa, `ArchbaseTenantAwareAsyncConfigurer` | [`archbase-starter-multitenancy`](../archbase-starter-multitenancy/readme.md) (com `archbase.multitenancy.enabled`, padrão `true`) |
 
-O [`archbase-starter`](../archbase-starter/readme.md) traz os dois starters. `archbase.multitenancy.enabled=false`
-não desliga o resolvedor nem o aspecto.
+O `archbase-starter-multitenancy` funciona sozinho desde a 3.5.0. `archbase.multitenancy.enabled=false` desliga o
+starter, mas com o `archbase-starter-core` presente o resolvedor e o aspecto continuam ativos pela varredura dele.
 
 ## Contexto
 
@@ -113,13 +113,17 @@ que executa e, no fim, **restaura** o que a thread tinha antes (ou limpa, se nã
 
 Onde ele é aplicado:
 
+O `archbase-starter-multitenancy` registra o decorator como bean `TaskDecorator` (`tenantAwareTaskDecorator`).
+
 | Executor | Usa o decorator? |
 |---|---|
-| `AsyncConfig` — executor do `@Async` (7 a 42 threads, fila 11), quando a aplicação não declara `AsyncConfigurer` | Sim |
-| `threadPoolTaskExecutor` do `archbase-starter-core` (bean `TaskExecutor`) | Não: é montado à mão, sem decorator |
+| Executor de fallback do `@Async` (`SimpleAsyncTaskExecutor`, uma thread por tarefa) — o caso do `archbase-starter`, que tem dois `TaskExecutor` e nenhum chamado `taskExecutor` | Sim, pelo `ArchbaseTenantAwareAsyncConfigurer` |
+| `threadPoolTaskExecutor` do `archbase-starter-core` — criado só se não houver outro `TaskExecutor` | Sim, se houver um único `TaskDecorator` |
+| `applicationTaskExecutor` do Spring Boot | Sim: o Boot aplica o `TaskDecorator` do contexto |
+| `TaskExecutor` ou `AsyncConfigurer` declarado pela aplicação | Não, a menos que a aplicação o ponha |
 
-O `archbase-starter-multitenancy` também registra o decorator como bean `TaskDecorator` (`tenantAwareTaskDecorator`),
-mas nenhum executor do Archbase o consome por injeção.
+Até a 3.5.0, com o `archbase-starter`, o `@Async` rodava sem decorator: o tenant chegava só por herança de thread e
+o usuário autenticado não chegava.
 
 Quem declara o próprio `AsyncConfigurer` ou `TaskExecutor` precisa pôr o decorator nele:
 
@@ -131,7 +135,7 @@ executor.setTaskDecorator(new ArchbaseTenantAwareTaskDecorator(true));
 
 | Propriedade | Padrão | O que faz |
 |---|---|---|
-| `archbase.multitenancy.enabled` | `true` | Liga o `archbase-starter-multitenancy` (interceptor, decorator, `AsyncConfig`) |
+| `archbase.multitenancy.enabled` | `true` | Liga o `archbase-starter-multitenancy` (varredura, interceptor, decorator, configurer do `@Async`) |
 | `archbase.multitenancy.async.propagate-security-context` | `true` | Propaga o usuário autenticado para o `@Async` |
 | `archbase.app.tenant.default.id` | — | Tenant usado sem tenant no contexto |
 | `archbase.app.tenant.fail-on-missing` | `false` | Recusa a operação sem tenant no contexto |

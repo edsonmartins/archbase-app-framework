@@ -36,9 +36,9 @@ Registrada: `ArchbaseCoreAutoConfiguration`, que importa:
 
 | Configuração | Condição | O que registra |
 |---|---|---|
-| `ArchbaseServerMvcConfiguration` | `archbase.web.mvc.enabled` (padrão `true`) e ausência de bean chamado `customWebMvcConfigurer` | `@EnableTransactionManagement`, `@EnableJpaAuditing(auditorAwareRef = "auditorAware")`, `MessageSource` (`classpath:messages`, UTF-8), `LocaleChangeInterceptor` (parâmetro `lang`), aspecto `SimpleArchbaseResourceAspect`; importa a varredura abaixo |
-| `ArchbaseComponentScanConfiguration` | `archbase.web.mvc.enabled` (padrão `true`) | Varredura de pacotes do framework; `@EntityScan` e `@EnableJpaRepositories` dos pacotes de segurança; pacotes da aplicação por propriedade |
-| `ArchbaseThreadConfiguration` | sem bean `TaskExecutor` | `threadPoolTaskExecutor`: 6 a 12 threads, daemon, prefixo `archbase-task-executor` |
+| `ArchbaseServerMvcConfiguration` | `archbase.web.mvc.enabled` (padrão `true`) e ausência de bean chamado `customWebMvcConfigurer` | `@EnableTransactionManagement`, `@EnableJpaAuditing(auditorAwareRef = "auditorAware")`, `MessageSource` (`classpath:messages`, UTF-8), `LocaleChangeInterceptor` (parâmetro `lang`), aspecto `SimpleArchbaseResourceAspect`; `auditorAware` que não atribui autor quando o `archbase-security` está ausente ou desligado (e a aplicação não declarou o seu); importa a varredura abaixo |
+| `ArchbaseComponentScanConfiguration` | `archbase.web.mvc.enabled` (padrão `true`) | Varredura de pacotes do framework; `@EntityScan` do pacote de entidades de segurança; pacotes da aplicação por propriedade |
+| `ArchbaseThreadConfiguration` | sem bean `TaskExecutor` | `threadPoolTaskExecutor`: 6 a 12 threads, daemon, prefixo `archbase-task-executor`; aplica o `TaskDecorator` do contexto, se houver um só |
 | `ArchbaseRSQLConfiguration` | `archbase.rsql.enabled` (padrão `true`) | `ArchbaseRSQLJPASupport` com os `EntityManager` do contexto |
 | `ArchbaseBeanValidateConfiguration` | sem bean `jakarta.validation.Validator` | `Validator` do Hibernate Validator com `ArchbaseMessageInterpolator` |
 
@@ -61,28 +61,20 @@ As três últimas só têm efeito com `archbase.web.mvc.enabled=true`, porque s�
 
 - `br.com.archbase.ddd.infraestructure.aspect`
 - `br.com.archbase.multitenancy`
-- `br.com.archbase.security`
-- `br.com.archbase.web.config`
 
-e registra `br.com.archbase.security.persistence` como pacote de entidades e `br.com.archbase.security.repository`
-como pacote de repositórios.
+e registra `br.com.archbase.security.persistence` como pacote de entidades.
 
-Consequências que valem saber:
-
-- **É por aqui que os beans do `archbase-security` entram no contexto.** O `archbase-starter-security` sozinho não
-  os registra. Ver [archbase-starter-security](../archbase-starter-security/readme.md).
-- **A varredura não obedece `archbase.security.enabled` nem `archbase.multitenancy.enabled`.** Com o jar
-  `archbase-security` no classpath, as classes `@Configuration`/`@Component` de `br.com.archbase.security` são
-  registradas enquanto `archbase.web.mvc.enabled` for `true`.
-- **Auditoria JPA precisa de um bean `auditorAware`.** Ele é declarado pelo `archbase-security`
-  (`ArchbaseSecurityApplicationConfig`). Usando este starter sem o security, a aplicação declara o próprio
-  `AuditorAware<String>` com esse nome.
+**Segurança não entra por aqui** desde a 3.5.0: quem registra os componentes do `archbase-security` é o
+[`archbase-starter-security`](../archbase-starter-security/readme.md), respeitando `archbase.security.enabled`. Fica
+um caminho de compatibilidade para quem usa este starter com o jar `archbase-security` **sem** o starter de
+segurança: a varredura de `br.com.archbase.security` e os repositórios continuam aqui, agora também condicionados a
+`archbase.security.enabled` (e, como antes, a `archbase.web.mvc.enabled`).
 
 ### Multitenancy já vem pela varredura
 
 Como `archbase-multitenancy` é dependência deste starter e `br.com.archbase.multitenancy` está na varredura, o
 starter-core sozinho já registra o resolvedor de tenant do Hibernate (`ArchbaseCurrentTenantIdentifierResolverImpl`),
-o `TenantProperties` (`archbase.app.tenant.default.id`), o aspecto de empresa e o `AsyncConfig`. O interceptor que
+o `TenantProperties` (`archbase.app.tenant.default.id`) e o aspecto de empresa. O interceptor que
 lê `X-TENANT-ID` não vem: ele é do `archbase-starter-multitenancy`. Detalhes em
 [archbase-multitenancy](../archbase-multitenancy/README.md).
 

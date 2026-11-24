@@ -21,9 +21,9 @@ declarado com a versão explícita. Use a **mesma versão** em todos os módulos
 | `archbase-starter-security` | [readme](../archbase-starter-security/readme.md) |
 | `archbase-starter-multitenancy` | [readme](../archbase-starter-multitenancy/readme.md) |
 
-É a combinação recomendada para aplicação com login e tenant. O `archbase-starter-security` **não funciona
-sozinho**: os beans do `archbase-security` são registrados pela varredura que o `archbase-starter-core` faz (ver
-o readme do security). Este agregador resolve isso por trazer os dois.
+É a combinação recomendada para aplicação com login e tenant. Cada starter registra o que é seu e também funciona
+sozinho; este agregador junta os três e acrescenta o que só o core tem (registro dos repositórios da aplicação
+por propriedade, configuração MVC, auditoria JPA).
 
 ## O que liga por padrão
 

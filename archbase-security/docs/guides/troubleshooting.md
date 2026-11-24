@@ -134,11 +134,13 @@ public ResponseEntity<Map<String, Object>> debugAdminStatus(@PathVariable String
 **Sintomas**: o código síncrono funciona; em `@Async` ou em tarefa de executor o tenant é nulo e as
 consultas voltam vazias ou falham.
 
-**Causa**: `ArchbaseTenantContext` é ThreadLocal. A thread do executor não herda o contexto.
+**Causa**: a thread de um pool é criada uma vez e reaproveitada; ela não recebe o contexto de quem submete
+cada tarefa (o `ArchbaseTenantContext` é herdado só por thread recém-criada).
 
-**Solução**: o `archbase-starter-multitenancy` já registra um `TaskDecorator`
-(`ArchbaseTenantAwareTaskDecorator`) e um `AsyncConfig` quando a aplicação não declara o seu
-`AsyncConfigurer`. O decorator copia tenant, empresa e, por padrão, o `SecurityContext`
+**Solução**: o `archbase-starter-multitenancy` registra um `TaskDecorator` (`ArchbaseTenantAwareTaskDecorator`),
+aplicado ao executor do `@Async` quando a aplicação não declara o seu — ver
+[archbase-multitenancy](../../../archbase-multitenancy/README.md#tarefas-assíncronas). O decorator copia tenant,
+empresa e, por padrão, o `SecurityContext`
 (`archbase.multitenancy.async.propagate-security-context=true`). O contexto do Archbase tem tenant e
 empresa — não há projeto no `ArchbaseTenantContext`.
 
