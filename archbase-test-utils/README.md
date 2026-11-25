@@ -2,7 +2,7 @@
 
 Utilitários para testes: um construtor de entidades por reflexão (`EntityBuilder`), um registro de fixtures
 (`EntityFixture`), uma anotação de usuário autenticado simulado (`@WithMockArchbaseUser`) e uma anotação
-composta de teste de integração (`@ArchbaseTest`, inutilizável na 3.5.0 — ver abaixo).
+composta de teste de integração (`@ArchbaseTest`).
 
 ```xml
 <dependency>
@@ -49,11 +49,10 @@ Cliente outro = EntityBuilder.of(Cliente.class)
         .build(() -> new Cliente("COD-1"));
 ```
 
-`EntityBuilder.withDefaults(Classe.class)` pré-preenche, quando o campo existe: `id` com um `java.util.UUID`,
-`code` com `"DEFAULT-<timestamp>"`, `version` com `0L` e `active` com `true`. Em entidades que estendem
-`PersistenceEntityBase` o `id` é `String`, e `build()` falha com `EntityBuilderException` (causa:
-`IllegalArgumentException` ao atribuir `UUID` a `String`). Nelas, use `of(...)`: o construtor de
-`PersistenceEntityBase` já gera o `id`.
+`EntityBuilder.withDefaults(Classe.class)` pré-preenche `id`, `code` (`"DEFAULT-<timestamp>"`), `version` (`0L`) e
+`active` (`true`), cada um só quando o campo existe e é do tipo certo. O `id` é um UUID novo: como texto se o campo
+for `String` (o caso de `PersistenceEntityBase`), como `java.util.UUID` se for desse tipo. Até a 3.5.0 o `id` era
+sempre `UUID`, e `build()` falhava em toda entidade com id `String`.
 
 ## `EntityFixture`
 
@@ -103,27 +102,28 @@ O que a anotação **não** faz:
 - o principal não é o `UserEntity` do `archbase-security`. Tudo que exige esse tipo trata o usuário como ausente:
   `ArchbaseCurrentUser.of(...)` devolve vazio e a avaliação de `@HasPermission` nega o acesso. Serve para
   `@PreAuthorize("hasRole(...)")` e código que só olha as autoridades;
-- `authentication.getName()` não devolve o `username`: como o principal não implementa `Principal` nem
-  `UserDetails`, o Spring usa o `toString()` do record
-  (`ArchbaseTestPrincipal[username=test@example.com, tenantId=test-tenant, ...]`). Para ler o nome, faça o cast
-  do principal para `ArchbaseTestPrincipal` e use `username()`.
+
+O principal (`ArchbaseTestPrincipal`) implementa `java.security.Principal`, então `authentication.getName()`
+devolve o `username`. Até a 3.5.0 devolvia o `toString()` do record.
 
 ## `@ArchbaseTest`
 
 Combina `@SpringBootTest` e `@ActiveProfiles("test")`, com aliases `classes`, `properties`, `value` e `profiles`.
 
-**Não funciona na 3.5.0.** `value` e `profiles` são aliases do mesmo atributo de `@ActiveProfiles` com padrões
-diferentes (`{}` e `"test"`), e o Spring recusa a anotação ao processá-la:
-`AnnotationConfigurationException: Misconfigured aliases: attribute 'profiles' ... and attribute 'value' ... must
-declare the same default value`. Qualquer classe anotada com `@ArchbaseTest` falha ao montar o contexto de
-teste, com ou sem atributos. Use diretamente:
+Os perfis padrão são `test`; `value` e `profiles` são o mesmo atributo:
 
 ```java
-@SpringBootTest
-@ActiveProfiles("test")
+@ArchbaseTest(classes = MinhaAplicacao.class, properties = "archbase.security.schema.mode=off")
 class ClienteRepositoryTest {
 }
+
+@ArchbaseTest(value = "integracao", classes = MinhaAplicacao.class)
+class ClienteIntegracaoTest {
+}
 ```
+
+Até a 3.5.0 a anotação não podia ser usada: `value` e `profiles` tinham padrões diferentes (`{}` e `"test"`) e o
+Spring recusava a anotação (`AnnotationConfigurationException: Misconfigured aliases`).
 
 ## Referência
 
