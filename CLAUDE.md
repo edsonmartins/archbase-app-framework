@@ -288,6 +288,9 @@ archbase.security.cors.allow-credentials=true
 # Chave AES do segredo MFA em repouso: Base64 de 16/24/32 bytes (openssl rand -base64 32).
 # Vazia, cifrar o segredo falha — ativar MFA não funciona.
 archbase.security.crypto.key=${ARCHBASE_CRYPTO_KEY}
+# Chave dos conversores de criptografia do archbase-shared-kernel (StringEncryptDecryptConverter etc.):
+# Base64 de 16/24/32 bytes. Sem ela, gravam com a chave fixa no código (compatibilidade) e avisam no log.
+archbase.shared.crypto.key=${ARCHBASE_SHARED_CRYPTO_KEY}
 archbase.security.mfa.issuer=Archbase
 # Validade da senha em dias (0 = sem expiração periódica)
 archbase.security.password.expiration-days=0
