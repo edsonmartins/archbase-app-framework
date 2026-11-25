@@ -27,7 +27,7 @@ Todos implementam `br.com.archbase.valueobject.ValueObject`, interface própria 
 | Classe | Pacote | Colunas (`@Column`) | Criação | Igualdade |
 |---|---|---|---|---|
 | `CPF` | `br.com.archbase.valueobject.document` | `cpf` (14) | `new CPF(s)`, `CPF.of(s)`, `CPF.ofSemValidacao(s)` | número só com dígitos |
-| `CNPJ` | `br.com.archbase.valueobject.document` | `cnpj` (18) | `new CNPJ(s)`, `CNPJ.of(s)`, `CNPJ.ofSemValidacao(s)` | número só com dígitos |
+| `CNPJ` | `br.com.archbase.valueobject.document` | `cnpj` (18) | `new CNPJ(s)`, `CNPJ.of(s)`, `CNPJ.ofSemValidacao(s)` | número sem máscara (numérico ou alfanumérico) |
 | `EmailAddress` | `br.com.archbase.valueobject.contact` | `email` (255) | `new EmailAddress(s)`, `EmailAddress.of(s)`, `EmailAddress.ofSemValidacao(s)` | endereço em minúsculas |
 | `Telefone` | `br.com.archbase.valueobject.contact` | `tipo_telefone`, `numero`, `ddd` | construtores, `of(numero, tipo)`, `celular(numero)`, `fixo(numero)` | DDD + número |
 | `Endereco` | `br.com.archbase.valueobject.address` | `logradouro`, `numero`, `complemento`, `bairro`, `cidade`, `uf`, `cep`, `pais` | `Endereco.builder()...build()`, `Endereco.deCep(cep)` | todos os campos menos `pais` |
@@ -36,17 +36,22 @@ Os construtores protegidos sem argumento existem para o JPA.
 
 ### CPF e CNPJ
 
-- O construtor público tira tudo que não é dígito e exige 11 (CPF) ou 14 (CNPJ) dígitos; senão,
-  `IllegalArgumentException`. Não confere dígito verificador.
+- O construtor público tira a máscara e exige o formato; senão, `IllegalArgumentException`. Não confere dígito
+  verificador.
+  - CPF: 11 dígitos (tudo que não é dígito é descartado).
+  - CNPJ: 12 posições de letra ou dígito seguidas de 2 dígitos. Tudo que não é letra nem dígito é descartado, e as
+    letras passam para maiúsculas.
 - `of(s)` faz o mesmo e depois chama `valido()`; se der `false`, lança `IllegalArgumentException`.
 - `ofSemValidacao(s)` é igual ao construtor.
-- `numero()` e `toString()` devolvem formatado (`XXX.XXX.XXX-XX`, `XX.XXX.XXX/XXXX-XX`); `numeroLimpo()` só dígitos.
-  No banco fica o número só com dígitos.
-- O CNPJ aceita só dígitos; o CNPJ alfanumérico não é suportado.
+- `valido()` confere os dois dígitos verificadores (módulo 11) e recusa sequências repetidas (`111.111.111-11`).
+- `numero()` e `toString()` devolvem formatado (`XXX.XXX.XXX-XX`, `XX.XXX.XXX/XXXX-XX`); `numeroLimpo()` sem
+  máscara, que é o que vai para o banco.
+- **CNPJ alfanumérico** (emitido pela Receita Federal desde julho de 2026) é aceito: `CNPJ.of("12.ABC.345/01DE-35")`.
+  Cada caractere vale o código ASCII menos 48 no cálculo; o CNPJ numérico continua igual.
 
-> **Atenção:** na 3.5.0, `valido()` calcula o primeiro dígito verificador com os pesos errados e devolve `false`
-> para CPFs e CNPJs válidos (testado com `529.982.247-25` e `11.222.333/0001-81`). Por isso `CPF.of` e `CNPJ.of`
-> recusam documentos válidos. Até a correção, use o construtor e valide o dígito por outro meio.
+Até a 3.5.0, `valido()` calculava o primeiro dígito com os pesos do segundo e `of(s)` recusava todo documento
+válido, e o CNPJ alfanumérico era recusado no construtor. Corrigido; os testes conferem o cálculo contra o
+validador do Caelum Stella (o mesmo do `archbase-validation`).
 
 ### EmailAddress
 
@@ -104,7 +109,7 @@ public class Cliente extends TenantPersistenceEntityBase {
     }
 
     public Cliente(String cpf, String email, String celular, Endereco endereco) {
-        this.cpf = new CPF(cpf);
+        this.cpf = CPF.of(cpf);
         this.email = EmailAddress.of(email);
         this.telefone = Telefone.celular(celular);
         this.endereco = endereco;

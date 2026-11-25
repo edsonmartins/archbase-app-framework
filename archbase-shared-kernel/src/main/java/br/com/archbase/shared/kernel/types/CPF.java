@@ -9,6 +9,10 @@ import javax.swing.text.MaskFormatter;
 import jakarta.validation.constraints.Size;
 import java.text.ParseException;
 
+/**
+ * CPF. {@link #instance(String)} guarda o número sem máscara e não confere os dígitos verificadores; use
+ * {@link #of(String)} para recusar CPF inválido, ou {@link #isValido()} para conferir.
+ */
 @DomainValueObject
 public class CPF  implements ValueObject {
 
@@ -22,7 +26,7 @@ public class CPF  implements ValueObject {
     }
 
     private CPF(String cpf) {
-        this.internalCpf = cpf;
+        this.internalCpf = removerMascara(cpf);
     }
 
     public static CPF instance() {
@@ -31,6 +35,24 @@ public class CPF  implements ValueObject {
 
     public static CPF instance(String cpf) {
         return new CPF(cpf);
+    }
+
+    /**
+     * CPF com os dígitos verificadores conferidos.
+     *
+     * @throws IllegalArgumentException se o CPF for inválido
+     */
+    public static CPF of(String cpf) {
+        CPF resultado = new CPF(cpf);
+        if (!resultado.isValido()) {
+            throw new IllegalArgumentException("CPF inválido");
+        }
+        return resultado;
+    }
+
+    /** Confere os dígitos verificadores. */
+    public boolean isValido() {
+        return DigitosVerificadores.cpfValido(internalCpf);
     }
 
     public String getInternalCpf() {

@@ -9,21 +9,25 @@ import jakarta.validation.constraints.Size;
 import java.util.Objects;
 
 /**
- * Value Object para CNPJ (Cadastro Nacional da Pessoa Jurídica).
+ * Value Object para CNPJ (Cadastro Nacional da Pessoa Jurídica), numérico ou alfanumérico.
+ * <p>
+ * Desde julho de 2026 a Receita Federal emite CNPJ alfanumérico: as 12 primeiras posições aceitam letras
+ * maiúsculas e dígitos, e os dois dígitos verificadores continuam numéricos. O cálculo é o mesmo módulo 11, com
+ * cada caractere valendo o seu código ASCII menos 48 (dígitos de 0 a 9, {@code A} = 17 ... {@code Z} = 42). O CNPJ
+ * numérico é um caso particular e continua válido.
  * <p>
  * Uso:
  * <pre>
  * {@code
- * CNPJ cnpj = new CNPJ("12345678000190");
- * String numero = cnpj.numero(); // "12.345.678/0001-90"
- * boolean valido = cnpj.valido();
+ * CNPJ cnpj = CNPJ.of("11.222.333/0001-81");
+ * String numero = cnpj.numero(); // "11.222.333/0001-81"
+ * CNPJ novo = CNPJ.of("12.ABC.345/01DE-35");
  * }
  * </pre>
  */
 @Embeddable
 public class CNPJ implements ValueObject {
 
-    private static final int TAMANHO = 14;
     private static final int[] PESO_CNPJ = {6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2};
 
     @NotNull
@@ -40,15 +44,16 @@ public class CNPJ implements ValueObject {
     /**
      * Construtor principal.
      *
-     * @param numero Número do CNPJ (com ou sem formatação)
+     * @param numero Número do CNPJ (com ou sem formatação; letras minúsculas são convertidas)
      */
     public CNPJ(String numero) {
         if (numero == null) {
             throw new IllegalArgumentException("CNPJ não pode ser nulo");
         }
         String numeroLimpo = limpar(numero);
-        if (!numeroLimpo.matches("\\d{14}")) {
-            throw new IllegalArgumentException("CNPJ deve conter 14 dígitos");
+        if (!numeroLimpo.matches("[0-9A-Z]{12}\\d{2}")) {
+            throw new IllegalArgumentException(
+                    "CNPJ deve conter 12 posições de letras ou dígitos e 2 dígitos verificadores");
         }
         this.numero = numeroLimpo;
     }
@@ -104,17 +109,16 @@ public class CNPJ implements ValueObject {
     public boolean valido() {
         String cnpj = numero;
 
-        // CNPJ com todos os dígitos iguais é inválido
-        if (cnpj.matches("(\\d)\\1{13}")) {
+        // CNPJ com todos os caracteres iguais é inválido
+        if (cnpj.matches("(.)\\1{13}")) {
             return false;
         }
 
-        // Calcula primeiro dígito verificador
-        int digito1 = calcularDigitoVerificador(cnpj.substring(0, 12), PESO_CNPJ);
-        // Calcula segundo dígito verificador
-        int digito2 = calcularDigitoVerificador(cnpj.substring(0, 12) + digito1, PESO_CNPJ);
+        String base = cnpj.substring(0, 12);
+        int digito1 = calcularDigitoVerificador(base);
+        int digito2 = calcularDigitoVerificador(base + digito1);
 
-        return cnpj.equals(cnpj.substring(0, 12) + digito1 + digito2);
+        return cnpj.equals(base + digito1 + digito2);
     }
 
     @Override
@@ -135,8 +139,9 @@ public class CNPJ implements ValueObject {
         return formatar(numero);
     }
 
+    /** Remove a máscara (e qualquer outro caractere que não seja letra ou dígito) e passa as letras para maiúsculas. */
     private static String limpar(String cnpj) {
-        return cnpj.replaceAll("\\D", "");
+        return cnpj.replaceAll("[^0-9A-Za-z]", "").toUpperCase(java.util.Locale.ROOT);
     }
 
     private static String formatar(String cnpj) {
@@ -150,10 +155,15 @@ public class CNPJ implements ValueObject {
                 cnpj.substring(12, 14);
     }
 
-    private static int calcularDigitoVerificador(String base, int[] peso) {
+    /**
+     * Módulo 11. Os pesos são alinhados pela direita: o primeiro dígito (12 posições) usa 5,4,3,2,9..2 e o segundo
+     * (13 posições) usa 6,5,4,3,2,9..2. Cada caractere vale {@code c - '0'}.
+     */
+    private static int calcularDigitoVerificador(String base) {
         int soma = 0;
+        int deslocamento = PESO_CNPJ.length - base.length();
         for (int i = 0; i < base.length(); i++) {
-            soma += Integer.parseInt(base.substring(i, i + 1)) * peso[i];
+            soma += (base.charAt(i) - '0') * PESO_CNPJ[i + deslocamento];
         }
         int resto = soma % 11;
         return resto < 2 ? 0 : 11 - resto;

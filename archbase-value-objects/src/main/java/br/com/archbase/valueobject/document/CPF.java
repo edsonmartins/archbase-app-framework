@@ -14,7 +14,7 @@ import java.util.Objects;
  * Uso:
  * <pre>
  * {@code
- * CPF cpf = new CPF("12345678909");
+ * CPF cpf = CPF.of("123.456.789-09");
  * String numero = cpf.numero(); // "123.456.789-09"
  * boolean valido = cpf.valido();
  * }
@@ -23,8 +23,6 @@ import java.util.Objects;
 @Embeddable
 public class CPF implements ValueObject {
 
-    private static final int TAMANHO = 11;
-    private static final int[] PESO_CPF = {11, 10, 9, 8, 7, 6, 5, 4, 3, 2};
 
     @NotNull
     @Size(min = 11, max = 14)
@@ -109,11 +107,11 @@ public class CPF implements ValueObject {
             return false;
         }
 
-        // Calcula primeiro dígito verificador
-        int digito1 = calcularDigitoVerificador(cpf.substring(0, 9), PESO_CPF);
-        int digito2 = calcularDigitoVerificador(cpf.substring(0, 9) + digito1, PESO_CPF);
+        String base = cpf.substring(0, 9);
+        int digito1 = calcularDigitoVerificador(base);
+        int digito2 = calcularDigitoVerificador(base + digito1);
 
-        return cpf.equals(cpf.substring(0, 9) + digito1 + digito2);
+        return cpf.equals(base + digito1 + digito2);
     }
 
     @Override
@@ -148,10 +146,15 @@ public class CPF implements ValueObject {
                 cpf.substring(9, 11);
     }
 
-    private static int calcularDigitoVerificador(String base, int[] peso) {
+    /**
+     * Módulo 11 com pesos decrescentes a partir de {@code tamanho + 1} até 2: 10..2 para o primeiro dígito
+     * (9 posições) e 11..2 para o segundo (10 posições).
+     */
+    private static int calcularDigitoVerificador(String base) {
         int soma = 0;
+        int peso = base.length() + 1;
         for (int i = 0; i < base.length(); i++) {
-            soma += Integer.parseInt(base.substring(i, i + 1)) * peso[i];
+            soma += (base.charAt(i) - '0') * peso--;
         }
         int resto = soma % 11;
         return resto < 2 ? 0 : 11 - resto;
