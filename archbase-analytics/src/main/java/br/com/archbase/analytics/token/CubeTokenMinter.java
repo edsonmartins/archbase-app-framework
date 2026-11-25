@@ -1,7 +1,7 @@
 package br.com.archbase.analytics.token;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;

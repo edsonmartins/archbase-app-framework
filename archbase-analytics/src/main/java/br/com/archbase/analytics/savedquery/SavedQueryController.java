@@ -2,9 +2,9 @@ package br.com.archbase.analytics.savedquery;
 
 import br.com.archbase.analytics.port.SavedQueryStorePort;
 import br.com.archbase.analytics.port.SavedQueryStorePort.SavedQuery;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -92,10 +92,10 @@ public class SavedQueryController {
         if (user == null) {
             return ResponseEntity.status(401).build();
         }
-        String id = body.hasNonNull("id") ? body.get("id").asText() : null;
+        String id = body.hasNonNull("id") ? body.get("id").asString() : null;
         JsonNode meta = body.path("meta");
-        String name = meta.path("name").asText("Consulta sem nome");
-        String scope = meta.path("scope").asText("private");
+        String name = meta.path("name").asString("Consulta sem nome");
+        String scope = meta.path("scope").asString("private");
         if (!SCOPES.contains(scope)) {
             scope = "private";
         }
