@@ -3,6 +3,7 @@ package br.com.archbase.ddd.infraestructure.service;
 
 import br.com.archbase.ddd.domain.contracts.Repository;
 import br.com.archbase.ddd.infraestructure.exceptions.ArchbaseServiceException;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.MessageSource;
@@ -21,9 +22,16 @@ public abstract class SimpleArchbaseCommandService<T, ID extends Serializable, N
 
     @Autowired
     private MessageSource messageSource;
-    @Autowired
+    /**
+     * O {@code validator} do Archbase ({@code archbase-starter-core}), quando registrado. Com o Spring Boot 4 o
+     * {@code defaultValidator} do Boot costuma vir antes e o do Archbase não é criado; até a 3.5.0 a injeção exigia
+     * este nome e a aplicação não subia. Sem ele, vale o {@code Validator} do contexto.
+     */
+    @Autowired(required = false)
     @Qualifier("validator")
     private Validator validator;
+    @Autowired
+    private ObjectProvider<Validator> validadores;
 
 
     @Autowired
@@ -36,15 +44,15 @@ public abstract class SimpleArchbaseCommandService<T, ID extends Serializable, N
     }
 
     /**
-     * Insere ou atualiza um objeto.
+     * Valida e insere ou atualiza um objeto.
      *
      * @param object Objeto a ser salvo
      * @return Objeto salvo
-     * @throws Exception
+     * @throws jakarta.validation.ConstraintViolationException se houver violação; nada é gravado
      */
     @Transactional(rollbackFor = Throwable.class, propagation = Propagation.REQUIRED, readOnly = false)
     public T save(T object) {
-        validator.validate(object);
+        verificarRestricoes(object);
         return getRepository().save(object);
     }
 
@@ -52,12 +60,11 @@ public abstract class SimpleArchbaseCommandService<T, ID extends Serializable, N
      * Valida um objeto.
      *
      * @param object Objeto a ser validado
-     * @return Objeto validado
-     * @throws Exception
+     * @throws jakarta.validation.ConstraintViolationException se houver violação
      */
     @Transactional(rollbackFor = Throwable.class, propagation = Propagation.REQUIRED, readOnly = true)
     public void validate(T object) {
-        validator.validate(object);
+        verificarRestricoes(object);
     }
 
     /**
@@ -65,12 +72,24 @@ public abstract class SimpleArchbaseCommandService<T, ID extends Serializable, N
      *
      * @param object Objeto a ser validado
      * @param groups Grupo de validação
-     * @return Objeto validado
-     * @throws Exception
+     * @throws jakarta.validation.ConstraintViolationException se houver violação
      */
     @Transactional(rollbackFor = Throwable.class, propagation = Propagation.REQUIRED, readOnly = true)
     public void validateGroup(T object, Class<?>... groups) {
-        validator.validate(object, groups);
+        verificarRestricoes(object, groups);
+    }
+
+    /**
+     * Confere as restrições de Bean Validation do objeto. Chamado por {@code save}, {@code validate} e
+     * {@code validateGroup}.
+     *
+     * <p>Até a 3.5.0 o resultado era descartado e nada era recusado. Uma subclasse que dependa disso pode
+     * sobrescrever este método.
+     *
+     * @throws jakarta.validation.ConstraintViolationException se houver violação
+     */
+    protected void verificarRestricoes(T object, Class<?>... groups) {
+        RestricoesDoObjeto.exigir(RestricoesDoObjeto.escolher(validator, validadores), object, groups);
     }
 
     /**

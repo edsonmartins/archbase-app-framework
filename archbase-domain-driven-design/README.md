@@ -87,8 +87,13 @@ Classes abstratas; a aplicação estende e implementa `getRepository()` (e `getS
 
 Cuidados:
 
-- **`save`, `validate` e `validateGroup` não validam.** Chamam `validator.validate(objeto)` e descartam o resultado:
-  objeto inválido é gravado sem erro. Valide antes, ou sobrescreva o método.
+- `save`, `validate` e `validateGroup` conferem as restrições de Bean Validation e, se houver violação, lançam
+  `jakarta.validation.ConstraintViolationException` sem chamar o repositório. Com o `archbase-error-handling`, a
+  resposta é 400 com um erro por campo. O ponto de extensão é `verificarRestricoes(objeto, grupos)`.
+- O validator usado é o bean `validator` do `archbase-starter-core`, se existir; senão, o `Validator` do contexto
+  (no Spring Boot 4, em geral o `defaultValidator` do Boot).
+- Até a 3.5.0 o resultado da validação era descartado (objeto inválido era gravado) e a injeção exigia o bean
+  `validator`, que no Spring Boot 4 costuma não existir: um service que estendesse estas classes não subia.
 - Os controllers não têm `@HasPermission`: ficam protegidos só pela cadeia de filtros (autenticado). Para exigir
   permissão, sobrescreva os métodos na sua classe e anote-os.
 - `GET /{id}` converte o texto do caminho para `ID` com um cast sem verificação: só funciona com `ID = String`. Sem

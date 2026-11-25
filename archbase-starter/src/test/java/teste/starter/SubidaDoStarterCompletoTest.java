@@ -192,6 +192,11 @@ class SubidaDoStarterCompletoTest {
                 "--archbase.security.cors.allowed-methods=*",
                 "--archbase.security.cors.allowed-headers=*",
                 "--archbase.security.cors.allow-credentials=false"));
+        // Um extra com a mesma chave substitui o padrão (repetida, a propriedade viraria lista).
+        for (String extra : extras) {
+            String chave = extra.substring(0, extra.indexOf('=') + 1);
+            args.removeIf(arg -> arg.startsWith(chave));
+        }
         args.addAll(List.of(extras));
         return new SpringApplication(app).run(args.toArray(String[]::new));
     }

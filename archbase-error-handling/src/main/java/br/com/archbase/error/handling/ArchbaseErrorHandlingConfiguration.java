@@ -45,6 +45,12 @@ public class ArchbaseErrorHandlingConfiguration {
     }
 
     @Bean
+    @ConditionalOnClass(name = "jakarta.validation.ConstraintViolationException")
+    public BeanValidationArchbaseApiExceptionHandler beanValidationApiExceptionHandler(ArchbaseErrorHandlingProperties properties) {
+        return new BeanValidationArchbaseApiExceptionHandler(properties);
+    }
+
+    @Bean
     @ConditionalOnClass(name = "org.springframework.security.access.AccessDeniedException")
     public SpringSecurityArchbaseApiExceptionHandler springSecurityApiExceptionHandler(ArchbaseErrorHandlingProperties properties) {
         return new SpringSecurityArchbaseApiExceptionHandler(properties);
