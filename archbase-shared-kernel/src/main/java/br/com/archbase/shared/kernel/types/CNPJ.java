@@ -5,9 +5,14 @@ import br.com.archbase.ddd.domain.contracts.ValueObject;
 import jakarta.validation.constraints.Size;
 import org.apache.commons.lang3.StringUtils;
 
-import javax.swing.text.MaskFormatter;
-import java.text.ParseException;
 
+/**
+ * CNPJ, numérico ou alfanumérico (emitido pela Receita Federal desde julho de 2026).
+ * <p>
+ * {@link #instance(String)} e {@link #setInternalCnpj(String)} tiram a máscara, passam as letras para maiúsculas
+ * e exigem 14 caracteres, mas não conferem os dígitos verificadores; use {@link #of(String)} para recusar CNPJ
+ * inválido, ou {@link #isValido()} para conferir.
+ */
 @DomainValueObject
 public class CNPJ  implements ValueObject {
 
@@ -20,6 +25,7 @@ public class CNPJ  implements ValueObject {
     }
 
     private CNPJ(String cnpj) {
+        cnpj = removerMascara(cnpj);
         if (validarCNPJ(cnpj)) {
             this.internalCnpj = cnpj;
         } else {
@@ -33,6 +39,24 @@ public class CNPJ  implements ValueObject {
 
     public static CNPJ instance(String cnpj) {
         return new CNPJ(cnpj);
+    }
+
+    /**
+     * CNPJ com os dígitos verificadores conferidos.
+     *
+     * @throws IllegalArgumentException se o CNPJ for inválido
+     */
+    public static CNPJ of(String cnpj) {
+        CNPJ resultado = new CNPJ(cnpj);
+        if (!resultado.isValido()) {
+            throw new IllegalArgumentException("CNPJ inválido");
+        }
+        return resultado;
+    }
+
+    /** Confere os dígitos verificadores (CNPJ numérico ou alfanumérico). */
+    public boolean isValido() {
+        return DigitosVerificadores.cnpjValido(internalCnpj);
     }
 
     public String getInternalCnpj() {
@@ -52,14 +76,12 @@ public class CNPJ  implements ValueObject {
         return aplicarMascaraCnpj();
     }
 
+    /**
+     * Só o tamanho, como sempre foi: conferir os dígitos aqui passaria a recusar valores que hoje são aceitos.
+     * Os dígitos são conferidos por {@link #of(String)} e {@link #isValido()}.
+     */
     private boolean validarCNPJ(String cnpj) {
-        if (cnpj == null || cnpj.length() != 14) {
-            return false;
-        }
-        // Implemente a lógica de validação do CNPJ aqui, incluindo os cálculos dos dígitos verificadores
-        // Retorna true se o CNPJ for válido, caso contrário, retorna false
-        // Você pode encontrar algoritmos de validação do CNPJ disponíveis na web
-        return true; // Substitua por sua lógica de validação real
+        return cnpj != null && cnpj.length() == 14;
     }
 
     private String aplicarMascaraCnpj() {
@@ -67,10 +89,14 @@ public class CNPJ  implements ValueObject {
             if (StringUtils.isBlank(internalCnpj)) {
                 return null;
             }
-            MaskFormatter mf = new MaskFormatter(MASCARA);
-            mf.setValueContainsLiteralCharacters(false);
-            return mf.valueToString(internalCnpj);
-        } catch (NullPointerException | ParseException ex) {
+            // MaskFormatter com '#' só aceita dígito; o CNPJ alfanumérico é formatado à mão.
+            if (internalCnpj.length() != 14) {
+                return null;
+            }
+            return internalCnpj.substring(0, 2) + "." + internalCnpj.substring(2, 5) + "."
+                    + internalCnpj.substring(5, 8) + "/" + internalCnpj.substring(8, 12) + "-"
+                    + internalCnpj.substring(12, 14);
+        } catch (NullPointerException ex) {
             return null;
         }
     }
@@ -84,7 +110,7 @@ public class CNPJ  implements ValueObject {
         cnpjSemPontos = cnpjSemPontos.replace("/", "");
         cnpjSemPontos = cnpjSemPontos.replace("-", "");
         cnpjSemPontos = cnpjSemPontos.replace(" ", "");
-        return cnpjSemPontos;
+        return cnpjSemPontos.toUpperCase(java.util.Locale.ROOT);
     }
 }
 

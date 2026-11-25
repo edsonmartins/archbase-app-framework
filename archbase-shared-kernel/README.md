@@ -102,8 +102,8 @@ levam `@DomainValueObject`, mas **não** são `@Embeddable` e não têm converso
 
 | Tipo | O que realmente valida |
 |---|---|
-| `CPF` | Nada. `instance(s)` guarda o texto como veio; `setInternalCpf` tira `.`, `-` e espaço |
-| `CNPJ` | Só o tamanho: exige exatamente 14 caracteres. `instance("11.222.333/0001-81")` lança `IllegalArgumentException`, porque a máscara não é removida antes da checagem (`setInternalCnpj` remove) |
+| `CPF` | `of(s)` confere os dígitos verificadores e lança `IllegalArgumentException` se forem inválidos; `isValido()` confere sem lançar. `instance(s)` e `setInternalCpf` só tiram `.`, `-` e espaço, sem conferir |
+| `CNPJ` | `of(s)` confere os dígitos verificadores (numérico ou alfanumérico); `isValido()` confere sem lançar. `instance(s)` e `setInternalCnpj` tiram a máscara, passam letras para maiúsculas e exigem 14 caracteres, sem conferir os dígitos |
 | `Email` | Nada |
 | `CreditCard` | Nada |
 | `PhoneNumber` | Aceita dígitos, espaço, `(`, `)`, `-` e `.`; exige ao menos um dígito |
@@ -113,8 +113,13 @@ levam `@DomainValueObject`, mas **não** são `@Embeddable` e não têm converso
 
 `DayOfMonth`, `Month`, `Year`, `WeekOfMonth` e `WeekOfYear` são interfaces vazias.
 
-Para CPF, CNPJ, e-mail e telefone com validação, veja o [`archbase-value-objects`](../archbase-value-objects/README.md)
-(leia lá a nota sobre o dígito verificador) ou os validadores do [`archbase-validation`](../archbase-validation/README.md).
+`instance` não passou a conferir os dígitos para não recusar valores que já eram aceitos. Até a 3.5.0,
+`CPF.instance` guardava o texto com máscara (e `getCpfFormadado()` devolvia `null`), e `CNPJ.instance` recusava CNPJ
+formatado.
+
+Para e-mail e telefone com validação, e CPF/CNPJ como `@Embeddable`, veja o
+[`archbase-value-objects`](../archbase-value-objects/README.md) ou os validadores do
+[`archbase-validation`](../archbase-validation/README.md).
 
 ### Validação de regras de negócio (`br.com.archbase.shared.ddd`)
 
