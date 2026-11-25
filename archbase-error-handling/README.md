@@ -30,6 +30,7 @@ Dependências de compilação: `spring-orm`, `spring-security-core` e `jackson-a
 | `defaultHandler` | `SimpleFallbackApiExceptionHandler` (`FallbackApiExceptionHandler`) | — |
 | `typeMismatchApiExceptionHandler` | `TypeMismatchArchbaseApiExceptionHandler` | — |
 | `springValidationApiExceptionHandler` | `SpringValidationArchbaseApiExceptionHandler` | — |
+| `beanValidationApiExceptionHandler` | `BeanValidationArchbaseApiExceptionHandler` | classe `jakarta.validation.ConstraintViolationException` presente |
 | `springSecurityApiExceptionHandler` | `SpringSecurityArchbaseApiExceptionHandler` | classe `AccessDeniedException` presente |
 | `objectOptimisticLockingFailureApiExceptionHandler` | `ObjectOptimisticLockingFailureArchbaseApiExceptionHandler` | classe `ObjectOptimisticLockingFailureException` presente |
 
@@ -58,6 +59,7 @@ anotadas com `@RestController` (`@ControllerAdvice(annotations = RestController.
 |---|---|---|---|
 | Validação | `MethodArgumentNotValidException` | 400 | `fieldErrors`, `globalErrors` |
 | Validação | `HttpMessageNotReadableException` | 400 | — |
+| Bean Validation | `ConstraintViolationException`, também quando é a causa (até 10 níveis) de outra exceção, como a `TransactionSystemException` do commit | 400 | `fieldErrors` (o valor recusado só quando é simples: texto, número, booleano, enum, data) |
 | Tipo | `TypeMismatchException` e subclasses (`MethodArgumentTypeMismatchException`) | 400 | `property`, `rejectedValue`, `expectedType` |
 | Segurança | `AccessDeniedException` | 403 | — |
 | Segurança | `AuthenticationCredentialsNotFoundException`, `InsufficientAuthenticationException` | 401 | — |
