@@ -395,6 +395,11 @@
                             <publishingServerId>central</publishingServerId>
                             <tokenAuth>true</tokenAuth>
                             <autoPublish>true</autoPublish>
+                            <!-- Só MD5 e SHA1, os que o Central exige. O padrão (all) acrescenta SHA256 e
+                                 SHA512 a cada arquivo e quase dobra os arquivos do release, que contam para o
+                                 limite mensal de arquivos da organização (o 3.5.0 foi bloqueado por ele em
+                                 24/11/2026). -->
+                            <checksums>required</checksums>
                         </configuration>
                     </plugin>
                 </plugins>
