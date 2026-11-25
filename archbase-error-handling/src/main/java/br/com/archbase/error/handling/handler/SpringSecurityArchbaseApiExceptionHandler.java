@@ -36,16 +36,46 @@ public class SpringSecurityArchbaseApiExceptionHandler extends AbstractArchbaseA
         super(properties);
     }
 
+    /**
+     * Aceita as classes mapeadas e as subclasses delas.
+     *
+     * <p>Até a 3.5.0 a comparação era pela classe exata. A negação de {@code @HasPermission} — e de qualquer
+     * segurança de método do Spring Security 7 — lança {@code AuthorizationDeniedException}, subclasse de
+     * {@link AccessDeniedException}, e caía no tratamento genérico: 500 em vez de 403.
+     */
     @Override
     public boolean canHandle(Throwable exception) {
-        return EXCEPTION_TO_STATUS_MAPPING.containsKey(exception.getClass());
+        return classeMapeada(exception) != null;
     }
 
     @Override
     public ArchbaseApiErrorResponse handle(Throwable exception) {
-        HttpStatus httpStatus = EXCEPTION_TO_STATUS_MAPPING.getOrDefault(exception.getClass(), INTERNAL_SERVER_ERROR);
+        Class<?> mapeada = classeMapeada(exception);
+        HttpStatus httpStatus = mapeada == null ? INTERNAL_SERVER_ERROR : EXCEPTION_TO_STATUS_MAPPING.get(mapeada);
         return new ArchbaseApiErrorResponse(httpStatus,
-                getErrorCode(exception),
+                codigo(exception, mapeada),
                 exception.getMessage());
+    }
+
+    /**
+     * O código configurado para a própria classe, se houver; senão, o da classe mapeada (uma
+     * {@code AuthorizationDeniedException} sai como {@code ACCESS_DENIED}, como a {@code AccessDeniedException}).
+     */
+    private String codigo(Throwable exception, Class<?> mapeada) {
+        String propria = exception.getClass().getName();
+        if (mapeada == null || mapeada == exception.getClass() || hasConfiguredOverrideForCode(propria)) {
+            return getErrorCode(exception);
+        }
+        return replaceCodeWithConfiguredOverrideIfPresent(mapeada.getName());
+    }
+
+    /** A classe mapeada mais próxima na hierarquia da exceção, ou {@code null}. */
+    private static Class<?> classeMapeada(Throwable exception) {
+        for (Class<?> tipo = exception.getClass(); tipo != null && tipo != Throwable.class; tipo = tipo.getSuperclass()) {
+            if (EXCEPTION_TO_STATUS_MAPPING.containsKey(tipo)) {
+                return tipo;
+            }
+        }
+        return null;
     }
 }

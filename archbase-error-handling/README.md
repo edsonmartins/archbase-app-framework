@@ -61,8 +61,8 @@ anotadas com `@RestController` (`@ControllerAdvice(annotations = RestController.
 | Validação | `HttpMessageNotReadableException` | 400 | — |
 | Bean Validation | `ConstraintViolationException`, também quando é a causa (até 10 níveis) de outra exceção, como a `TransactionSystemException` do commit | 400 | `fieldErrors` (o valor recusado só quando é simples: texto, número, booleano, enum, data) |
 | Tipo | `TypeMismatchException` e subclasses (`MethodArgumentTypeMismatchException`) | 400 | `property`, `rejectedValue`, `expectedType` |
-| Segurança | `AccessDeniedException` | 403 | — |
-| Segurança | `AuthenticationCredentialsNotFoundException`, `InsufficientAuthenticationException` | 401 | — |
+| Segurança | `AccessDeniedException` e subclasses, como a `AuthorizationDeniedException` da negação de `@HasPermission` (código `ACCESS_DENIED`) | 403 | — |
+| Segurança | `AuthenticationCredentialsNotFoundException`, `InsufficientAuthenticationException` (e subclasses, como em toda esta tabela de segurança) | 401 | — |
 | Segurança | `AuthenticationServiceException` | 500 | — |
 | Segurança | `AccountExpiredException`, `BadCredentialsException`, `UsernameNotFoundException`, `LockedException`, `DisabledException` | 400 | — |
 | Lock otimista | `ObjectOptimisticLockingFailureException` | 409 | `identifier`, `persistentClassName` |
@@ -155,10 +155,6 @@ contexto não sobe.
   500: `ResponseStatusException`, as exceções do Spring MVC que não estão na tabela acima (por exemplo
   `MissingServletRequestParameterException`, `HandlerMethodValidationException`) e `ArchbaseRuntimeException`, cujo
   `getStatusCode()` e `getCode()` o módulo não lê.
-- **O handler de segurança compara a classe exata** (`getClass()`), não aceita subclasses. A
-  `AuthorizationDeniedException` do Spring Security 7, subclasse de `AccessDeniedException` lançada pela segurança de
-  método quando o acesso é negado, não está na lista e, pelo código, cai no fallback: 500 com
-  `code=org.springframework.security.authorization.AuthorizationDeniedException`.
 - A `message` é `getMessage()` da exceção, inclusive em 500: mensagens internas (SQL, nomes de classes, caminhos) vão
   para o cliente.
 - O log é sempre em ERROR, inclusive para erros de validação 400.
