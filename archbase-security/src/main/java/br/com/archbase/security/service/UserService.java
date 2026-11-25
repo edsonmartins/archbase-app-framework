@@ -393,7 +393,12 @@ public class UserService implements UserUseCase, FindDataWithFilterQuery<String,
         return userDto;
     }
 
+    // @Transactional é obrigatório aqui, e não só pela atomicidade: findById(id) é autochamada,
+    // passa por fora do proxy, e o @Transactional(readOnly = true) dele não vale. Sem transação, o
+    // UserEntity.toDto() lê a coleção lazy `groups` com a sessão já fechada e a remoção responde 500
+    // (LazyInitializationException) em toda aplicação com spring.jpa.open-in-view=false.
     @Override
+    @Transactional
     public void removeUser(String id) {
         UserDto userDto = findById(id);
         if (userDto==null){
