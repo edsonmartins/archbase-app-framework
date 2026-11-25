@@ -107,9 +107,23 @@ Cuidados:
 `infraestructure.persistence.jpa.specification` os conversores para `Predicate` (`SpecificationTranslator`,
 `SpecificationTranslatorFactoryImpl`).
 
-> **Na 3.5.0 `matching`, `howMany` e `containsAny` não funcionam.** O repositório usa um `SpecificationTranslator`
-> que só é atribuído por `setTranslator(...)`, e nada no framework o chama: as três chamadas lançam
-> `NullPointerException`. Use `Specifications.findAllSatisfying` em memória ou RSQL / `Specification` do JPA.
+`matching`, `howMany` e `containsAny` usam o `TradutorPadrao` (os conversores de igualdade, diferença, `like`,
+`not like`, `in`, `not in`, `>`, `>=`, `<`, `<=`, `between`, `and`, `or` e `not`). Para conversores próprios, monte um
+tradutor com `SpecificationTranslatorFactoryImpl.createWithAnnotatedConverters(pacote)` e passe-o ao repositório com
+`setTranslator`. A propriedade é o nome do atributo da entidade, sem navegação (`cliente.nome` não funciona).
+
+```java
+List<Cliente> ativos = repositorio.matching(
+        new EqualityArchbaseSpecification<Cliente>("status", Status.ATIVO)
+                .and(new GreaterThanOrEqualArchbaseSpecification<>("criadoEm", inicio)));
+```
+
+Até a 3.5.0 as três chamadas lançavam `NullPointerException` (o tradutor só era atribuído por `setTranslator`, que
+nada chamava), e por trás disso a tradução estava errada: igualdade virava `not like`, `in` virava `not in`, `>`
+virava `>=`, `<` virava `<=`, e as comparações convertiam o valor em texto.
+
+A avaliação **em memória** (`isSatisfiedBy`) de `LikeArchbaseSpecification` e `NotLikeArchbaseSpecification` não
+segue o `like` do banco: testa se o padrão contém o valor, e as duas dão o mesmo resultado. Use-as só em consulta.
 
 ## Identificadores tipados no JSON
 

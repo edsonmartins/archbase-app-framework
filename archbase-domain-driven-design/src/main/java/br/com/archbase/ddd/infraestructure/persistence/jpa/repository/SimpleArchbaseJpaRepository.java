@@ -5,6 +5,7 @@ import br.com.archbase.ddd.domain.contracts.Identifier;
 import br.com.archbase.ddd.domain.contracts.InsideAssociation;
 import br.com.archbase.ddd.domain.specification.ArchbaseSpecification;
 import br.com.archbase.ddd.infraestructure.persistence.jpa.specification.SpecificationTranslator;
+import br.com.archbase.ddd.infraestructure.persistence.jpa.specification.TradutorPadrao;
 import br.com.archbase.query.rsql.jpa.ArchbaseRSQLJPASupport;
 import com.querydsl.core.types.*;
 import com.querydsl.jpa.JPQLQuery;
@@ -73,7 +74,11 @@ public class SimpleArchbaseJpaRepository<T extends AggregateRoot<T, ID>, ID exte
     private final JpaEntityInformation<T, ID> entityInformation;
     private final QuerydslPredicateExecutor<T> querydslPredicateExecutor;
     private final Querydsl querydsl;
-    private SpecificationTranslator translator;
+    /**
+     * Tradutor das {@code ArchbaseSpecification} para critérios JPA. Padrão: {@link TradutorPadrao}; troque com
+     * {@link #setTranslator} para registrar conversores próprios ({@code SpecificationTranslatorFactory}).
+     */
+    private SpecificationTranslator translator = TradutorPadrao.instancia();
 
 
     public SimpleArchbaseJpaRepository(JpaEntityInformation<T, ?> entityInformation, EntityManager entityManager, EntityPath<T> path, JPAQueryFactory jpaQueryFactory, Supplier<JPASQLQuery<T>> jpaSqlFactory, EntityManager entityManager1, JpaEntityInformation<T, ID> entityInformation1, QuerydslPredicateExecutor<T> querydslPredicateExecutor, Querydsl querydsl) {
@@ -400,8 +405,9 @@ public class SimpleArchbaseJpaRepository<T extends AggregateRoot<T, ID>, ID exte
         return PageableExecutionUtils.getPage(paginatedQuery.fetch(), pageable, countQuery::fetchCount);
     }
 
+    /** Troca o tradutor; {@code null} volta ao {@link TradutorPadrao}. */
     public void setTranslator(SpecificationTranslator translator) {
-        this.translator = translator;
+        this.translator = translator == null ? TradutorPadrao.instancia() : translator;
     }
 
     @Override

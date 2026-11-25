@@ -17,6 +17,7 @@ public interface SpecificationTranslatorFactory {
     public default SpecificationTranslator createWithDefaultConverters() {
         SpecificationTranslator translator = new SpecificationTranslatorImpl();
         translator.registerConverter(new EqualityConverter());
+        translator.registerConverter(new NotEqualityConverter());
         translator.registerConverter(new GreaterThanConverter());
         translator.registerConverter(new LessThanConverter());
         translator.registerConverter(new NotConverter(translator));
