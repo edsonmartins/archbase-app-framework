@@ -6,8 +6,9 @@ módulo `archbase_offline` do `archbase_flutter`. Ver o contrato em
 `archbase-flutter/docs/adr/ADR-0001-motor-offline-first.md`.
 
 ## O que entrega
-- **Endpoint** (o app expõe um controller fino):
-  `POST /api/v1/sync/operations` → `SyncOperationProcessor.process(request)`.
+- **Endpoints** `POST /api/v1/sync/operations` → `SyncOperationProcessor.process(request)` e
+  `POST /api/v1/sync/operations/status`, no `ArchbaseSyncController` — registrado pelo
+  [`archbase-starter-offline-sync`](../archbase-starter-offline-sync/README.md).
 - **Processamento por operação** com **transação própria** (`REQUIRES_NEW`):
   uma falha/conflito reverte só aquela operação, nunca o lote — o ACK é individual.
 - **Idempotência durável** (`processed_sync_operation`): reenvio não reexecuta (→ SKIPPED).
@@ -16,7 +17,13 @@ módulo `archbase_offline` do `archbase_flutter`. Ver o contrato em
   **transitório** (FAILED, o cliente reenvia).
 
 ## Como o app usa
-1. Adicione a dependência `br.com.archbase:archbase-offline-sync`.
+
+### Com o starter (recomendado)
+
+1. Adicione `br.com.archbase:archbase-starter-offline-sync`. Ele registra o processador, o executor, o
+   `ArchbaseSyncController` (as duas rotas acima), a limpeza `ProcessedSyncOperationCleanup`, a entidade
+   `ProcessedSyncOperation` e o repositório dela — somados aos da aplicação. **Não escreva outro controller em
+   `/api/v1/sync/operations`**: o mapeamento duplicado impede a subida.
 2. Implemente `SyncTenantProvider` (delegue ao multitenancy do Archbase).
 3. Para cada tipo de operação, um bean `SyncOperationHandler`:
    ```java
@@ -30,16 +37,22 @@ módulo `archbase_offline` do `archbase_flutter`. Ver o contrato em
      }
    }
    ```
-4. Controller fino:
-   ```java
-   @PostMapping("/api/v1/sync/operations")
-   SyncBatchResponseDTO sync(@RequestBody SyncBatchRequestDTO req) {
-     return processor.process(req);
-   }
-   ```
-5. Flyway: aplique `db/archbase-offline-sync/V001__processed_sync_operation.sql`
+4. Flyway: aplique `db/archbase-offline-sync/V001__processed_sync_operation.sql`
    (renumere para a sequência do app).
-6. Retenção 90d: agende `ProcessedSyncOperationRepository.deleteOlderThan(cutoff)`.
+5. A limpeza remove operações com mais de 90 dias, todo dia às 03:00 — precisa de `@EnableScheduling` na aplicação.
+
+### Só o módulo, sem o starter
+
+Nada é registrado: a aplicação varre `br.com.archbase.offline.sync.service` e `br.com.archbase.offline.sync.web`
+(ou declara os beans), inclui `br.com.archbase.offline.sync.persistence` nas entidades e repositórios, e segue os
+passos 2 a 5. Sem varrer o pacote `web`, escreva o controller:
+
+```java
+@PostMapping("/api/v1/sync/operations")
+SyncBatchResponseDTO sync(@RequestBody SyncBatchRequestDTO req) {
+  return processor.process(req);
+}
+```
 
 ## Por que assim
 Corrige os erros das tentativas anteriores no promotor: (a) lote em transação
