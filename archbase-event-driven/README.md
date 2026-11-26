@@ -33,7 +33,7 @@ public class BarramentoConfig {
 
 | Bean | Tipo | Como é montado |
 |---|---|---|
-| `getCommandBus` | `CommandBus` → `SimpleCommandBus` | fábrica de handlers + pipeline de middleware (ver limitações) |
+| `getCommandBus` | `CommandBus` → `SimpleCommandBus` | fábrica de handlers + `getCommandMiddlewarePipeline()` |
 | `getQueryBus` | `QueryBus` → `SimpleQueryBus` | fábrica de handlers + `getQueryMiddlewarePipeline()` |
 
 Não registra `EventBus`. Não há propriedades `archbase.*`.
@@ -93,7 +93,7 @@ Sem Spring, `new AutoScanHandlerFactory(beanFactory)` + `scanAndRegisterHandlers
 | Classe | Faz |
 |---|---|
 | `LoggingMiddleware` | Loga em INFO a mensagem recebida e o resultado (`toString()` de ambos); em ERROR a falha, e relança |
-| `MetricsMiddleware` | Pretende contar e cronometrar via Micrometer, carregado por reflexão. Ver limitações |
+| `MetricsMiddleware` | Com o Micrometer no classpath, registra `archbase.<tipo>.success`, `.dispatched`, `.error` (tag `exception`) e o timer `.duration` (tag `status`), com as tags `type` e `message`. O construtor padrão usa o `Metrics.globalRegistry`, onde o Spring Boot registra o seu; `new MetricsMiddleware(registry)` usa o informado. Sem Micrometer, só repassa |
 
 ## Eventos
 
@@ -113,12 +113,9 @@ Nada no módulo grava, lê ou retransmite eventos de outbox. Para usar a entidad
 
 ## Limitações
 
-- **O `CommandBus` usa o pipeline de consultas:** `MessageBusSpringConfiguration.getCommandBus()` passa
-  `getQueryMiddlewarePipeline()`. Um `MiddlewareConfig` próprio que mude só `getCommandMiddlewarePipeline()` não tem
-  efeito nos comandos.
-- **`MetricsMiddleware` não registra métricas.** O construtor padrão não acha o registry global (loga WARN a cada
-  barramento criado), e mesmo com um `MeterRegistry` passado no construtor as chamadas por reflexão falham em
-  silêncio: nenhum contador ou timer é criado.
+- Até a 3.5.0 o `CommandBus` recebia o pipeline de consultas (um `getCommandMiddlewarePipeline()` próprio não
+  tinha efeito) e o `MetricsMiddleware` não registrava nenhuma métrica: chamava o Micrometer por reflexão com nomes
+  errados e engolia os erros.
 - **`LoggingMiddleware` loga conteúdo em INFO:** o `toString()` de toda mensagem e resultado. Cuidado com dados
   sensíveis; troque a lista com um `MiddlewareConfig` próprio.
 - As anotações de método `@CommandHandler`, `@QueryHandler`, `@EventHandler` e `@EventSubscribe` não são lidas.
