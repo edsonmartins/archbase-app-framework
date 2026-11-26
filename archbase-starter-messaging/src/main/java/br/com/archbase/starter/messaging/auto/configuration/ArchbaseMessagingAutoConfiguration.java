@@ -9,7 +9,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.ComponentScan;
 
 /**
  * Auto-configuration para aplicações de messaging/workers usando Archbase.
@@ -27,19 +26,16 @@ import org.springframework.context.annotation.ComponentScan;
  * - Processadores batch
  * - Schedulers leves
  *
- * Inclui automaticamente:
- * - Error handling do Archbase
- * - Validação do Archbase
- * - Event-driven specifications
- * - Logging estruturado
- * - ObjectMapper configurado para Java 8+ date/time
+ * Traz como dependência o error handling, a validação, as especificações event-driven e o logging estruturado do
+ * Archbase; cada um se registra pela própria auto-configuração. Esta classe só acrescenta um {@code ObjectMapper}.
+ * O tratamento de erros só existe em aplicação web servlet — num worker sem web não há o que tratar.
+ *
+ * <p>Até a 3.5.0 esta classe fazia {@code @ComponentScan} de {@code br.com.archbase.error.handling},
+ * {@code ...validation} e {@code ...logging}. Os dois primeiros já têm auto-configuração e o terceiro não tem
+ * componentes; a varredura registrava o {@code ErrorHandlingControllerAdvice} por fora da configuração dele, e uma
+ * aplicação web com este starter não subia ({@code NoSuchBeanDefinitionException: ArchbaseErrorHandlingProperties}).
  */
 @AutoConfiguration
-@ComponentScan(basePackages = {
-    "br.com.archbase.error.handling",
-    "br.com.archbase.validation",
-    "br.com.archbase.logging"
-})
 public class ArchbaseMessagingAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(ArchbaseMessagingAutoConfiguration.class);
