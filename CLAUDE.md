@@ -417,6 +417,8 @@ archbase.security.oidc.exchange.enabled=false
 # RSQL
 archbase.rsql.enabled=true
 archbase.rsql.max-page-size=1000
+# Lista branca do RSQL também nos segmentos intermediários (cliente em cliente.cpf). A lista negra vale em todos sempre.
+archbase.rsql.strict-path-access-control=false
 
 # Plugin manager e workflow engine não têm propriedades: são configurados por código
 # (ArchbasePluginManager, WorkFlowEngineBuilder).

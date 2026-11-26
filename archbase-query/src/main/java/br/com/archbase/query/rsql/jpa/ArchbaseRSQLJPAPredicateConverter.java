@@ -62,6 +62,7 @@ public class ArchbaseRSQLJPAPredicateConverter extends RSQLVisitorBase<Predicate
                 }
 
                 if (isAssociationType(mappedProperty, classMetadata)) {
+                    segmentAccessControl(classMetadata.getJavaType(), mappedProperty);
                     boolean isOneToAssociationType = isOneToOneAssociationType(mappedProperty, classMetadata) || isOneToManyAssociationType(mappedProperty, classMetadata);
                     Class<?> associationType = findPropertyType(mappedProperty, classMetadata);
                     type = associationType;
@@ -72,6 +73,7 @@ public class ArchbaseRSQLJPAPredicateConverter extends RSQLVisitorBase<Predicate
                     log.debug("Crie uma junção entre [{}] e [{}] usando a chave [{}]", previousClass, classMetadata.getJavaType().getName(), keyJoin);
                     root = isOneToAssociationType ? joinLeft(keyJoin, root, mappedProperty) : join(keyJoin, root, mappedProperty);
                 } else if (isElementCollectionType(mappedProperty, classMetadata)) {
+                    segmentAccessControl(classMetadata.getJavaType(), mappedProperty);
                     String previousClass = classMetadata.getJavaType().getName();
                     attribute = classMetadata.getAttribute(property);
                     classMetadata = getManagedElementCollectionType(mappedProperty, classMetadata);
@@ -84,6 +86,7 @@ public class ArchbaseRSQLJPAPredicateConverter extends RSQLVisitorBase<Predicate
                     root = root.get(mappedProperty);
 
                     if (isEmbeddedType(mappedProperty, classMetadata)) {
+                        segmentAccessControl(classMetadata.getJavaType(), mappedProperty);
                         Class<?> embeddedType = findPropertyType(mappedProperty, classMetadata);
                         type = embeddedType;
                         classMetadata = getManagedType(embeddedType);
@@ -93,12 +96,16 @@ public class ArchbaseRSQLJPAPredicateConverter extends RSQLVisitorBase<Predicate
                 }
             }
         }
+        if (attribute == null) {
+            // Seletor que termina numa associação ou num embutido ("cliente"): até a 3.5.0, NullPointerException.
+            throw new IllegalArgumentException("Seletor " + propertyPath + " não termina num atributo comparável");
+        }
         accessControl(type, attribute.getName());
         return ArchbaseRSQLJPAContext.of(root, attribute);
     }
 
     protected Path<?> join(String keyJoin, Path<?> root, String mappedProperty) {
-        log.info("join(keyJoin:{},root:{},mappedProperty:{})", keyJoin, root, mappedProperty);
+        log.debug("join(keyJoin:{},root:{},mappedProperty:{})", keyJoin, root, mappedProperty);
 
         if (cachedJoins.containsKey(keyJoin)) {
             root = cachedJoins.get(keyJoin);
@@ -110,7 +117,7 @@ public class ArchbaseRSQLJPAPredicateConverter extends RSQLVisitorBase<Predicate
     }
 
     protected Path<?> joinLeft(String keyJoin, Path<?> root, String mappedProperty) {
-        log.info("joinLeft(keyJoin:{},root:{},mappedProperty:{})", keyJoin, root, mappedProperty);
+        log.debug("joinLeft(keyJoin:{},root:{},mappedProperty:{})", keyJoin, root, mappedProperty);
 
         if (cachedJoins.containsKey(keyJoin)) {
             root = cachedJoins.get(keyJoin);
