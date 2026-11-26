@@ -14,7 +14,6 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.util.Collection;
 import java.util.Map;
-import java.util.function.Predicate;
 
 import static com.tngtech.archunit.base.DescribedPredicate.not;
 
@@ -190,21 +189,6 @@ public class ArchbaseRules {
         public boolean test(JavaField javaField) {
             return false;
         }
-
-        @Override
-        public Predicate<JavaField> and(Predicate<? super JavaField> other) {
-            return super.and(other);
-        }
-
-        @Override
-        public Predicate<JavaField> negate() {
-            return super.negate();
-        }
-
-        @Override
-        public Predicate<JavaField> or(Predicate<? super JavaField> other) {
-            return super.or(other);
-        }
     }
 
     private static class IsAssignableTypeField extends DescribedPredicate<JavaField> {
@@ -247,21 +231,6 @@ public class ArchbaseRules {
         @Override
         public boolean test(JavaField javaField) {
             return false;
-        }
-
-        @Override
-        public Predicate<JavaField> and(Predicate<? super JavaField> other) {
-            return super.and(other);
-        }
-
-        @Override
-        public Predicate<JavaField> negate() {
-            return super.negate();
-        }
-
-        @Override
-        public Predicate<JavaField> or(Predicate<? super JavaField> other) {
-            return super.or(other);
         }
     }
 

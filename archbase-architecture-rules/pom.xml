@@ -15,7 +15,6 @@
 
     <properties>
         <taikai.version>1.63.0</taikai.version>
-        <archunit.version>1.4.2</archunit.version>
     </properties>
 
     <dependencies>
