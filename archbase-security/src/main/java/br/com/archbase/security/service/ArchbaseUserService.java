@@ -1,5 +1,7 @@
 package br.com.archbase.security.service;
 
+import br.com.archbase.security.exception.ArchbasePasswordChangeRejectedException;
+
 import br.com.archbase.security.auth.ArchbaseCurrentUser;
 import br.com.archbase.security.auth.ChangePasswordRequest;
 import br.com.archbase.security.domain.entity.User;
@@ -42,13 +44,13 @@ public class ArchbaseUserService {
 
         // verifique se a senha atual está correta
         if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
-            throw new IllegalStateException("Senha incorreta");
+            throw new ArchbasePasswordChangeRejectedException("Senha incorreta");
         }
         // verifique se as duas novas senhas são iguais
         if (!request.getNewPassword().equals(request.getConfirmationPassword())) {
-            throw new IllegalStateException("Senhas não conferem");
+            throw new ArchbasePasswordChangeRejectedException("Senhas não conferem");
         }
-        passwordStrengthPolicy.validate(request.getNewPassword());
+        validarForca(request.getNewPassword());
 
         // atualiza a senha
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
@@ -70,13 +72,13 @@ public class ArchbaseUserService {
 
         // verifique se a senha atual está correta
         if (!passwordEncoder.matches(request.getCurrentPassword(), userEntity.get().getPassword())) {
-            throw new IllegalStateException("Senha incorreta");
+            throw new ArchbasePasswordChangeRejectedException("Senha incorreta");
         }
         // verifique se as duas novas senhas são iguais
         if (!request.getNewPassword().equals(request.getConfirmationPassword())) {
-            throw new IllegalStateException("Senhas não conferem");
+            throw new ArchbasePasswordChangeRejectedException("Senhas não conferem");
         }
-        passwordStrengthPolicy.validate(request.getNewPassword());
+        validarForca(request.getNewPassword());
 
         // atualiza a senha
         userEntity.get().setPassword(passwordEncoder.encode(request.getNewPassword()));
@@ -88,10 +90,19 @@ public class ArchbaseUserService {
         revokeSessionsIfEnabled(userEntity.get());
     }
 
+    /** A política lança exceção de validação sem status (500); aqui ela vira recusa do pedido (400). */
+    private void validarForca(String novaSenha) {
+        try {
+            passwordStrengthPolicy.validate(novaSenha);
+        } catch (br.com.archbase.validation.exception.ArchbaseValidationException e) {
+            throw new ArchbasePasswordChangeRejectedException(e.getMessage(), e);
+        }
+    }
+
     /** Recusa a troca quando a senha deste usuário não é do Archbase (ex.: conta vinculada a IdP externo). */
     private void requireLocalPassword(UserEntity user) {
         if (!ArchbaseLocalCredentialPolicy.allowsLocalPassword(localCredentialPolicies, user)) {
-            throw new IllegalStateException("A senha deste usuário é gerenciada por outro provedor de identidade");
+            throw new ArchbasePasswordChangeRejectedException("A senha deste usuário é gerenciada por outro provedor de identidade");
         }
     }
 

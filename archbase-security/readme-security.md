@@ -319,6 +319,8 @@ Authorization: Bearer <access_token>
 ```
 
 Exige a senha atual. Não desloga, salvo com `archbase.security.password-change.revoke-sessions=true`.
+Senha atual errada, confirmação diferente, senha nova fora da política ou conta com senha de outro provedor
+respondem **400** com a mensagem (`ArchbasePasswordChangeRejectedException`); até a 3.5.0 respondiam 500.
 Não existe `/api/v1/auth/changePassword`.
 
 ### Força da senha
