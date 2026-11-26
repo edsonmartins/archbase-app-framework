@@ -58,9 +58,10 @@ O que acontece de fato com as colunas de auditoria:
 ### Empresa
 
 `CompanyPersistenceEntityBase` declara o filtro Hibernate `companyFilter` (`COMPANY_ID = :companyId`) e o listener
-`CompanyEntityListener`, que copia `ArchbaseTenantContext.getCompanyId()` para `companyId` em `@PrePersist`,
-`@PreUpdate` e `@PreRemove`. Sem empresa no contexto, grava `null` — inclusive ao alterar um registro que já tinha
-empresa. Quem liga o filtro nas consultas é o aspecto do [`archbase-multitenancy`](../archbase-multitenancy/README.md#isolamento-por-empresa).
+`CompanyEntityListener`. Na criação, grava `ArchbaseTenantContext.getCompanyId()` em `companyId` (sem empresa no
+contexto, mantém a que a entidade trouxer); no update, só preenche um registro que ainda não tem empresa; na remoção,
+não mexe. Até a 3.5.0 gravava a empresa do contexto também no update e na remoção: editar sem empresa no contexto
+apagava o `companyId`, e editar com outra empresa no contexto movia o registro para ela. Quem liga o filtro nas consultas é o aspecto do [`archbase-multitenancy`](../archbase-multitenancy/README.md#isolamento-por-empresa).
 
 ## Contexto de tenant
 
