@@ -360,6 +360,9 @@ archbase.security.audit.tenant-scoped=false
 archbase.analytics.secret-validation=warn
 archbase.analytics.secret-min-bytes=32
 
+# Tratamento de erros (archbase-error-handling): mensagem de 500 vai ao cliente por padrão (compatível)
+archbase.error.handling.hide-server-error-messages=false
+
 # Rate limiting dos fluxos de credencial (ligado por padrão)
 archbase.security.rate-limit.enabled=true
 archbase.security.rate-limit.max-attempts=10

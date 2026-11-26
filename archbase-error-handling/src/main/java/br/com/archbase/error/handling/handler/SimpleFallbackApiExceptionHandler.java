@@ -7,7 +7,10 @@ import br.com.archbase.error.handling.ArchbaseErrorHandlingProperties;
 import br.com.archbase.error.handling.FallbackApiExceptionHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.core.annotation.AnnotationUtils;
+import org.springframework.web.ErrorResponse;
+import br.com.archbase.error.handling.ArchbaseRuntimeException;
 import org.springframework.http.HttpStatus;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -40,14 +43,24 @@ public class SimpleFallbackApiExceptionHandler implements FallbackApiExceptionHa
         HttpStatus statusCode = getHttpStatus(exception);
         String errorCode = getErrorCode(exception);
 
-        ArchbaseApiErrorResponse response = new ArchbaseApiErrorResponse(statusCode, errorCode, getErrorMessage(exception));
+        ArchbaseApiErrorResponse response = new ArchbaseApiErrorResponse(statusCode, errorCode, getErrorMessage(exception, statusCode));
         response.addErrorProperties(getMethodResponseErrorProperties(exception));
         response.addErrorProperties(getFieldResponseErrorProperties(exception));
 
         return response;
     }
 
-    private String getErrorMessage(Throwable exception) {
+    /** Texto das respostas 5xx com {@code archbase.error.handling.hide-server-error-messages=true}. */
+    static final String MENSAGEM_ERRO_INTERNO = "Erro interno do servidor";
+
+    private String getErrorMessage(Throwable exception, HttpStatus status) {
+        if (status.is5xxServerError() && properties.isHideServerErrorMessages()) {
+            return MENSAGEM_ERRO_INTERNO;
+        }
+        if (exception instanceof ErrorResponse errorResponse && errorResponse.getBody().getDetail() != null) {
+            // ResponseStatusException e afins: getMessage() vem com o status na frente ("404 NOT_FOUND ...").
+            return errorResponse.getBody().getDetail();
+        }
         return exception.getMessage();
     }
 
@@ -124,9 +137,25 @@ public class SimpleFallbackApiExceptionHandler implements FallbackApiExceptionHa
         return method.getName();
     }
 
+    /**
+     * Na ordem: o status que a própria exceção traz ({@link ErrorResponse} do Spring — {@code ResponseStatusException},
+     * parâmetro obrigatório ausente, validação de método — e {@link ArchbaseRuntimeException#getStatusCode()}); o
+     * {@code @ResponseStatus} da classe ou de uma superclasse; senão 500.
+     *
+     * <p>Até a 3.5.0 só o {@code @ResponseStatus} da própria classe contava, e todos esses casos respondiam 500.
+     */
     private HttpStatus getHttpStatus(Throwable exception) {
-        ResponseStatus responseStatus = AnnotationUtils.getAnnotation(exception.getClass(), ResponseStatus.class);
-        return responseStatus != null ? responseStatus.value() : HttpStatus.INTERNAL_SERVER_ERROR;
+        if (exception instanceof ErrorResponse errorResponse) {
+            HttpStatus status = HttpStatus.resolve(errorResponse.getStatusCode().value());
+            if (status != null) {
+                return status;
+            }
+        }
+        if (exception instanceof ArchbaseRuntimeException archbase && archbase.getStatusCode() != null) {
+            return archbase.getStatusCode();
+        }
+        ResponseStatus responseStatus = AnnotatedElementUtils.findMergedAnnotation(exception.getClass(), ResponseStatus.class);
+        return responseStatus != null ? responseStatus.code() : HttpStatus.INTERNAL_SERVER_ERROR;
     }
 
     private String getErrorCode(Throwable exception) {

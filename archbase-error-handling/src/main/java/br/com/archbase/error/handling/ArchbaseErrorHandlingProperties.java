@@ -18,6 +18,13 @@ public class ArchbaseErrorHandlingProperties {
 
     private Map<String, String> messages = new HashMap<>();
 
+    /**
+     * Troca a mensagem das respostas 5xx do tratamento genérico por um texto fixo. Padrão {@code false}, o
+     * comportamento até a 3.5.0: a {@code getMessage()} da exceção vai para o cliente, com SQL, nomes de classe e
+     * caminhos quando é um erro interno. O código ({@code code}) e o log continuam completos.
+     */
+    private boolean hideServerErrorMessages = false;
+
 
     public ArchbaseErrorHandlingProperties() {
         super();
@@ -45,6 +52,14 @@ public class ArchbaseErrorHandlingProperties {
 
     public void setCodes(Map<String, String> codes) {
         this.codes = codes;
+    }
+
+    public boolean isHideServerErrorMessages() {
+        return hideServerErrorMessages;
+    }
+
+    public void setHideServerErrorMessages(boolean hideServerErrorMessages) {
+        this.hideServerErrorMessages = hideServerErrorMessages;
     }
 
     public Map<String, String> getMessages() {
