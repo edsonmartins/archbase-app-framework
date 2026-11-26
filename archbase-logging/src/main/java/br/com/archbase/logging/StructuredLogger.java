@@ -125,9 +125,12 @@ public final class StructuredLogger {
      * @param keysValues Pares chave-valor para incluir no contexto
      */
     public static void error(String message, Throwable throwable, Object... keysValues) {
-        withFields(keysValues);
-        org.slf4j.LoggerFactory.getLogger(StructuredLogger.class).error(message, throwable);
-        clearFields();
+        java.util.Map<String, String> anteriores = withFields(keysValues);
+        try {
+            org.slf4j.LoggerFactory.getLogger(StructuredLogger.class).error(message, throwable);
+        } finally {
+            restaurar(anteriores);
+        }
     }
 
     /**
@@ -185,38 +188,50 @@ public final class StructuredLogger {
     }
 
     private static void logWithFields(String level, String message, Object... keysValues) {
-        withFields(keysValues);
-        var logger = org.slf4j.LoggerFactory.getLogger(StructuredLogger.class);
-        switch (level.toLowerCase()) {
-            case "info" -> logger.info(message);
-            case "warn" -> logger.warn(message);
-            case "error" -> logger.error(message);
-            case "debug" -> logger.debug(message);
-            case "trace" -> logger.trace(message);
+        java.util.Map<String, String> anteriores = withFields(keysValues);
+        try {
+            var logger = org.slf4j.LoggerFactory.getLogger(StructuredLogger.class);
+            switch (level.toLowerCase()) {
+                case "info" -> logger.info(message);
+                case "warn" -> logger.warn(message);
+                case "error" -> logger.error(message);
+                case "debug" -> logger.debug(message);
+                case "trace" -> logger.trace(message);
+            }
+        } finally {
+            restaurar(anteriores);
         }
-        clearFields();
     }
 
-    private static void withFields(Object... keysValues) {
+    /** Põe os pares no MDC e devolve o valor que cada chave tinha antes ({@code null} se não existia). */
+    private static java.util.Map<String, String> withFields(Object... keysValues) {
         if (keysValues == null || keysValues.length % 2 != 0) {
             throw new IllegalArgumentException("Número par de argumentos requerido (chave, valor)");
         }
+        java.util.Map<String, String> anteriores = new java.util.HashMap<>();
         for (int i = 0; i < keysValues.length; i += 2) {
             if (keysValues[i + 1] != null) {
-                MDC.put(keysValues[i].toString(), keysValues[i + 1].toString());
+                String chave = keysValues[i].toString();
+                anteriores.putIfAbsent(chave, MDC.get(chave));
+                MDC.put(chave, keysValues[i + 1].toString());
             }
         }
+        return anteriores;
     }
 
-    private static void clearFields() {
-        // Preserva correlationId, traceId, spanId
-        String correlationId = MDC.get(CORRELATION_ID_KEY);
-        String traceId = MDC.get(TRACE_ID_KEY);
-        String spanId = MDC.get(SPAN_ID_KEY);
-        MDC.clear();
-        if (correlationId != null) MDC.put(CORRELATION_ID_KEY, correlationId);
-        if (traceId != null) MDC.put(TRACE_ID_KEY, traceId);
-        if (spanId != null) MDC.put(SPAN_ID_KEY, spanId);
+    /**
+     * Devolve ao MDC só as chaves que {@link #withFields} mexeu, com o valor de antes. Até a 3.5.0 o MDC inteiro era
+     * apagado depois de cada log com pares chave-valor (só correlationId, traceId e spanId eram repostos), e o que a
+     * aplicação tinha posto — tenant, usuário — sumia dos logs seguintes da mesma requisição.
+     */
+    private static void restaurar(java.util.Map<String, String> anteriores) {
+        anteriores.forEach((chave, valor) -> {
+            if (valor == null) {
+                MDC.remove(chave);
+            } else {
+                MDC.put(chave, valor);
+            }
+        });
     }
 
     /**
