@@ -52,7 +52,7 @@ O aspecto age (`@Around` e `@AfterThrowing`) quando as três condições valem:
 
 1. a classe é anotada com `@RestController` ou `@Controller`;
 2. o método tem `@Logging`, ou a classe tem `@Logging`;
-3. o método **não** tem `@NoLogging`.
+3. o método **não** tem `@NoLogging`, e a classe também não (salvo se o próprio método tiver `@Logging`).
 
 ```java
 @RestController
@@ -69,7 +69,7 @@ public class ClienteController {
 }
 ```
 
-`@NoLogging` na classe não tem efeito: o ponto de corte só olha `@NoLogging` no método.
+`@NoLogging` na classe silencia todos os métodos dela; um método com `@Logging` volta a ser registrado.
 
 ## O que vai para o log
 
@@ -108,16 +108,10 @@ troca o `xxxxx`, `setEnableDataScrubbing(false)` desliga o mascaramento. `setLog
 - **O mascaramento é só pelo nome do parâmetro.** Campos dentro de um DTO (`@RequestBody`), do retorno ou da
   mensagem de exceção são registrados por inteiro, sem máscara. Um `@RequestBody LoginRequest request` com senha vai
   para o log se o método for registrado e o corpo for serializado (ou se o `toString()` do DTO incluir a senha).
-- **`@GetMapping`, `@PostMapping` e afins não contam como `@RequestMapping`** para `consumes`/`produces`: o aspecto
-  lê a anotação com `Method.getAnnotation(RequestMapping.class)`, que não enxerga meta-anotações. Nesses métodos, o
-  corpo e o retorno caem no `toString()`.
-- **Nome do logger**: o construtor sem argumentos (usado pelo starter) cria o logger `java.lang.String`. Para ver ou
-  silenciar essas linhas, configure o nível desse logger (`logging.level.java.lang.String=INFO`), ou declare o
-  aspecto com um logger próprio.
-- **Sem autenticação no contexto**: se `SecurityContextHolder` não tiver `Authentication` (rota fora da cadeia do
-  Spring Security), a montagem da linha "antes" lança `NullPointerException`; o aspecto registra
-  `Ocorreu uma exceção na lógica de pré-procedimento` em ERROR, não registra a linha de entrada e segue com a
-  chamada. Com o Spring Security ativo, rotas públicas têm o usuário anônimo e não caem nisso.
+- Até a 3.5.0: `@GetMapping`/`@PostMapping` não contavam para `consumes`/`produces` (corpo e retorno saíam por
+  `toString()`); o logger padrão tinha a categoria `java.lang.String`; `@NoLogging` na classe não tinha efeito; e
+  sem `Authentication` no contexto a linha de entrada era trocada por um ERROR. O logger agora é
+  `br.com.archbase.resource.logger.aspect.SimpleArchbaseResourceAspect`.
 - A resposta inteira vai para o log em INFO em todo método registrado. Use `@Logging` com parcimônia em endpoints
   que devolvem listas grandes ou dados pessoais.
 

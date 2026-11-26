@@ -24,6 +24,7 @@ import java.lang.annotation.Annotation;
 
 import static br.com.archbase.resource.logger.utils.JsonUtil.toJson;
 import static br.com.archbase.resource.logger.utils.RequestUtil.getRequestContext;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 
 //@formatter:off
 
@@ -49,7 +50,8 @@ public class SimpleArchbaseResourceAspect extends ArchbaseLoggerAspect implement
 
     public SimpleArchbaseResourceAspect() {
         this(
-                org.slf4j.LoggerFactory.getLogger(String.class)
+                // Até a 3.5.0 era getLogger(String.class): o log saía na categoria java.lang.String.
+                org.slf4j.LoggerFactory.getLogger(SimpleArchbaseResourceAspect.class)
         );
     }
 
@@ -64,7 +66,13 @@ public class SimpleArchbaseResourceAspect extends ArchbaseLoggerAspect implement
         //
     }
 
-    @Pointcut("!@annotation(br.com.archbase.resource.logger.annotation.NoLogging)")
+    /**
+     * {@code @NoLogging} no método desliga; na classe, desliga todos os métodos dela, salvo os anotados com
+     * {@code @Logging}. Até a 3.5.0 só o do método valia, apesar do javadoc de {@code @NoLogging}.
+     */
+    @Pointcut("!@annotation(br.com.archbase.resource.logger.annotation.NoLogging) "
+            + "&& (!@within(br.com.archbase.resource.logger.annotation.NoLogging) "
+            + "|| @annotation(br.com.archbase.resource.logger.annotation.Logging))")
     public void methodLoggingNotDisabledPointcut() {
         //
     }
@@ -89,8 +97,10 @@ public class SimpleArchbaseResourceAspect extends ArchbaseLoggerAspect implement
 
         try {
             MethodSignature methodSignature = (MethodSignature) proceedingJoinPoint.getSignature();
-            methodRequestMapping = methodSignature.getMethod().getAnnotation(RequestMapping.class);
-            classRequestMapping = proceedingJoinPoint.getTarget().getClass().getAnnotation(RequestMapping.class);
+            // findMergedAnnotation enxerga @GetMapping, @PostMapping etc., que são meta-anotados com @RequestMapping.
+            // getAnnotation não enxergava: com eles, produces/consumes eram ignorados e o corpo saía por toString().
+            methodRequestMapping = AnnotatedElementUtils.findMergedAnnotation(methodSignature.getMethod(), RequestMapping.class);
+            classRequestMapping = AnnotatedElementUtils.findMergedAnnotation(proceedingJoinPoint.getTarget().getClass(), RequestMapping.class);
 
             // isso é necessário para distinguir entre um valor retornado de nulo e nenhum valor de retorno, como no caso de
             // tipo de retorno nulo.
