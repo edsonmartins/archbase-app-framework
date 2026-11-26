@@ -17,8 +17,8 @@ import java.util.stream.Collectors;
  * Uso:
  * <pre>
  * {@code
+ * @Mapper(componentModel = "spring")
  * public interface ClientMapper extends ArchbaseMapper<ClientEntity, ClientDto> {
- *     ClientMapper INSTANCE = Mappers.getMapper(ClientMapper.class);
  *
  *     @Mapping(target = "id", ignore = true)
  *     ClientDto toDto(ClientEntity entity);
@@ -149,11 +149,14 @@ public interface ArchbaseMapper<S, T> {
     }
 
     /**
-     * Atualiza uma entidade existente com dados do DTO.
+     * <b>Não atualiza a entidade recebida</b>: a implementação padrão devolve {@code toEntity(dto)}, um objeto novo, e
+     * ignora {@code entity} (só o usa para distinguir {@code null}). Gravar o resultado pode criar outro registro
+     * ou perder o que o DTO não traz (id, versão, auditoria). Para atualizar de fato, sobrescreva com um método do
+     * MapStruct que receba {@code @MappingTarget S entity}.
      *
      * @param dto  DTO com dados atualizados
-     * @param entity Entidade a ser atualizada
-     * @return Entidade atualizada
+     * @param entity Entidade existente (ignorada pela implementação padrão)
+     * @return {@code toEntity(dto)}
      */
     default S updateFromDto(T dto, S entity) {
         if (dto == null) {
@@ -204,13 +207,7 @@ public interface ArchbaseMapper<S, T> {
      */
     @SuppressWarnings("unchecked")
     default Class<T> getTargetClass() {
-        try {
-            return (Class<T>) java.lang.reflect.ParameterizedType.class
-                    .cast(getClass().getGenericInterfaces()[0])
-                    .getActualTypeArguments()[1];
-        } catch (Exception e) {
-            throw new UnsupportedOperationException("Não foi possível inferir a classe de destino.", e);
-        }
+        return (Class<T>) argumentoDeTipo(getClass(), 1, "destino");
     }
 
     /**
@@ -221,12 +218,21 @@ public interface ArchbaseMapper<S, T> {
      */
     @SuppressWarnings("unchecked")
     default Class<S> getSourceClass() {
-        try {
-            return (Class<S>) java.lang.reflect.ParameterizedType.class
-                    .cast(getClass().getGenericInterfaces()[0])
-                    .getActualTypeArguments()[0];
-        } catch (Exception e) {
-            throw new UnsupportedOperationException("Não foi possível inferir a classe de origem.", e);
+        return (Class<S>) argumentoDeTipo(getClass(), 0, "origem");
+    }
+
+    /**
+     * Resolve {@code S} ou {@code T} percorrendo a hierarquia inteira. Até a 3.5.0 olhava só a primeira interface da
+     * classe concreta: na implementação gerada pelo MapStruct ({@code ClientMapperImpl implements ClientMapper}) essa
+     * interface não é parametrizada, e {@code getTargetClass}, {@code getSourceClass}, {@code createDto} e
+     * {@code createEntity} falhavam sempre.
+     */
+    private static Class<?> argumentoDeTipo(Class<?> classe, int indice, String papel) {
+        Class<?>[] argumentos = org.springframework.core.GenericTypeResolver.resolveTypeArguments(classe, ArchbaseMapper.class);
+        if (argumentos == null || argumentos[indice] == null) {
+            throw new UnsupportedOperationException("Não foi possível inferir a classe de " + papel + " de "
+                    + classe.getName());
         }
+        return argumentos[indice];
     }
 }
