@@ -44,12 +44,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
         "archbase.security.cors.allowed-methods=*",
         "archbase.security.cors.allowed-headers=*",
         "archbase.security.cors.allow-credentials=false",
-        "archbase.app.tenant.default.id=tenant-teste"
+        "archbase.app.tenant.default.id=tenant-teste",
+        "archbase.security.diagnostics.enabled=true"
 })
 class EventosDeSegurancaTest {
 
     private static final String EMAIL = "auditoria@vendax.com.br";
     private static final String SENHA = "senha-de-teste";
+    private static final String ADMIN = "admin-auditoria@vendax.com.br";
 
     @Autowired
     MockMvc mockMvc;
@@ -65,16 +67,21 @@ class EventosDeSegurancaTest {
     @BeforeEach
     void limpar() {
         eventRepository.deleteAll();
-        if (userRepository.findByEmail(EMAIL).isEmpty()) {
+        criarSeNaoExiste(ADMIN, true);
+        criarSeNaoExiste(EMAIL, false);
+    }
+
+    private void criarSeNaoExiste(String email, boolean administrador) {
+        if (userRepository.findByEmail(email).isEmpty()) {
             userRepository.save(UserEntity.builder()
                     .id(UUID.randomUUID().toString())
                     .createEntityDate(java.time.LocalDateTime.now())
                     .name("Pessoa de Auditoria")
                     .description("Pessoa de Auditoria")
-                    .email(EMAIL)
-                    .userName(EMAIL)
+                    .email(email)
+                    .userName(email)
                     .password(passwordEncoder.encode(SENHA))
-                    .isAdministrator(false)
+                    .isAdministrator(administrador)
                     .accountDeactivated(false)
                     .accountLocked(false)
                     .changePasswordOnNextLogin(false)
@@ -122,6 +129,45 @@ class EventosDeSegurancaTest {
         // usuário" apagaria justamente o sinal de reconhecimento.
         esperarPor(e -> e.getTipo() == SecurityEventType.LOGIN_FALHOU
                 && "ninguem@vendax.com.br".equals(e.getUsuario()));
+    }
+
+    @Test
+    @DisplayName("sair do sistema deixa registro, com o usuário e o tenant do token")
+    void logoutRegistra() throws Exception {
+        // Até a 3.5.0 o tipo LOGOUT existia e nada o gravava.
+        String token = accessToken(EMAIL);
+
+        mockMvc.perform(post("/api/v1/auth/logout").header("Authorization", "Bearer " + token));
+
+        esperarPor(e -> e.getTipo() == SecurityEventType.LOGOUT
+                && EMAIL.equals(e.getUsuario())
+                && "tenant-teste".equals(e.getTenantId()));
+    }
+
+    @Test
+    @DisplayName("simular o acesso de outra pessoa deixa registro, com quem perguntou e sobre quem")
+    void simulacaoRegistra() throws Exception {
+        // Até a 3.5.0 o tipo SIMULACAO existia e nada o gravava; ficava só no log da aplicação.
+        String token = accessToken(ADMIN);
+
+        mockMvc.perform(post("/api/v1/security/diagnostics/simulate")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("email", EMAIL, "resource", "PEDIDO", "action", "VIEW"))));
+
+        esperarPor(e -> e.getTipo() == SecurityEventType.SIMULACAO
+                && ADMIN.equals(e.getUsuario())
+                && "PEDIDO".equals(e.getRecurso())
+                && "VIEW".equals(e.getAcao())
+                && e.getDetalhe() != null && e.getDetalhe().contains(EMAIL));
+    }
+
+    private String accessToken(String email) throws Exception {
+        var resposta = mockMvc.perform(post("/api/v1/auth/authenticate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("email", email, "password", SENHA))))
+                .andReturn();
+        return json.readTree(resposta.getResponse().getContentAsString()).get("access_token").asString();
     }
 
     /**

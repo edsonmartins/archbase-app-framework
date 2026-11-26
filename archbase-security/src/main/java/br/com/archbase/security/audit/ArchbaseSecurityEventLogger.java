@@ -94,6 +94,14 @@ public class ArchbaseSecurityEventLogger {
     }
 
     /**
+     * Com o tenant informado. O logout roda no filtro do Spring Security, antes do filtro que põe o tenant no
+     * contexto: quem chama passa o tenant do token encerrado.
+     */
+    public void logout(String usuario, String motivo, String tenant) {
+        registrar(SecurityEventType.LOGOUT, usuario, true, null, null, motivo, tenant);
+    }
+
+    /**
      * @param portao qual dos cinco portões recusou. É o que torna o registro acionável: saber que
      *               parou em LEVEL manda ajustar nível; em GRANT, manda conceder.
      */
@@ -108,12 +116,17 @@ public class ArchbaseSecurityEventLogger {
 
     private void registrar(SecurityEventType tipo, String usuario, boolean sucesso,
                              String recurso, String acao, String detalhe) {
+        registrar(tipo, usuario, sucesso, recurso, acao, detalhe, null);
+    }
+
+    private void registrar(SecurityEventType tipo, String usuario, boolean sucesso,
+                             String recurso, String acao, String detalhe, String tenantInformado) {
         if (!habilitada) {
             return;
         }
         // O tenant e a origem vivem em contexto de thread: precisam ser lidos AQUI, antes de sair
         // da thread da requisição, senão chegam nulos do outro lado.
-        String tenant = tenantAtual();
+        String tenant = tenantInformado != null && !tenantInformado.isBlank() ? tenantInformado : tenantAtual();
         String origem = origemAtual();
         executor.execute(() -> gravar(tipo, usuario, sucesso, recurso, acao, detalhe, tenant, origem));
     }
