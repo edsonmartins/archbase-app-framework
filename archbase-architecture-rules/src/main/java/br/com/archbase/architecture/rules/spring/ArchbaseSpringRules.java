@@ -117,33 +117,86 @@ public final class ArchbaseSpringRules {
                         "delegando lógica de negócio para Services");
     }
 
+    /** Anotações que o Archbase aplica num endpoint, no método ou na classe. */
+    private static final java.util.List<String> NO_METODO = java.util.List.of(
+            "br.com.archbase.security.annotation.HasPermission",
+            "org.springframework.security.access.prepost.PreAuthorize");
+    private static final java.util.List<String> NO_METODO_OU_NA_CLASSE = java.util.List.of(
+            "br.com.archbase.security.annotations.RequireProfile",
+            "br.com.archbase.security.annotations.RequireRole",
+            "br.com.archbase.security.annotations.RequirePersona");
+
     /**
-     * Regra: Métodos de controllers devem ter anotações de segurança.
+     * Regra: Métodos de controllers devem ter anotações de segurança que o Archbase aplica — {@code @HasPermission} ou
+     * {@code @PreAuthorize} no método, ou {@code @RequireProfile}/{@code @RequireRole}/{@code @RequirePersona} no
+     * método ou na classe.
+     *
+     * <p>Até a 3.5.0 aceitava {@code @PermitAll}, que o Archbase ignora (só a segurança {@code prePost} está ligada):
+     * a regra passava e o endpoint ficava protegido só pela cadeia de filtros. E não aceitava as anotações de classe.
      */
     public static ArchRule controllerMethodsShouldHaveSecurityAnnotations() {
         return ArchRuleDefinition.methods()
                 .that().areDeclaredInClassesThat().areAnnotatedWith(RestController.class)
                 .and().arePublic()
                 .and().areNotStatic()
-                .should().beAnnotatedWith("br.com.archbase.security.annotation.HasPermission")
-                .orShould().beAnnotatedWith("jakarta.annotation.security.PermitAll")
-                .orShould().beAnnotatedWith("org.springframework.security.access.prepost.PreAuthorize")
-                .because("Todos os endpoints REST devem ter segurança explícita " +
-                        "via @HasPermission, @PermitAll ou @PreAuthorize");
+                .should(terSegurancaQueOArchbaseAplica())
+                .because("Todos os endpoints REST devem ter segurança explícita que o Archbase aplica "
+                        + "(@HasPermission, @PreAuthorize ou @RequireProfile/@RequireRole/@RequirePersona); "
+                        + "@PermitAll, @RolesAllowed e @Secured são ignorados");
     }
 
     /**
-     * Regra: Endpoints REST devem ter segurança explícita.
+     * Regra: Endpoints REST devem ter segurança explícita — em todos os métodos (ver
+     * {@link #controllerMethodsShouldHaveSecurityAnnotations()}), na classe, ou a classe marcada como pública pelo nome.
+     *
+     * <p>Até a 3.5.0 exigia na classe {@code @Secured}, {@code @RolesAllowed} (ignorados pelo Archbase) ou
+     * {@code @HasPermission} (que só vale em método): na prática, só passava com "Public" no nome.
      */
     public static ArchRule restEndpointsShouldHaveExplicitSecurity() {
         return ArchRuleDefinition.classes()
                 .that().areAnnotatedWith(RestController.class)
-                .should().beAnnotatedWith("org.springframework.security.access.annotation.Secured")
-                .orShould().beAnnotatedWith("br.com.archbase.security.annotation.HasPermission")
-                .orShould().beAnnotatedWith("jakarta.annotation.security.RolesAllowed")
-                .orShould().haveSimpleNameContaining("Public")
-                .because("Controllers REST devem ter segurança definida em nível de classe " +
-                        "ou ser explicitamente marcados como públicos");
+                .should(new com.tngtech.archunit.lang.ArchCondition<com.tngtech.archunit.core.domain.JavaClass>(
+                        "ter segurança explícita na classe ou em todos os métodos públicos") {
+                    @Override
+                    public void check(com.tngtech.archunit.core.domain.JavaClass classe,
+                                      com.tngtech.archunit.lang.ConditionEvents events) {
+                        if (classe.getSimpleName().contains("Public") || temAlguma(classe, NO_METODO_OU_NA_CLASSE)) {
+                            return;
+                        }
+                        for (var metodo : classe.getMethods()) {
+                            if (metodo.getModifiers().contains(com.tngtech.archunit.core.domain.JavaModifier.PUBLIC)
+                                    && !metodo.getModifiers().contains(com.tngtech.archunit.core.domain.JavaModifier.STATIC)
+                                    && !temAlguma(metodo, NO_METODO) && !temAlguma(metodo, NO_METODO_OU_NA_CLASSE)) {
+                                events.add(com.tngtech.archunit.lang.SimpleConditionEvent.violated(classe,
+                                        classe.getName() + " tem o endpoint " + metodo.getName()
+                                                + " sem segurança que o Archbase aplica"));
+                                return;
+                            }
+                        }
+                    }
+                })
+                .because("Controllers REST devem ter segurança definida em nível de classe, em todos os métodos, "
+                        + "ou ser explicitamente marcados como públicos");
+    }
+
+    private static com.tngtech.archunit.lang.ArchCondition<com.tngtech.archunit.core.domain.JavaMethod> terSegurancaQueOArchbaseAplica() {
+        return new com.tngtech.archunit.lang.ArchCondition<>("ter segurança que o Archbase aplica") {
+            @Override
+            public void check(com.tngtech.archunit.core.domain.JavaMethod metodo,
+                              com.tngtech.archunit.lang.ConditionEvents events) {
+                boolean seguro = temAlguma(metodo, NO_METODO) || temAlguma(metodo, NO_METODO_OU_NA_CLASSE)
+                        || temAlguma(metodo.getOwner(), NO_METODO_OU_NA_CLASSE);
+                if (!seguro) {
+                    events.add(com.tngtech.archunit.lang.SimpleConditionEvent.violated(metodo,
+                            metodo.getFullName() + " não tem segurança que o Archbase aplica"));
+                }
+            }
+        };
+    }
+
+    private static boolean temAlguma(com.tngtech.archunit.core.domain.properties.CanBeAnnotated elemento,
+                                     java.util.List<String> anotacoes) {
+        return anotacoes.stream().anyMatch(elemento::isAnnotatedWith);
     }
 
     /**

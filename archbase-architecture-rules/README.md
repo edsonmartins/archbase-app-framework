@@ -114,10 +114,10 @@ class MinhaArquiteturaTest extends ArchbaseArchitectureTest {
   1.0.1, as regras de agregado e de estilo (que usam `allowEmptyShould(true)`) e o perfil `lenient`
   (`failOnEmpty(false)`) **passam sem examinar nada**; as demais falham com "failed to check any classes". Confira
   com `mvn dependency:tree -Dincludes=com.tngtech.archunit` e, se preciso, declare `archunit` 1.4.2 no projeto.
-- **Regras de segurança desalinhadas com o Archbase.** `@HasPermission` só vale em método
-  (`@Target(METHOD)`), então a regra de classe só passa com `@Secured`/`@RolesAllowed` na classe ou `Public` no
-  nome, e o Archbase ignora `@Secured`, `@RolesAllowed` e `@PermitAll` (só `prePostEnabled` está ligado). Um
-  controller que passa nessas regras pode não estar protegido por anotação nenhuma.
+- As regras de segurança aceitam o que o Archbase aplica: `@HasPermission` ou `@PreAuthorize` no método, e
+  `@RequireProfile`/`@RequireRole`/`@RequirePersona` no método ou na classe; a regra de classe aceita ainda `Public`
+  no nome. `@PermitAll`, `@RolesAllowed` e `@Secured` não contam — o Archbase os ignora. Até a 3.5.0 a regra de
+  métodos aceitava `@PermitAll` e a de classe só passava com uma anotação ignorada ou com `Public` no nome.
 - **Entidades por empresa.** `CompanyPersistenceEntityBase` não estende `PersistenceEntityBase` nem
   `TenantPersistenceEntityBase`; entidades que a estendem violam as regras DDD e de multitenancy.
 - `withAggregateRules()` acusa cada `@ManyToOne` para outro agregado em modelos em que a entidade JPA é o próprio
