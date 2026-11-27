@@ -10,7 +10,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 
 /**
@@ -76,23 +75,14 @@ public class ArchbaseHypersistenceAutoConfiguration {
     private static final Logger LOG = LoggerFactory.getLogger(ArchbaseHypersistenceAutoConfiguration.class);
 
     /**
-     * Bean de configuração que loga as propriedades ativas.
+     * Registra no log que a auto-configuração está ativa.
      *
-     * @param properties Propriedades de configuração do Hypersistence
-     * @return As propriedades configuradas
+     * <p>Até a 3.5.0 isto era um {@code @Bean} que devolvia o próprio {@link ArchbaseHypersistenceProperties} — que o
+     * {@code @EnableConfigurationProperties} já registra. Ficavam dois beans do mesmo tipo, e injetar as propriedades
+     * sem qualificador falhava por ambiguidade. As chaves {@code json.*}, {@code postgresql.*} e {@code repository.*}
+     * não ligam nem desligam nada: os tipos do Hypersistence Utils valem sempre que a biblioteca está no classpath.
      */
-    @Bean
-    public ArchbaseHypersistenceProperties archbaseHypersistenceProperties(
-            ArchbaseHypersistenceProperties properties) {
-
-        if (LOG.isInfoEnabled()) {
-            LOG.info("Archbase Hypersistence auto-configuration initialized");
-            LOG.info("  - JSON types enabled: {}", properties.getJson().isEnabled());
-            LOG.info("  - PostgreSQL array types enabled: {}", properties.getPostgresql().isArrayTypesEnabled());
-            LOG.info("  - PostgreSQL range types enabled: {}", properties.getPostgresql().isRangeTypesEnabled());
-            LOG.info("  - Enhanced repository methods enabled: {}", properties.getRepository().isEnhancedMethodsEnabled());
-        }
-
-        return properties;
+    public ArchbaseHypersistenceAutoConfiguration(ArchbaseHypersistenceProperties properties) {
+        LOG.info("Archbase Hypersistence auto-configuration ativa (json.*, postgresql.* e repository.* são só informativas)");
     }
 }

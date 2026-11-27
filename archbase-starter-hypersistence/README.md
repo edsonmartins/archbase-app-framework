@@ -37,10 +37,10 @@ Registra:
 
 - `ArchbaseHypersistenceProperties` (via `@EnableConfigurationProperties`) e importa
   `ArchbaseHypersistenceConfiguration`, que só repete esse registro;
-- um bean `archbaseHypersistenceProperties` do mesmo tipo, que é a mesma instância e serve para logar as opções
-  em `INFO`. Efeito colateral: ficam **dois** beans `ArchbaseHypersistenceProperties` no contexto, e injetar esse
-  tipo falha por ambiguidade, a menos que o ponto de injeção se chame `archbaseHypersistenceProperties` ou use
-  `@Qualifier`.
+- uma linha em `INFO` dizendo que a auto-configuração está ativa.
+
+Até a 3.5.0 havia ainda um bean `archbaseHypersistenceProperties` do mesmo tipo, e injetar
+`ArchbaseHypersistenceProperties` por tipo falhava por ambiguidade.
 
 Não registra tipo Hibernate, `TypeContributor`, repositório nem `DataSource`.
 
