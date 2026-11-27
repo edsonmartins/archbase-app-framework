@@ -21,6 +21,9 @@ public class ArchbaseRepositoryMojo extends CommonsMojo {
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
+        if (project != null) {
+            br.com.archbase.maven.plugin.codegen.util.GeneratorUtils.setBaseDir(project.getBasedir());
+        }
 
         ArchbaseDataLogger.configure(getLog());
 

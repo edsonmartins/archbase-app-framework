@@ -20,6 +20,19 @@ import java.util.Map;
 public class ServiceStructure {
 
     private final static Map<Class<?>, Class<?>> mapConvert = new HashMap<>();
+
+    static {
+        // Até a 3.5.0 este mapa ficava vazio (só o RepositoryStructure o preenchia): id primitivo era recusado nos
+        // goals services e resources.
+        mapConvert.put(boolean.class, Boolean.class);
+        mapConvert.put(byte.class, Byte.class);
+        mapConvert.put(short.class, Short.class);
+        mapConvert.put(char.class, Character.class);
+        mapConvert.put(int.class, Integer.class);
+        mapConvert.put(long.class, Long.class);
+        mapConvert.put(float.class, Float.class);
+        mapConvert.put(double.class, Double.class);
+    }
     private ObjectBuilder objectBuilder;
     private CustomResourceLoader loader;
     private int error;

@@ -14,9 +14,21 @@ public class GeneratorUtils {
     private GeneratorUtils() {
     }
 
+    /** Diretório do projeto em que o goal roda; os mojos o definem a partir de {@code project.getBasedir()}. */
+    private static volatile File baseDir;
+
+    public static void setBaseDir(File diretorio) {
+        baseDir = diretorio;
+    }
+
+    /**
+     * {@code <basedir>/src/main/java/}. Até a 3.5.0 usava {@code new File(".")} — o diretório de onde o Maven foi
+     * chamado: num build multimódulo disparado da raiz, os arquivos iam para a raiz, não para o módulo.
+     */
     public static String getAbsolutePath() {
         try {
-            return new File(".").getCanonicalPath() + "/src/main/java/";
+            File raiz = baseDir != null ? baseDir : new File(".");
+            return raiz.getCanonicalPath() + "/src/main/java/";
         } catch (IOException e) {
             return null;
         }
