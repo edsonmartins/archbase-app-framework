@@ -74,7 +74,7 @@ O construtor apara, passa para minúsculas e confere contra `^[a-zA-Z0-9._%+-]+@
 ### Endereco
 
 Sem validação nenhuma: o builder aceita qualquer combinação, inclusive tudo nulo. `pais` vale `"Brasil"` se não
-informado. Métodos: `linhaUnica()`, `cidadeUf()` (`cidade-uf`; com só um dos dois preenchido sai `null` no texto),
+informado. Métodos: `linhaUnica()`, `cidadeUf()` (`cidade-uf`; com só um dos dois, só ele — até a 3.5.0 saía `null` no texto),
 `isCompleto()` (logradouro, número, bairro, cidade, UF e CEP não vazios). O CEP é gravado como veio, sem
 normalização.
 
