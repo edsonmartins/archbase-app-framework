@@ -26,8 +26,12 @@ public class SortUtils {
             return new ArrayList<>();
         }
 
+        // Item: "campo", "campo:asc" ou "campo,desc" (a vírgula é o formato que o javadoc de toSort sempre mostrou).
+        // Até a 3.5.0 só ":" funcionava, e um item sem direção lançava ArrayIndexOutOfBoundsException.
         return Arrays.stream(sort.split(MULTIPLE_SORT_SEPARATOR))
-                .map(item -> item.split(SORT_SEPARATOR))
+                .map(String::trim)
+                .filter(item -> !item.isEmpty())
+                .map(item -> item.split("[:,]", 2))
                 .map(parts -> sortToJpaOrder(parts, propertyMapper, root, cb))
                 .collect(Collectors.toList());
     }
@@ -52,8 +56,8 @@ public class SortUtils {
     }
 
     private static Order sortToJpaOrder(final String[] parts, final Map<String, String> propertyMapper, final Root<?> root, final CriteriaBuilder cb) {
-        final String property = parts[0];
-        final String direction = parts[1];
+        final String property = parts[0].trim();
+        final String direction = parts.length > 1 ? parts[1].trim() : "asc";
 
         final String propertyPath = propertyMapper.getOrDefault(property, property);
         final Expression<?> propertyExpression = pathToExpression(root, propertyPath);
@@ -63,11 +67,21 @@ public class SortUtils {
     private static Expression<?> pathToExpression(final Root<?> root, final String path) {
         final String[] properties = path.split(PROPERTY_PATH_SEPARATOR);
 
-        Path<?> expression = root.get(properties[0]);
-        for (int i = 1; i < properties.length; ++i) {
-            expression = expression.get(properties[i]);
+        // A lista negra do RSQL vale também para a ordenação, em cada segmento: ordenar por um campo proibido revela
+        // a ordem dos valores dele. Até a 3.5.0 o toSort não passava por controle nenhum.
+        Path<?> expression = root;
+        for (String property : properties) {
+            recusarSeNaListaNegra(expression.getJavaType(), property);
+            expression = expression.get(property);
         }
         return expression;
+    }
+
+    private static void recusarSeNaListaNegra(Class<?> dono, String propriedade) {
+        var listaNegra = br.com.archbase.query.rsql.common.RSQLCommonSupport.getPropertyBlacklist().get(dono);
+        if (listaNegra != null && listaNegra.contains(propriedade)) {
+            throw new IllegalArgumentException("Propriedade " + dono.getName() + "." + propriedade + " está na lista negra");
+        }
     }
 
 }

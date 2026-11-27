@@ -100,7 +100,8 @@ public class ArchbaseRSQLJPASupport extends RSQLCommonSupport {
 
     /**
      * Adicione orderBy (s) a {@code CriteriaQuery}.
-     * Examplo: {@code "field1,asc;field2,desc;field3.subfield1,asc"}
+     * Exemplo: {@code "field1:asc;field2,desc;field3.subfield1"} — itens separados por {@code ;}, direção depois de
+     * {@code :} ou {@code ,}, ASC quando omitida. Passa pela lista negra do RSQL e pelo {@code propertyPathMapper}.
      *
      * @param sortQuery          - consulta de classificação
      * @param propertyPathMapper - remapeamento de propriedade
