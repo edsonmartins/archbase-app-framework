@@ -30,7 +30,8 @@ public class LocalTimeStringConverter implements AttributeConverter<LocalTime, S
 
     @Override
     public String convertToDatabaseColumn(LocalTime attribute) {
-        return formatter.format(attribute);
+        // null grava null. Até a 3.5.0 lançava NullPointerException.
+        return attribute == null ? null : formatter.format(attribute);
     }
 
     @Override

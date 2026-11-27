@@ -64,8 +64,9 @@ starters não o incluem. Fora disso, use `@Convert(converter = ...)` no campo.
 
 Comportamentos que podem surpreender:
 
-- `LocalTimeStringConverter` grava só hora e minuto (segundos se perdem) e lança `NullPointerException` ao gravar
-  `null`. Na leitura, valor que não se converte vira `null`, sem erro.
+- `LocalTimeStringConverter` grava só hora e minuto (segundos se perdem — o formato `HH:mm` é o que já está nos
+  bancos, por isso não mudou). `null` grava `null` (até a 3.5.0, `NullPointerException`). Na leitura, valor que não se
+  converte vira `null`, sem erro.
 - Com `autoApply`, `InstantConverter` e `ZonedDateTimeConverter` substituem o mapeamento nativo do Hibernate para
   esses tipos em todas as entidades da unidade de persistência.
 
@@ -104,10 +105,10 @@ levam `@DomainValueObject`, mas **não** são `@Embeddable` e não têm converso
 |---|---|
 | `CPF` | `of(s)` confere os dígitos verificadores e lança `IllegalArgumentException` se forem inválidos; `isValido()` confere sem lançar. `instance(s)` e `setInternalCpf` só tiram `.`, `-` e espaço, sem conferir |
 | `CNPJ` | `of(s)` confere os dígitos verificadores (numérico ou alfanumérico); `isValido()` confere sem lançar. `instance(s)` e `setInternalCnpj` tiram a máscara, passam letras para maiúsculas e exigem 14 caracteres, sem conferir os dígitos |
-| `Email` | Nada |
-| `CreditCard` | Nada |
+| `Email` | `of(s)` confere o formato e lança `IllegalArgumentException`; `isValido()` confere sem lançar. `instance(s)` não confere (até a 3.5.0, nada conferia) |
+| `CreditCard` | `of(...)` confere Luhn, mês (1 a 12), ano (2 dígitos) e código (3 ou 4 dígitos); `isValido()` confere sem lançar. `instance(...)` não confere |
 | `PhoneNumber` | Aceita dígitos, espaço, `(`, `)`, `-` e `.`; exige ao menos um dígito |
-| `Quantity` | — (`BigDecimal`; `add`/`subtract` passam por `double` e perdem precisão; sem `equals`) |
+| `Quantity` | — (`BigDecimal` exato em `add`/`subtract`; `equals` por valor, `1.0` igual a `1.00`. Até a 3.5.0 as contas passavam por `double` e não havia `equals`) |
 | `Description` | — (`Description.of(texto)`) |
 | `CardType` | Enum de bandeiras com `detect(numero)` e `isLuhnValid(numero)` |
 
