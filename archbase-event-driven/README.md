@@ -92,7 +92,7 @@ Sem Spring, `new AutoScanHandlerFactory(beanFactory)` + `scanAndRegisterHandlers
 
 | Classe | Faz |
 |---|---|
-| `LoggingMiddleware` | Loga em INFO a mensagem recebida e o resultado (`toString()` de ambos); em ERROR a falha, e relança |
+| `LoggingMiddleware` | Loga em INFO o tipo e a classe da mensagem recebida e tratada; o conteúdo (`toString()` da mensagem e do resultado) só em DEBUG; em ERROR a falha, sem o conteúdo, e relança |
 | `MetricsMiddleware` | Pretende contar e cronometrar via Micrometer, carregado por reflexão. Ver limitações |
 
 ## Eventos
@@ -119,8 +119,7 @@ Nada no módulo grava, lê ou retransmite eventos de outbox. Para usar a entidad
 - **`MetricsMiddleware` não registra métricas.** O construtor padrão não acha o registry global (loga WARN a cada
   barramento criado), e mesmo com um `MeterRegistry` passado no construtor as chamadas por reflexão falham em
   silêncio: nenhum contador ou timer é criado.
-- **`LoggingMiddleware` loga conteúdo em INFO:** o `toString()` de toda mensagem e resultado. Cuidado com dados
-  sensíveis; troque a lista com um `MiddlewareConfig` próprio.
+- Até a 3.5.0 o `LoggingMiddleware` logava em INFO o `toString()` de toda mensagem e resultado, também no erro.
 - As anotações de método `@CommandHandler`, `@QueryHandler`, `@EventHandler` e `@EventSubscribe` não são lidas.
 - Não há barramento assíncrono, retry nem transação em torno do despacho.
 
