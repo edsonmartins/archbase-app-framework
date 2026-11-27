@@ -142,8 +142,9 @@ classes com `org.springframework.data.annotation.Id` (`SpringDataJdbcAnnotationP
 `br.com.archbase.ddd.infraestructure.events`; inclua-o na varredura (`archbase.app.component.scan`) para usar.
 
 - Exceção num handler é registrada em log e engolida.
-- `@DomainEventListener(asynchronous = true)` cria um `AsynchronousEventHandler`, que não sobrescreve nada: o
-  handler roda **na mesma thread**, como o síncrono.
+- `@DomainEventListener(asynchronous = true)` cria um `AsynchronousEventHandler`, que roda o handler no `TaskExecutor`
+  da aplicação (se houver um só) ou num `SimpleAsyncTaskExecutor` com o `TaskDecorator` do contexto. Até a 3.5.0 não
+  sobrescrevia nada e rodava na thread de quem publicou.
 - Para CQRS (`CommandBus`, `EventBus`, `QueryBus`), use o `archbase-event-driven`.
 
 ## Limitações
