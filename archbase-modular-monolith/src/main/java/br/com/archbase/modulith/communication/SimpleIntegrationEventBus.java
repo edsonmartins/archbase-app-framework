@@ -54,9 +54,13 @@ public class SimpleIntegrationEventBus implements IntegrationEventBus {
             return;
         }
 
+        // A origem é a do evento (getSourceModule(), ou o sourceModule da anotação @IntegrationEvent). Até a 3.5.0 a
+        // assinatura era comparada com o nome deste barramento ("main"): quem assinava eventos de um módulo específico
+        // não recebia nada.
+        String origem = origemDo(event);
         for (EventSubscription<?> subscription : eventSubscriptions) {
             if (subscription.sourceModule == null ||
-                    subscription.sourceModule.equals(currentModule)) {
+                    subscription.sourceModule.equals(origem)) {
 
                 executor.submit(() -> {
                     try {
@@ -135,6 +139,18 @@ public class SimpleIntegrationEventBus implements IntegrationEventBus {
      */
     public void shutdown() {
         executor.shutdown();
+    }
+
+    private static String origemDo(IntegrationEvent event) {
+        String declarada = event.getSourceModule();
+        if (declarada != null && !declarada.isBlank()) {
+            return declarada;
+        }
+        var anotacao = event.getClass().getAnnotation(br.com.archbase.modulith.annotations.IntegrationEvent.class);
+        if (anotacao != null && !anotacao.sourceModule().isBlank()) {
+            return anotacao.sourceModule();
+        }
+        return null;
     }
 
     private record EventSubscription<T>(Consumer<T> handler, String sourceModule) {

@@ -27,7 +27,7 @@ compile), `spring-boot-starter`, `spring-boot-starter-actuator`, `spring-boot-he
 | `archbase.modulith.validate-dependencies-on-startup` | `true` | Valida dependências ausentes e ciclos antes de iniciar os módulos |
 | `archbase.modulith.event-bus.thread-pool-size` | `10` | Threads do `IntegrationEventBus` |
 | `archbase.modulith.gateway.thread-pool-size` | `10` | Threads do `ModuleGateway` |
-| `archbase.modulith.health-checks-enabled` | `true` | Condição do `ModuleHealthIndicator`, que só existe se a aplicação varrer o pacote (ver abaixo) |
+| `archbase.modulith.health-checks-enabled` | `true` | Registra o `ModuleHealthIndicator` (com o actuator no classpath) |
 | `archbase.modulith.scan-packages` | vazio | Sem efeito: não é lida |
 | `archbase.modulith.metrics-enabled` | `true` | Sem efeito: não há métricas |
 | `archbase.modulith.event-bus.use-outbox` | `true` | Sem efeito: não é lida |
@@ -43,8 +43,9 @@ Beans registrados:
 | `modulithObjectMapper` | `@ConditionalOnMissingBean` (`tools.jackson.databind.ObjectMapper`) | `JsonMapper` com `findAndAddModules` |
 | `moduleDiscoveryListener` | sempre | `ModuleAutoConfiguration.ModuleDiscoveryListener` |
 
-`ModuleHealthIndicator` é um `@Component` em `br.com.archbase.modulith.spring` e **não** é registrado pela
-auto-configuração. Para ter o indicador em `/actuator/health`, a aplicação varre esse pacote ou declara o bean.
+`ModuleHealthIndicator` é registrado pela auto-configuração quando o actuator está no classpath: a saúde de cada
+módulo aparece em `/actuator/health`. Módulo desligado (`enabled = false`) conta como saudável; módulo que falhou ao
+subir deixa o indicador `DOWN`. Até a 3.5.0 era `@Component` e só aparecia se a aplicação varresse o pacote.
 
 `@EnableModularMonolith` só faz `@Import(ModuleAutoConfiguration.class)`. Seus atributos (`basePackages`,
 `validateDependenciesOnStartup`, `enableHealthChecks`, `enableMetrics`, `defaultCommunicationMode`) não são lidos;
@@ -145,12 +146,12 @@ ModuleBoundaryRules.modulesShouldNotHaveCyclicDependencies("com.acme.app.modules
   Ela importa zero classes de bytecode Java 25, e as regras acima falham com "failed to check any classes" (ou,
   com `allowEmptyShould(true)`/`archRule.failOnEmptyShould=false`, passam sem examinar nada). Declare
   `com.tngtech.archunit:archunit` 1.4.2 no projeto para usar as regras.
-- **`subscribe(tipo, sourceModule, handler)` não filtra por origem do evento:** compara `sourceModule` com o nome do
-  próprio barramento (`"main"` no bean da auto-configuração). Assinatura com qualquer outro `sourceModule` nunca
-  recebe evento.
-- **`ModuleLifecycle.onStop()` nunca é chamado**, e `getShutdownOrder()` não é usado.
-- **Módulo desabilitado derruba o health:** com `enabled = false`, o módulo fica registrado e não iniciado, e
-  `getHealth` o reporta como não saudável; o `ModuleHealthIndicator` responde `DOWN`.
+- `subscribe(tipo, sourceModule, handler)` filtra pela origem do evento: `getSourceModule()` ou, se vier vazio, o
+  `sourceModule` da anotação `@IntegrationEvent`. Evento sem origem só chega a quem assinou sem `sourceModule`.
+- No fechamento do contexto, `ModuleLifecycle.onStop()` é chamado em cada módulo iniciado, na ordem de
+  `getShutdownOrder()`.
+- Até a 3.5.0: o filtro comparava com o nome do barramento (`"main"`) e quem assinava por módulo não recebia nada;
+  `onStop` nunca era chamado; e módulo desligado deixava o health `DOWN`.
 - **Outbox sem relay e com tabela disputada:** nada lê `outbox_event`. `OutboxEventRecord` é entidade aninhada em
   `SimpleIntegrationEventBus` (precisa estar no scan de entidades) e usa a mesma tabela que o `OutboxEvent` de
   `archbase-event-driven` mapeia pela nomenclatura padrão, com `timestamp` `Instant` lá `Long` e `id` texto.

@@ -111,6 +111,16 @@ public class DefaultModuleRegistry implements ModuleRegistry {
     public ModuleHealth getHealth(String moduleName) {
         return getModule(moduleName)
                 .map(module -> {
+                    if (!module.isEnabled()) {
+                        // Desligado de propósito não é falha. Até a 3.5.0 aparecia como não saudável e o health
+                        // geral ficava DOWN.
+                        return ModuleHealth.builder()
+                                .moduleName(moduleName)
+                                .state(module.getState())
+                                .healthy(true)
+                                .message("Module is disabled")
+                                .build();
+                    }
                     if (module.getState() != ModuleState.STARTED) {
                         return ModuleHealth.builder()
                                 .moduleName(moduleName)

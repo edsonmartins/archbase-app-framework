@@ -6,7 +6,6 @@ import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.List;
@@ -21,9 +20,12 @@ import java.util.Map;
  * @author Archbase Team
  * @since 3.0.0
  */
-@Component
 @ConditionalOnClass(HealthIndicator.class)
 @ConditionalOnProperty(prefix = "archbase.modulith", name = "health-checks-enabled", havingValue = "true", matchIfMissing = true)
+/**
+ * Saúde dos módulos no {@code /actuator/health}. Registrado pela {@code ModuleAutoConfiguration}; até a 3.5.0 era
+ * {@code @Component} e só aparecia se a aplicação varresse {@code br.com.archbase.modulith.spring}.
+ */
 public class ModuleHealthIndicator implements HealthIndicator {
 
     private final ModuleRegistry moduleRegistry;
