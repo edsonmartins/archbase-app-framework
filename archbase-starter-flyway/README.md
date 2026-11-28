@@ -49,7 +49,6 @@ Registra um único bean, `archbaseFlywayConventionsCustomizer` (`FlywayConfigura
 **Estas propriedades vencem as equivalentes do Spring Boot.** O customizer roda depois que o Boot aplica
 `spring.flyway.*`, então `spring.flyway.baseline-on-migrate` e `spring.flyway.baseline-version` são sobrescritas
 enquanto `archbase.flyway.enabled=true`. Para controlar essas duas pelo `spring.flyway.*`, desligue as convenções.
-(O javadoc de `ArchbaseFlywayProperties` diz o contrário.)
 
 ## As migrações do framework
 

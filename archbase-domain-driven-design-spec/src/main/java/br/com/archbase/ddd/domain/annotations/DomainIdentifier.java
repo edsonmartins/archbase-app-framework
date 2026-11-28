@@ -14,7 +14,9 @@ import java.lang.annotation.*;
  * Reference (Evans) - Entities</a>
  */
 @Retention(RetentionPolicy.RUNTIME)
-@Target(ElementType.TYPE)
+// FIELD e METHOD: o processador de anotações do Archbase usa esta anotação para propriedade embutida (papel de @Embedded), que vale em campo e getter.
+// Até a 3.5.0 só TYPE era permitido, e não dava para colocá-la onde ela tem efeito.
+@Target({ElementType.TYPE, ElementType.FIELD, ElementType.METHOD})
 @Documented
 public @interface DomainIdentifier {
 
