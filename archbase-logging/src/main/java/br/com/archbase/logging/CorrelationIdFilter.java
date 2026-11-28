@@ -40,6 +40,10 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
 
     private final String headerName;
 
+    /** Caminhos de health check: um segmento health, readiness ou liveness, no fim ou seguido de subcaminho. */
+    private static final java.util.regex.Pattern SAUDE =
+            java.util.regex.Pattern.compile("(?:.*/)?(?:health|readiness|liveness)(?:/.*)?");
+
     public CorrelationIdFilter() {
         this(CORRELATION_ID_HEADER);
     }
@@ -69,7 +73,15 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
         }
     }
 
+    /**
+     * O cabeçalho configurado ({@code archbase.logging.correlation-header}) primeiro, depois os conhecidos. Até a 3.5.0
+     * o configurado só valia na resposta: um id que chegasse nele era ignorado e outro era gerado.
+     */
     private String extractCorrelationId(HttpServletRequest request) {
+        String configurado = request.getHeader(headerName);
+        if (configurado != null && !configurado.isBlank()) {
+            return configurado;
+        }
         for (String header : POSSIBLE_HEADERS) {
             String value = request.getHeader(header);
             if (value != null && !value.isBlank()) {
@@ -82,10 +94,9 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         // Não filtrar requisições de health check
+        // Por segmento inteiro: até a 3.5.0 era contains("/health"), e /api/healthcare ou /pedidos/liveness-report
+        // ficavam sem correlation id.
         String path = request.getRequestURI();
-        return path != null && (path.contains("/actuator/health") ||
-                path.contains("/health") ||
-                path.contains("/readiness") ||
-                path.contains("/liveness"));
+        return path != null && SAUDE.matcher(path).matches();
     }
 }
