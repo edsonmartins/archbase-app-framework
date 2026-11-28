@@ -165,9 +165,10 @@ aplicação monta por conta própria precisam chamar o guard.
 
 - **Estado global por JVM.** Mapeamentos, listas e conversores são estáticos: valem para todos os contextos Spring
   da JVM e persistem entre testes até `clear()`.
-- **`toSort` não passa pelo controle de acesso** nem por `addMapping`: ordena por qualquer caminho, aplicando só o
-  `propertyPathMapper` passado. Cada item precisa de direção (`campo:asc`); sem `:` lança
-  `ArrayIndexOutOfBoundsException`. O javadoc do método mostra `campo,asc`, que não funciona.
+- `toSort("campo1:asc;campo2,desc;assoc.campo3")`: direção depois de `:` ou `,`, ASC quando omitida. Passa pela
+  **lista negra** (em cada segmento) e pelo `propertyPathMapper`, mas não pela lista branca nem por `addMapping`. Até a
+  3.5.0 não passava por controle nenhum, só `:` funcionava e um item sem direção lançava
+  `ArrayIndexOutOfBoundsException`.
 - `=ke=` e afins não escapam `%` e `_` do valor: o cliente pode usá-los como curinga.
 - **Row-level security não está implementado.** O pacote `br.com.archbase.query.rls.support` tem `@DynamicFilter`,
   `RowLevelSecurityFilter` e `ArchbaseRowLevelSecurityFilterEntityLocator`, mas nada os registra nem os chama:
