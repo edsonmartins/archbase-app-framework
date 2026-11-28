@@ -375,6 +375,7 @@ public class ArchbaseAuthenticationController {
             AuthenticationRequest authRequest = AuthenticationRequest.builder()
                 .email(email)
                 .password(request.getPassword())
+                .tenantId(request.getTenantId())
                 .build();
                 
             AuthenticationResponse response = service.authenticate(authRequest);

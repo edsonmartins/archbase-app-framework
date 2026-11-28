@@ -86,7 +86,7 @@ public class EntityBuilder<T> {
         } catch (NoSuchMethodException e) {
             throw new EntityBuilderException(
                     "Classe " + entityClass.getName() + " não possui construtor padrão. " +
-                            "Use EntityBuilder.of(Class, Supplier) para fornecer um factory method.", e);
+                            "Use build(Supplier) para fornecer um factory method.", e);
         } catch (Exception e) {
             throw new EntityBuilderException("Erro ao construir instância de " + entityClass.getName(), e);
         }
@@ -141,8 +141,12 @@ public class EntityBuilder<T> {
     }
 
     /**
-     * Cria um builder com valores padrão para campos comuns.
-     * Gera valores automáticos para id, code, version, etc.
+     * Cria um builder com valores padrão para campos comuns: {@code id}, {@code code}, {@code version} e
+     * {@code active}. Cada valor só é aplicado se o campo existir e for do tipo certo; o {@code id} é um UUID novo,
+     * como texto se o campo for {@code String} (o caso de {@code PersistenceEntityBase}) ou como {@link UUID}.
+     *
+     * <p>Até a 3.5.0 o {@code id} era sempre um {@link UUID}, e {@code build()} falhava em toda entidade com id
+     * {@code String}.
      *
      * @param entityClass Classe da entidade
      * @param <T>         Tipo da entidade
@@ -153,7 +157,10 @@ public class EntityBuilder<T> {
 
         // Tentar definir valores padrão para campos comuns
         try {
-            setDefaultFieldValue(entityClass, "id", UUID.randomUUID(), builder);
+            UUID id = UUID.randomUUID();
+            Field campoId = findFieldInClassStatic(entityClass, "id");
+            setDefaultFieldValue(entityClass, "id",
+                    campoId != null && campoId.getType() == String.class ? id.toString() : id, builder);
             setDefaultFieldValue(entityClass, "code", "DEFAULT-" + System.currentTimeMillis(), builder);
             setDefaultFieldValue(entityClass, "version", 0L, builder);
             setDefaultFieldValue(entityClass, "active", true, builder);
@@ -167,12 +174,23 @@ public class EntityBuilder<T> {
     private static <T> void setDefaultFieldValue(Class<T> entityClass, String fieldName,
                                                    Object value, EntityBuilder<T> builder) {
         try {
-            if (findFieldInClassStatic(entityClass, fieldName) != null) {
+            Field field = findFieldInClassStatic(entityClass, fieldName);
+            if (field != null && aceita(field.getType(), value)) {
                 builder.fieldValues.put(fieldName, value);
             }
         } catch (Exception ignored) {
             // Campo não existe ou não é acessível
         }
+    }
+
+    /** O campo aceita o valor, considerando os tipos primitivos ({@code long} aceita {@code Long}). */
+    private static boolean aceita(Class<?> tipo, Object value) {
+        if (tipo.isPrimitive()) {
+            return (tipo == long.class && value instanceof Long)
+                    || (tipo == int.class && value instanceof Integer)
+                    || (tipo == boolean.class && value instanceof Boolean);
+        }
+        return tipo.isInstance(value);
     }
 
     private static Field findFieldInClassStatic(Class<?> clazz, String fieldName) {

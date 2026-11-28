@@ -1,27 +1,22 @@
 package br.com.archbase.ddd.infraestructure.persistence.jpa.specification;
 
-import br.com.archbase.ddd.domain.specification.ArchbaseSpecification;
 import br.com.archbase.ddd.domain.specification.basic.GreaterThanArchbaseSpecification;
-
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 
+import jakarta.persistence.criteria.Expression;
+
 /**
- * Especifica a lógica de conversão de um {@link ArchbaseSpecification} do tipo GREATER THAN {@link GreaterThanOrEqualConverter} em {@link Predicate}.
- *
- * @author edsonmartins
+ * {@code >}. Compara com o valor tal como veio (até a 3.5.0, convertido em texto: num campo numérico, comparava texto com número).
  */
 public class GreaterThanConverter implements SpecificationConverter<GreaterThanArchbaseSpecification<Object>, Object> {
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
-    @SuppressWarnings("unchecked")
-    public Predicate convertToPredicate(GreaterThanArchbaseSpecification<Object> gt, Root<Object> root, CriteriaQuery<?> cq, CriteriaBuilder cb) {
-        return cb.greaterThan(root.get(gt.getProperty()), gt.getValue().toString());
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public Predicate convertToPredicate(GreaterThanArchbaseSpecification<Object> s, Root<Object> root, CriteriaQuery<?> cq, CriteriaBuilder cb) {
+        Expression<Comparable> campo = root.get(s.getProperty());
+        return cb.greaterThan(campo, (Comparable) s.getValue());
     }
-
 }

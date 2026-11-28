@@ -1,27 +1,21 @@
 package br.com.archbase.ddd.infraestructure.persistence.jpa.specification;
 
-import br.com.archbase.ddd.domain.specification.ArchbaseSpecification;
-import br.com.archbase.ddd.domain.specification.basic.InArchbaseSpecification;
-
+import br.com.archbase.ddd.domain.specification.basic.NotInArchbaseSpecification;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
+
 import java.util.Collection;
 
 /**
- * Especifica a lógica de conversão de um {@link ArchbaseSpecification} do tipo NOT IN {@link NotInConverter} em {@link Predicate}.
- *
- * @author edsonmartins
+ * {@code not in}. Até a 3.5.0 declarava {@code InArchbaseSpecification} e tomava o lugar do conversor de {@code in}.
  */
-public class NotInConverter implements SpecificationConverter<InArchbaseSpecification<Object>, Object> {
+public class NotInConverter implements SpecificationConverter<NotInArchbaseSpecification<Object>, Object> {
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
-    public Predicate convertToPredicate(InArchbaseSpecification<Object> eq, Root<Object> root, CriteriaQuery<?> cq, CriteriaBuilder cb) {
-        return cb.not(cb.in(root.get(eq.getProperty()).in((Collection<Object>) eq.getValue())));
+    @SuppressWarnings("unchecked")
+    public Predicate convertToPredicate(NotInArchbaseSpecification<Object> s, Root<Object> root, CriteriaQuery<?> cq, CriteriaBuilder cb) {
+        return cb.not(root.get(s.getProperty()).in((Collection<Object>) s.getValue()));
     }
-
 }

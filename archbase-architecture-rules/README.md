@@ -106,14 +106,10 @@ class MinhaArquiteturaTest extends ArchbaseArchitectureTest {
 
 ## Limitações
 
-- **Versão do ArchUnit.** O `dependencyManagement` do pom raiz fixa `com.tngtech.archunit:archunit` em **1.0.1**,
-  cujo leitor de bytecode não entende classes Java 25: o `ClassFileImporter` devolve **zero classes** (conferido:
-  1.0.1 importa 0 classes de `archbase-modular-monolith`, 1.4.2 importa 51). Este módulo declara `archunit` 1.4.2
-  direto e, sozinho, leva 1.4.2 para a aplicação. Mas o [`archbase-modular-monolith`](../archbase-modular-monolith/README.md)
-  declara `archunit` 1.0.1; com os dois no projeto, o Maven escolhe pela ordem de declaração, e pode vir 1.0.1. Com
-  1.0.1, as regras de agregado e de estilo (que usam `allowEmptyShould(true)`) e o perfil `lenient`
-  (`failOnEmpty(false)`) **passam sem examinar nada**; as demais falham com "failed to check any classes". Confira
-  com `mvn dependency:tree -Dincludes=com.tngtech.archunit` e, se preciso, declare `archunit` 1.4.2 no projeto.
+- **Versão do ArchUnit.** O pom raiz gerencia `archunit` em 1.4.2 (`archunit.version`). Até a 3.5.0 gerenciava 1.0.1,
+  que não lê bytecode Java 25 (importa zero classes), e o [`archbase-modular-monolith`](../archbase-modular-monolith/README.md)
+  declarava 1.0.1: com os dois no projeto podia vir 1.0.1, e as regras passavam sem examinar nada. Se o seu projeto
+  fixa outra versão, confira com `mvn dependency:tree -Dincludes=com.tngtech.archunit`.
 - As regras de segurança aceitam o que o Archbase aplica: `@HasPermission` ou `@PreAuthorize` no método, e
   `@RequireProfile`/`@RequireRole`/`@RequirePersona` no método ou na classe; a regra de classe aceita ainda `Public`
   no nome. `@PermitAll`, `@RolesAllowed` e `@Secured` não contam — o Archbase os ignora. Até a 3.5.0 a regra de

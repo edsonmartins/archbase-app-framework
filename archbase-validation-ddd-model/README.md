@@ -19,7 +19,7 @@ auto-configuração, bean ou propriedade.
 </dependency>
 ```
 
-Traz `archbase-domain-driven-design-spec` e `com.tngtech.archunit:archunit` na versão fixada no pom raiz (1.0.1).
+Traz `archbase-domain-driven-design-spec` e `com.tngtech.archunit:archunit` na versão do pom raiz (1.4.2).
 
 ## API
 
@@ -49,8 +49,8 @@ Verificado executando as regras contra as classes da `archbase-domain-driven-des
 3. **"Entidade" é a anotação JPA.** A primeira regra testa atribuição a `jakarta.persistence.Entity` (anotação), não
    à interface `br.com.archbase.ddd.domain.contracts.Entity`. Mesmo com os predicados consertados, nenhum campo seria
    atribuível a ela.
-4. **ArchUnit 1.0.1 não lê classes de Java 25.** Com a versão que vem do pom raiz, `ClassFileImporter` importa zero
-   classes compiladas para Java 25. O `archbase-architecture-rules` declara ArchUnit 1.4.2 por conta própria.
+4. Até a 3.5.0 a versão do pom raiz era ArchUnit 1.0.1, que importa zero classes de Java 25. Hoje é 1.4.2, o que não
+   resolve os defeitos acima: as classes são lidas, mas os predicados continuam não selecionando nada.
 
 ## Referência
 
