@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS processed_sync_operation (
     status         VARCHAR(20)  NOT NULL,
     operation_type VARCHAR(80),
     aggregate_id   VARCHAR(64),
+    user_id        VARCHAR(64),
     server_version BIGINT,
     processed_at   TIMESTAMP    NOT NULL,
     CONSTRAINT pk_processed_sync_operation PRIMARY KEY (tenant_id, operation_id),
