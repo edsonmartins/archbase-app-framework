@@ -122,8 +122,9 @@ Até a 3.5.0 as três chamadas lançavam `NullPointerException` (o tradutor só 
 nada chamava), e por trás disso a tradução estava errada: igualdade virava `not like`, `in` virava `not in`, `>`
 virava `>=`, `<` virava `<=`, e as comparações convertiam o valor em texto.
 
-A avaliação **em memória** (`isSatisfiedBy`) de `LikeArchbaseSpecification` e `NotLikeArchbaseSpecification` não
-segue o `like` do banco: testa se o padrão contém o valor, e as duas dão o mesmo resultado. Use-as só em consulta.
+A avaliação **em memória** (`isSatisfiedBy`) de `LikeArchbaseSpecification` e `NotLikeArchbaseSpecification` segue
+o `like` do banco (`%`, `_`, o texto inteiro), e `NotLike` é a negação. Até a 3.5.0 as duas testavam se o padrão
+continha o valor e davam o mesmo resultado.
 
 ## Identificadores tipados no JSON
 
