@@ -33,7 +33,7 @@ Nada, por conta própria. Há quatro classes anotadas como componente, mas nenhu
 | `quantity.QuantityFormatter` | `@Component` | `Formatter<Quantity>` (pacote `quantity`) |
 | `converters.StringToQuantityConverter` | `@Component`, `@ConfigurationPropertiesBinding` | Usa o `QuantityFormatter`; classe não pública |
 | `time.DefaultBusinessTime` | `@Service` | Implementa `BusinessTime`; classe não pública |
-| `converters.AttributeEncryptor` | `@Component` | Lê `aes.encryption.key` com `@Value` sem padrão: varrido sem a propriedade, a aplicação não sobe |
+| `converters.AttributeEncryptor` | `@Component` | Lê `aes.encryption.key`; sem a propriedade, falha no primeiro uso (até a 3.5.0, na subida) |
 
 ## Conversores JPA
 
@@ -58,9 +58,9 @@ starters não o incluem. Fora disso, use `@Convert(converter = ...)` no campo.
 | `MonetaryAmountAttributeConverter` | `MonetaryAmount` → `String` (`toString()` do Moneta) | sim |
 | `DescriptionAttributeConverter` | `types.Description` → `String` | sim |
 | `QuantityAttributeConverter` | `types.Quantity` → `Double` | sim |
-| `AttributeEncryptor` | `String` → AES, Base64 | não (não tem `@Converter`) |
-| `StringEncryptDecryptConverter` | `String` → AES/CBC, Base64 | não |
-| `LocalDateEncryptDecryptConverter` | `LocalDate` → AES/CBC, Base64 | não |
+| `AttributeEncryptor` | `String` → cifrado (ver abaixo) | não (não tem `@Converter`) |
+| `StringEncryptDecryptConverter` | `String` → cifrado (ver abaixo) | não |
+| `LocalDateEncryptDecryptConverter` | `LocalDate` → cifrado (ver abaixo) | não |
 
 Comportamentos que podem surpreender:
 
@@ -69,11 +69,26 @@ Comportamentos que podem surpreender:
 - Com `autoApply`, `InstantConverter` e `ZonedDateTimeConverter` substituem o mapeamento nativo do Hibernate para
   esses tipos em todas as entidades da unidade de persistência.
 
-> **Não use os conversores de criptografia para dado sensível.** `StringEncryptDecryptConverter` e
-> `LocalDateEncryptDecryptConverter` cifram com uma chave fixa no código-fonte (`"MySuperSecretKey"`) e IV zerado:
-> qualquer um com acesso ao código decifra a coluna. `AttributeEncryptor` lê a chave de `aes.encryption.key`
-> (os bytes da string, que precisa ter 16, 24 ou 32 caracteres), usa `Cipher.getInstance("AES")` — modo ECB — e
-> compartilha um único `Cipher` entre threads. Para segredo em repouso, use outra solução.
+### Conversores de criptografia
+
+Gravam no formato atual — AES-GCM, IV aleatório por valor, autenticado, com o prefixo `v2:` — e leem também o
+formato anterior (Base64 sem prefixo), para que o que já está no banco continue legível. Cada linha passa ao formato
+atual na próxima vez que for gravada; não há migração em lote.
+
+| Conversor | Chave |
+|---|---|
+| `StringEncryptDecryptConverter`, `LocalDateEncryptDecryptConverter` | `archbase.shared.crypto.key`: Base64 de 16, 24 ou 32 bytes (`openssl rand -base64 32`). Com o Spring Boot o Hibernate cria o conversor pelo Spring e a propriedade chega sozinha; fora dele, use a propriedade de sistema de mesmo nome, a variável `ARCHBASE_SHARED_CRYPTO_KEY` ou o construtor que recebe a chave |
+| `AttributeEncryptor` | `aes.encryption.key`, o texto da propriedade com 16, 24 ou 32 caracteres, como antes |
+
+> **Sem `archbase.shared.crypto.key`, `StringEncryptDecryptConverter` e `LocalDateEncryptDecryptConverter`
+> continuam gravando como até a 3.5.0**: AES/CBC com IV zerado e a chave `"MySuperSecretKey"`, fixa no código-fonte,
+> que qualquer um com o código decifra. É mantido só para não recusar gravações que hoje funcionam, e um aviso é
+> registrado no primeiro uso. Configure a chave.
+
+Até a 3.5.0 o `AttributeEncryptor` usava AES/ECB (o mesmo texto dava sempre o mesmo valor) e compartilhava um único
+`Cipher` entre threads, o que não é seguro para uso concorrente.
+
+A chave não roda sozinha: trocar `archbase.shared.crypto.key` deixa ilegível o que foi gravado com a anterior.
 
 ## Tipos
 

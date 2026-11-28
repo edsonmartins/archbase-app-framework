@@ -1,6 +1,8 @@
 package br.com.archbase.query.rsql.querydsl;
 
 import br.com.archbase.query.rsql.common.RSQLOperators;
+import br.com.archbase.query.rsql.common.RSQLOrBypassAnalyzer;
+import br.com.archbase.query.rsql.parser.ast.Node;
 import br.com.archbase.query.rsql.jpa.ArchbaseRSQLJPASupport;
 import br.com.archbase.query.rsql.parser.RSQLParser;
 import com.querydsl.core.types.Path;
@@ -30,9 +32,10 @@ public class ArchbaseRSQLQueryDslSupport extends ArchbaseRSQLJPASupport {
     public static BooleanExpression toPredicate(final String rsqlQuery, final Path qClazz, final Map<String, String> propertyPathMapper) {
         log.debug("toPredicate({},qClazz:{},propertyPathMapper:{})", rsqlQuery, qClazz);
         if (StringUtils.hasText(rsqlQuery)) {
-            return new RSQLParser(RSQLOperators.supportedOperators())
-                    .parse(rsqlQuery)
-                    .accept(new ArchbaseRSQLQueryDslPredicateConverter(propertyPathMapper), qClazz);
+            Node rsql = new RSQLParser(RSQLOperators.supportedOperators()).parse(rsqlQuery);
+            // Como no caminho JPA. Até a 3.5.0 o QueryDSL não conferia: um seletor protegido sob OR passava.
+            RSQLOrBypassAnalyzer.assertNotBypassable(rsql, getProtectedSelectors().get(qClazz.getType()));
+            return rsql.accept(new ArchbaseRSQLQueryDslPredicateConverter(propertyPathMapper), qClazz);
         } else {
             return null;
         }

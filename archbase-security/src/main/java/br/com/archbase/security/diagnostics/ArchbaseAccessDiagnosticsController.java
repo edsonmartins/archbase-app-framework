@@ -43,6 +43,10 @@ public class ArchbaseAccessDiagnosticsController {
 
     private final ArchbaseAccessDiagnosticsService diagnostics;
 
+    /** Trilha de segurança; ausente ou desligada, a simulação não é registrada. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private br.com.archbase.security.audit.ArchbaseSecurityEventLogger eventLogger;
+
     public ArchbaseAccessDiagnosticsController(ArchbaseAccessDiagnosticsService diagnostics) {
         this.diagnostics = diagnostics;
     }
@@ -198,6 +202,14 @@ public class ArchbaseAccessDiagnosticsController {
                 pedido.resource(), pedido.action(),
                 isBlank(pedido.userId()) ? pedido.email() : pedido.userId(),
                 usuarioLogado() == null ? "desconhecido" : usuarioLogado().getId());
+
+        // Até a 3.5.0 o tipo SIMULACAO existia na trilha e nada o gravava.
+        if (eventLogger != null) {
+            var quem = usuarioLogado();
+            eventLogger.simulacao(quem == null ? null : quem.getEmail(),
+                    isBlank(pedido.userId()) ? pedido.email() : pedido.userId(),
+                    pedido.resource(), pedido.action());
+        }
 
         return diagnostics.simulate(pedido.userId(), pedido.email(), requisito)
                 .map(ResponseEntity::ok)

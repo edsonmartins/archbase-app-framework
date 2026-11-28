@@ -49,6 +49,7 @@ Propriedades lidas por este starter:
 | `archbase.web.mvc.enabled` | `true` | `false` desliga a configuração MVC **e** a varredura dos pacotes do framework |
 | `archbase.rsql.enabled` | `true` | Registra o `ArchbaseRSQLJPASupport` |
 | `archbase.rsql.max-page-size` | `1000` | Tamanho máximo de página nas consultas; `<= 0` desliga o limite |
+| `archbase.rsql.strict-path-access-control` | `false` | A lista branca do RSQL vale também para os segmentos intermediários do seletor (ver [archbase-query](../archbase-query/README.md)) |
 | `archbase.app.component.scan` | — | Pacotes extras para component scan, separados por vírgula |
 | `archbase.app.jpa.entities` | — | Pacotes extras de entidades (equivale a `@EntityScan`) |
 | `archbase.app.jpa.repositories` | — | Pacotes extras de repositórios; cada interface que estende `Repository` vira um repositório com base `CommonArchbaseJpaRepository` |

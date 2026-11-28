@@ -56,6 +56,13 @@ public class ContextualAuthenticationRequest {
     @Schema(description = "Dados adicionais do contexto em formato JSON", 
             example = "{\"storeId\": \"123\"}")
     private String contextData;
+
+    /**
+     * Tenant em que autenticar, quando o e-mail existe em mais de um (resposta {@code TENANT_SELECTION_REQUIRED}).
+     * Vazio, o tenant é descoberto pelo e-mail, como antes.
+     */
+    @Schema(description = "Tenant escolhido quando o e-mail existe em mais de um", example = "empresa-a")
+    private String tenantId;
     
     /**
      * Converte para AuthenticationRequest básico (compatibilidade).
@@ -67,6 +74,7 @@ public class ContextualAuthenticationRequest {
         return AuthenticationRequest.builder()
                 .email(this.email)
                 .password(this.password)
+                .tenantId(this.tenantId)
                 .build();
     }
 }

@@ -90,6 +90,19 @@ public class RSQLCommonSupport {
         return protectedSelectors;
     }
 
+    /**
+     * Liga a lista branca também nos segmentos intermediários do seletor: com uma lista branca para {@code Pedido},
+     * filtrar por {@code cliente.cpf} exige {@code cliente} nessa lista. Padrão {@code false}, o comportamento até a
+     * 3.5.0. A lista negra vale em todos os segmentos independentemente desta opção.
+     */
+    public static void setStrictPathAccessControl(boolean value) {
+        RSQLVisitorBase.strictPathAccessControl = value;
+    }
+
+    public static boolean isStrictPathAccessControl() {
+        return RSQLVisitorBase.strictPathAccessControl;
+    }
+
     public static int getMaxPageSize() {
         return maxPageSize;
     }
@@ -117,6 +130,7 @@ public class RSQLCommonSupport {
         operatorWhitelist.clear();
         operatorBlacklist.clear();
         protectedSelectors.clear();
+        RSQLVisitorBase.strictPathAccessControl = false;
     }
 
     public static void addConverter(Converter<?, ?> converter) {

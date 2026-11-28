@@ -1,26 +1,18 @@
 package br.com.archbase.ddd.infraestructure.persistence.jpa.specification;
 
-import br.com.archbase.ddd.domain.specification.ArchbaseSpecification;
-import br.com.archbase.ddd.domain.specification.basic.EqualityArchbaseSpecification;
-
+import br.com.archbase.ddd.domain.specification.basic.NotLikeArchbaseSpecification;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 
 /**
- * Especifica a lógica de conversão de um {@link ArchbaseSpecification} do tipo NOT LIKE {@link NotLikeConverter} em {@link Predicate}.
- *
- * @author edsonmartins
+ * {@code not like}. Até a 3.5.0 declarava {@code EqualityArchbaseSpecification}: como era registrado por último, toda igualdade virava {@code not like}.
  */
-public class NotLikeConverter implements SpecificationConverter<EqualityArchbaseSpecification<Object>, Object> {
+public class NotLikeConverter implements SpecificationConverter<NotLikeArchbaseSpecification<Object>, Object> {
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
-    public Predicate convertToPredicate(EqualityArchbaseSpecification<Object> nl, Root<Object> root, CriteriaQuery<?> cq, CriteriaBuilder cb) {
-        return cb.notLike(root.get(nl.getProperty()), nl.getValue().toString());
+    public Predicate convertToPredicate(NotLikeArchbaseSpecification<Object> s, Root<Object> root, CriteriaQuery<?> cq, CriteriaBuilder cb) {
+        return cb.notLike(root.<String>get(s.getProperty()), String.valueOf(s.getValue()));
     }
-
 }

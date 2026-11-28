@@ -31,4 +31,11 @@ public class LoginRequest {
             example = "STORE_APP", 
             defaultValue = "DEFAULT")
     private String context;
+
+    /**
+     * Tenant em que autenticar, quando o identificador existe em mais de um (resposta
+     * {@code TENANT_SELECTION_REQUIRED}). Vazio, o tenant é descoberto, como antes.
+     */
+    @Schema(description = "Tenant escolhido quando o identificador existe em mais de um", example = "empresa-a")
+    private String tenantId;
 }
