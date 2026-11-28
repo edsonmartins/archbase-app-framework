@@ -34,6 +34,13 @@ public class StringEncryptDecryptConverter
         super(cipherMaker);
     }
 
+    /**
+     * Com a chave informada (16, 24 ou 32 bytes), sem consultar {@code archbase.shared.crypto.key}.
+     */
+    public StringEncryptDecryptConverter(byte[] chave) {
+        super(new CipherMaker(), chave);
+    }
+
     @Override
     boolean isNotNullOrEmpty(String attribute) {
         return isNotEmpty(attribute);

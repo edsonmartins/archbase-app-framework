@@ -26,6 +26,13 @@ public class LocalDateEncryptDecryptConverter
         super(cipherMaker);
     }
 
+    /**
+     * Com a chave informada (16, 24 ou 32 bytes), sem consultar {@code archbase.shared.crypto.key}.
+     */
+    public LocalDateEncryptDecryptConverter(byte[] chave) {
+        super(new CipherMaker(), chave);
+    }
+
     @Override
     boolean isNotNullOrEmpty(LocalDate attribute) {
         return attribute != null;
