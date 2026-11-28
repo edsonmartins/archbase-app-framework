@@ -55,6 +55,13 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <!-- Opcional: o Spring MVC do Boot 4 lê o corpo com o Jackson 3, e o payload (JsonNode do Jackson 2)
+                 precisa do conversor de SyncOperationDTO. Sem o Jackson 3 no classpath, a anotação é ignorada. -->
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
