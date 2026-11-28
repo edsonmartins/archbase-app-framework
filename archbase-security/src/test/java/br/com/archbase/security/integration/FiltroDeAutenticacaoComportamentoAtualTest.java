@@ -770,7 +770,27 @@ class FiltroDeAutenticacaoComportamentoAtualTest {
                                     "confirmationPassword", "nova-senha-fase0"))))
                     .andReturn().getResponse().getStatus();
 
-            assertThat(status).isNotEqualTo(200);
+            // Até a 3.5.0 respondia 500 (IllegalStateException sem status).
+            assertThat(status).isEqualTo(400);
+            assertThat(senhaAtualE(SENHA)).isTrue();
+        }
+
+        @Test
+        @DisplayName("PATCH /api/v1/user: confirmação diferente responde 400 com a mensagem, sem trocar")
+        void endpointConfirmacaoDiferente() throws Exception {
+            String token = accessToken();
+            var resposta = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                            .patch("/api/v1/user")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "currentPassword", SENHA,
+                                    "newPassword", "nova-senha-fase0",
+                                    "confirmationPassword", "outra-coisa"))))
+                    .andReturn().getResponse();
+
+            assertThat(resposta.getStatus()).isEqualTo(400);
+            assertThat(resposta.getContentAsString()).contains("Senhas não conferem");
             assertThat(senhaAtualE(SENHA)).isTrue();
         }
 
