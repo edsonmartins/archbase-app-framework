@@ -31,7 +31,10 @@ public class RequestUtil {
 
     @Nullable
     private static String getRequestUserName() {
-        return SecurityContextHolder.getContext().getAuthentication().getName();
+        // Sem autenticação no contexto (rota pública), era NullPointerException: o aspecto logava ERROR e omitia a
+        // linha de entrada.
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication == null ? null : authentication.getName();
     }
 
     @Nullable
