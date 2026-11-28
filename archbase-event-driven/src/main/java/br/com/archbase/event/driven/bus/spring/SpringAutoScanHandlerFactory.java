@@ -18,7 +18,8 @@ public class SpringAutoScanHandlerFactory extends AutoScanHandlerFactory {
         super(new BeanFactory() {
             @Override
             public <R> R createBean(Class<R> beanClass) {
-                context.getAutowireCapableBeanFactory().autowireBean(beanClass);
+                // createBean já injeta as dependências. A chamada a autowireBean(beanClass) que havia aqui recebia o
+                // objeto Class, não uma instância, e não fazia nada.
                 return context.getAutowireCapableBeanFactory().createBean(beanClass);
             }
         });

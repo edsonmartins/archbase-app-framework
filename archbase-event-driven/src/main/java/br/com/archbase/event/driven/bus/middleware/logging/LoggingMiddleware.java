@@ -12,21 +12,28 @@ import org.apache.commons.logging.LogFactory;
 public class LoggingMiddleware implements Middleware {
     private static final Log log = LogFactory.getLog(LoggingMiddleware.class);
 
+    /**
+     * Em INFO, só o tipo da mensagem; o conteúdo ({@code toString()} da mensagem e do resultado) sai em DEBUG. Até a
+     * 3.5.0 o conteúdo ia para o log em INFO em todo despacho — inclusive o do erro —, e com ele CPF, senha ou o que
+     * mais a mensagem carregasse.
+     */
     @Override
     public <R> R handle(Message<R> message, NextMiddlewareFunction<Message<R>, R> next) {
-        log.info(String.format("Recebido %s (%s), %s foi despachado para o barramento %s",
-                message.getClass().getName(), message.toString(), getMessageType(message),
-                getMessageType(message)));
+        String tipo = getMessageType(message);
+        String classe = message.getClass().getName();
+        log.info(String.format("Recebido %s %s", tipo, classe));
+        if (log.isDebugEnabled()) {
+            log.debug(String.format("Conteúdo do %s %s: %s", tipo, classe, message));
+        }
         try {
             R result = next.call(message);
-
-            String serializedResult = result != null ? result.toString() : null;
-            log.info(String.format("O %s %s (%s) foi tratado com sucesso com o resultado: %s",
-                    getMessageType(message), message.getClass().getName(), message.toString(), serializedResult));
-
+            log.info(String.format("O %s %s foi tratado com sucesso", tipo, classe));
+            if (log.isDebugEnabled()) {
+                log.debug(String.format("Resultado do %s %s: %s", tipo, classe, result));
+            }
             return result;
         } catch (Exception ex) {
-            log.error(String.format("Falha ao lidar %s (%s)", message.getClass().getName(), message.toString()), ex);
+            log.error(String.format("Falha ao lidar %s %s", tipo, classe), ex);
             throw ex;
         }
     }
