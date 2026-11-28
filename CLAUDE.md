@@ -98,7 +98,9 @@ dependency **and** enables them.
    - Aggregate roots implement `AggregateRoot<T, ID>`
    - Value objects implement `ValueObject`
    - Repositories extend `ArchbaseCommonJpaRepository<T, ID, N>` (JPA + `JpaSpecificationExecutor`, QueryDSL, RSQL)
-   - `ArchbaseSpecification<T>` is an in-memory predicate (`isSatisfiedBy`); database filters use RSQL or JPA `Specification`
+   - `ArchbaseSpecification<T>` is an in-memory predicate (`isSatisfiedBy`); the repository's `matching`, `howMany` and
+     `containsAny` translate it to a database query. Other database filters use RSQL or JPA `Specification`
+   - Domain events: `@DomainEventListener(asynchronous = true)` runs off the publishing thread; the default is synchronous
 
 2. **Multi-Tenancy**
    - Tenant context managed via `ArchbaseTenantContext` (thread-local)
@@ -125,6 +127,8 @@ dependency **and** enables them.
      mapped with `@CommandMapping` / `@QueryMapping`; the method annotations `@CommandHandler`, `@QueryHandler`,
      `@EventHandler` and `@EventSubscribe` are **not read**
    - `EventBus` is not a bean: `SimpleEventBus` calls each `Subscriber` on the publishing thread
+   - Middlewares: `LoggingMiddleware` logs type/class in INFO and message content only in DEBUG; `MetricsMiddleware`
+     records `archbase.<type>.*` in Micrometer when it is on the classpath
 
 5. **Workflow Engine**
    - Sequential, parallel, conditional, and repeat flows
@@ -440,6 +444,7 @@ archbase.hypersistence.enabled=true
 - Integration tests with `@SpringBootTest`
 - Repository tests with `@DataJpaTest`
 - Security tests with `@WithMockUser` or custom JWT tokens
+- `archbase-test-utils`: `@ArchbaseTest`, `EntityBuilder` and security helpers (`archbase-test-utils/README.md`)
 - Always verify multi-tenant context in tests when enabled
 
 ### Important Considerations
@@ -455,4 +460,10 @@ archbase.hypersistence.enabled=true
 6. **Handler Discovery**: `@HandlerScan` finds classes implementing `CommandHandler`/`QueryHandler`; the method annotations are not read
 7. **Specification Composition**: Specifications can be composed using `and()`, `or()`, and `not()` for complex queries
 8. **Hypersistence Types**: JSON types work with all databases; Array and Range types work only with PostgreSQL. Use `@Type(JsonType.class)` with `@Column(columnDefinition = "jsonb")` for JSON columns
-9. **Optimized Persistence**: Use `persist()` for new entities and `update()` for existing ones to avoid unnecessary SELECT queries before INSERT/UPDATE
+9. **Optimized Persistence**: `ArchbaseHypersistenceRepository.persist()`/`update()` are not wired (see pattern 7); to insert
+   without the SELECT of `save()`, call `EntityManager.persist` directly
+10. **Web interceptors**: beans annotated `@ArchbaseInterceptor` are registered in Spring MVC by the starter-core, with or
+    without the application's own `WebMvcConfigurer`
+11. **Test dependencies**: H2 is no longer brought to the application's classpath (test scope only since 3.5.0); declare
+    the database driver, and H2 in `test` scope if the tests use it. ArchUnit is managed at 1.4.2 (1.0.1 cannot read
+    Java 25 bytecode and checked zero classes)

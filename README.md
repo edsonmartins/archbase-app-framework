@@ -81,6 +81,9 @@ archbase:
         id: archbase
 ```
 
+O framework não traz driver de banco (até a 3.5.0 o H2 vinha junto e, sem `spring.datasource.url`, a aplicação
+subia com um banco em memória): declare o driver e `spring.datasource.*`.
+
 Os defaults de segurança preservam o comportamento de versões anteriores e deixam várias proteções
 desligadas. Antes de ir para produção, leia [`deployment/security-hardening.md`](deployment/security-hardening.md).
 
