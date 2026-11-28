@@ -152,8 +152,17 @@ public class Endereco implements ValueObject {
      * @return Cidade-UF
      */
     public String cidadeUf() {
-        if (cidade == null && uf == null) {
+        boolean temCidade = cidade != null && !cidade.isBlank();
+        boolean temUf = uf != null && !uf.isBlank();
+        if (!temCidade && !temUf) {
             return null;
+        }
+        // Só o que existe. Até a 3.5.0 saía "Campinas-null" (ou "null-SP") quando faltava um dos dois.
+        if (!temUf) {
+            return cidade;
+        }
+        if (!temCidade) {
+            return uf;
         }
         return cidade + "-" + uf;
     }
