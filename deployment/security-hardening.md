@@ -59,6 +59,7 @@ mais abaixo; as marcadas com ⚠ exigem preparo antes de virar.
 | `archbase.security.jwt.secret-key` | **obrigatória** | segredo | Base64 padrão de ≥ 32 bytes (`openssl rand -base64 48`) |
 | `archbase.security.cors.*` | **obrigatórias** | origens explícitas | Nunca `*` com `allow-credentials=true` |
 | `archbase.analytics.secret-validation` | `warn` | `fail` | Só com `archbase-analytics` |
+| `archbase.rsql.strict-path-access-control` | `false` | `true` se usa lista branca do RSQL | ⚠ com lista branca na raiz, filtrar por `associacao.campo` passa a exigir `associacao` na lista |
 
 ### Empresa no cabeçalho (`X-COMPANY-ID`)
 
