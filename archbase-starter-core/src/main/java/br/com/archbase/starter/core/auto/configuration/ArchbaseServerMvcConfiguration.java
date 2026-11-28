@@ -52,9 +52,6 @@ public class ArchbaseServerMvcConfiguration implements WebMvcConfigurer {
     @Autowired
     private ApplicationContext applicationContext;
 
-    @Autowired(required = false)
-    private ArchbaseInterceptorRegister interceptorRegister;
-
     @Bean
     public SimpleArchbaseResourceAspect genericControllerAspect() {
         return new SimpleArchbaseResourceAspect();
@@ -80,10 +77,8 @@ public class ArchbaseServerMvcConfiguration implements WebMvcConfigurer {
         // Registra o interceptor de mudança de idioma
         registry.addInterceptor(localeChangeInterceptor());
 
-        // Registra os interceptors customizados marcados com @ArchbaseInterceptor
-        if (interceptorRegister != null) {
-            interceptorRegister.registerInterceptors(registry);
-        }
+        // Os interceptors com @ArchbaseInterceptor são registrados pelo ArchbaseInterceptorConfiguration, que vale com
+        // ou sem esta configuração MVC.
     }
 
     /**

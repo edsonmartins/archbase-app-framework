@@ -39,6 +39,7 @@ Registrada: `ArchbaseCoreAutoConfiguration`, que importa:
 | `ArchbaseServerMvcConfiguration` | `archbase.web.mvc.enabled` (padrão `true`) e ausência de bean chamado `customWebMvcConfigurer` | `@EnableTransactionManagement`, `@EnableJpaAuditing(auditorAwareRef = "auditorAware")`, `MessageSource` (`classpath:messages`, UTF-8), `LocaleChangeInterceptor` (parâmetro `lang`), aspecto `SimpleArchbaseResourceAspect`; `auditorAware` que não atribui autor quando o `archbase-security` está ausente ou desligado (e a aplicação não declarou o seu); importa a varredura abaixo |
 | `ArchbaseComponentScanConfiguration` | `archbase.web.mvc.enabled` (padrão `true`) | Varredura de pacotes do framework; `@EntityScan` do pacote de entidades de segurança; pacotes da aplicação por propriedade |
 | `ArchbaseThreadConfiguration` | sem bean `TaskExecutor` | `threadPoolTaskExecutor`: 6 a 12 threads, daemon, prefixo `archbase-task-executor`; aplica o `TaskDecorator` do contexto, se houver um só |
+| `ArchbaseInterceptorConfiguration` | aplicação web servlet | Registra no Spring MVC os beans com `@ArchbaseInterceptor` (padrões de caminho e ordem da anotação), com ou sem a configuração MVC do starter. Até a 3.5.0 nenhum era registrado |
 | `ArchbaseRSQLConfiguration` | `archbase.rsql.enabled` (padrão `true`) | `ArchbaseRSQLJPASupport` com os `EntityManager` do contexto |
 | `ArchbaseBeanValidateConfiguration` | sem bean `jakarta.validation.Validator` | `Validator` do Hibernate Validator com `ArchbaseMessageInterpolator` |
 

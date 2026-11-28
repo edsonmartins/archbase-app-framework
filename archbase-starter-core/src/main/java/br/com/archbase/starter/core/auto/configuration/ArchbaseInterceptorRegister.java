@@ -5,7 +5,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.annotation.Order;
-import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -18,11 +17,9 @@ import java.util.Map;
  * Registrador automático de interceptors marcados com a anotação {@link ArchbaseHandlerInterceptor}.
  * Esta classe é responsável por encontrar todos os beans anotados e registrá-los no InterceptorRegistry.
  *
- * Esta classe será carregada como um componente Spring, independentemente se o desenvolvedor
- * definiu sua própria implementação de WebMvcConfigurer, garantindo que os interceptors
- * serão sempre registrados.
+ * Registrado pelo {@link ArchbaseInterceptorConfiguration}. Até a 3.5.0 era um {@code @Component} num pacote que nenhuma
+ * varredura alcança: a configuração MVC o recebia nulo, e nenhum interceptor anotado era registrado.
  */
-@Component
 @Order(0)
 public class ArchbaseInterceptorRegister {
 
@@ -59,14 +56,14 @@ public class ArchbaseInterceptorRegister {
 
         // Ordenar os interceptors com base no atributo 'order'
         validInterceptors.sort((o1, o2) -> {
-            ArchbaseInterceptor a1 = o1.getClass().getAnnotation(ArchbaseInterceptor.class);
-            ArchbaseInterceptor a2 = o2.getClass().getAnnotation(ArchbaseInterceptor.class);
+            ArchbaseInterceptor a1 = anotacao(o1);
+            ArchbaseInterceptor a2 = anotacao(o2);
             return Integer.compare(a1.order(), a2.order());
         });
 
         // Registrar cada interceptor com suas configurações
         for (Object interceptor : validInterceptors) {
-            ArchbaseInterceptor annotation = interceptor.getClass().getAnnotation(ArchbaseInterceptor.class);
+            ArchbaseInterceptor annotation = anotacao(interceptor);
 
             InterceptorRegistration registration = registry.addInterceptor((HandlerInterceptor) interceptor);
 
@@ -83,5 +80,11 @@ public class ArchbaseInterceptorRegister {
             logger.info("Registrado interceptor '{}' com ordem {}",
                     interceptor.getClass().getName(), annotation.order());
         }
+    }
+
+    /** Na classe real: num proxy CGLIB, getClass().getAnnotation() não encontra a anotação. */
+    private static ArchbaseInterceptor anotacao(Object bean) {
+        return org.springframework.core.annotation.AnnotationUtils.findAnnotation(
+                org.springframework.aop.support.AopUtils.getTargetClass(bean), ArchbaseInterceptor.class);
     }
 }

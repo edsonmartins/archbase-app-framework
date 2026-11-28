@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Import;
         ArchbaseServerMvcConfiguration.class,
         ArchbaseThreadConfiguration.class, ArchbaseRSQLConfiguration.class,
         ArchbaseBeanValidateConfiguration.class,
+        ArchbaseInterceptorConfiguration.class,
 //        ArchbaseSwaggerConfiguration.class
 })
 public class ArchbaseCoreAutoConfiguration {

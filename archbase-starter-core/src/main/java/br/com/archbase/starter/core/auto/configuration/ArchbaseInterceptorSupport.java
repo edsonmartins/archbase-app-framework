@@ -17,10 +17,12 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * (diferente do ArchbaseServerMvcConfiguration) e fornece um bean adicional
  * que complementa a configuração do desenvolvedor.
  */
-@Configuration
-@ConditionalOnBean(WebMvcConfigurer.class)
-@ConditionalOnMissingBean(name = "archbaseServerMvcConfiguration")
-@AutoConfigureAfter(name = "archbaseServerMvcConfiguration")
+/**
+ * @deprecated Nunca foi registrada (não está em nenhum {@code .imports} nem na varredura). O registro dos interceptors
+ * com {@link ArchbaseInterceptor} é do {@link ArchbaseInterceptorConfiguration}, que vale com ou sem um
+ * {@code WebMvcConfigurer} próprio da aplicação. Mantida só para não quebrar quem a referencia.
+ */
+@Deprecated(since = "3.5.0", forRemoval = true)
 public class ArchbaseInterceptorSupport {
 
     @Autowired(required = false)
