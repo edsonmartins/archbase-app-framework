@@ -93,10 +93,8 @@ Predicate filtro = pedido.cliente.eq("ACME").and(pedido.total.gt(BigDecimal.TEN)
 
 - Classes com `@Entity` mas sem `@DomainEntity` **não** geram `Q<Classe>` por este processador. Projeto com
   entidades JPA comuns usa o processador do próprio Querydsl (`querydsl-apt` com classificador `jakarta`).
-- `@DomainIdentifier` e `@DomainTransient` são `@Target(TYPE)`: não podem ser postas em campo ou método. No
-  Querydsl, os papéis "embutido" e "ignorar" são de propriedade, então na prática não há como marcar uma
-  propriedade para ser ignorada ou tratada como embutida por meio delas; use `@QueryTransient` / `@QueryEmbedded`
-  do Querydsl.
+- `@DomainIdentifier` e `@DomainTransient` aceitam campo e método (além de tipo), que é onde os papéis de embutido e
+  ignorado têm efeito. Até a 3.5.0 eram `@Target(TYPE)` e não podiam ser postas em campo.
 - O módulo é compilado com `maven-compiler-plugin` 3.5.1 e alvo Java 17, diferente do resto do framework (Java
   25). Roda normalmente num `javac` 25.
 - O módulo não tem testes.

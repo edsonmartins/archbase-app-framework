@@ -5,8 +5,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * Propriedades das convenções Flyway do Archbase.
  *
- * <p>Prefixo: {@code archbase.flyway}. Estas convenções complementam (e podem ser sobrescritas por)
- * as propriedades padrão {@code spring.flyway.*} do Spring Boot.
+ * <p>Prefixo: {@code archbase.flyway}. Estas convenções são aplicadas por um {@code FlywayConfigurationCustomizer}, que
+ * roda <b>depois</b> das propriedades {@code spring.flyway.*}: quando as duas definem a mesma coisa (baseline), vale a
+ * do Archbase. Para usar a do Spring, desligue a convenção aqui ({@code archbase.flyway.baseline-on-migrate=false}).
+ * Até a 3.5.0 este javadoc dizia o contrário.
  */
 @ConfigurationProperties(prefix = "archbase.flyway")
 public class ArchbaseFlywayProperties {
