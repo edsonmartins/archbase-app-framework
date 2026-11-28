@@ -5,9 +5,9 @@ import br.com.archbase.analytics.port.AnalyticsAuditPort.AuditedQuery;
 import br.com.archbase.analytics.port.DataScopeProvider;
 import br.com.archbase.analytics.token.CubeTokenMinter;
 import br.com.archbase.analytics.util.Hashes;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -252,7 +252,7 @@ public class AnalyticsProxyController {
                     return error(resp.statusCode());
                 }
                 JsonNode payload = objectMapper.readTree(resp.body());
-                if ("Continue wait".equals(payload.path("error").asText(null))) {
+                if ("Continue wait".equals(payload.path("error").asString(null))) {
                     continue;
                 }
                 int rows = countRows(payload);

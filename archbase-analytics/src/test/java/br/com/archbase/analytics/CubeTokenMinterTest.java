@@ -1,7 +1,7 @@
 package br.com.archbase.analytics;
 
 import br.com.archbase.analytics.token.CubeTokenMinter;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import javax.crypto.Mac;
