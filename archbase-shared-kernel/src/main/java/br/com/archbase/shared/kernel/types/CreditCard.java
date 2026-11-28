@@ -71,11 +71,45 @@ public class CreditCard  implements ValueObject {
         return applyCardMask();
     }
 
+    /**
+     * Cartão com os dados conferidos: número pelo algoritmo de Luhn, mês de 1 a 12, ano com 2 dígitos e código de
+     * segurança com 3 ou 4 dígitos.
+     *
+     * @throws IllegalArgumentException se algum dado for inválido
+     */
+    public static CreditCard of(String cardNumber, String securityCode, String expirationMonth, String expirationYear) {
+        if (!dadosValidos(cardNumber, securityCode, expirationMonth, expirationYear)) {
+            throw new IllegalArgumentException("Dados do cartão de crédito inválidos");
+        }
+        return new CreditCard(cardNumber, securityCode, expirationMonth, expirationYear);
+    }
+
+    /** Confere os dados (ver {@link #of}). */
+    public boolean isValido() {
+        return dadosValidos(cardNumber, securityCode, expirationMonth, expirationYear);
+    }
+
+    private static boolean dadosValidos(String cardNumber, String securityCode, String expirationMonth, String expirationYear) {
+        if (cardNumber == null || securityCode == null || expirationMonth == null || expirationYear == null) {
+            return false;
+        }
+        String numero = cardNumber.replaceAll("[\\s-]", "");
+        if (!numero.matches("\\d{12,19}") || !CardType.isLuhnValid(numero)) {
+            return false;
+        }
+        if (!securityCode.matches("\\d{3,4}") || !expirationYear.matches("\\d{2}") || !expirationMonth.matches("\\d{1,2}")) {
+            return false;
+        }
+        int mes = Integer.parseInt(expirationMonth);
+        return mes >= 1 && mes <= 12;
+    }
+
+    /**
+     * {@code instance(...)} não confere os dados — continua aceitando o que sempre aceitou. Use {@link #of} para
+     * recusar cartão inválido. Até a 3.5.0 não havia validação nenhuma.
+     */
     private boolean validateCreditCard(String cardNumber, String securityCode, String expirationMonth, String expirationYear) {
-        // Implemente a lógica de validação do cartão de crédito aqui
-        // Você pode usar algoritmos para verificar o número do cartão, data de expiração, código de segurança, etc.
-        // Retorne true se os dados forem válidos, caso contrário, retorne false
-        return true; // Substitua por sua lógica de validação real
+        return true;
     }
 
     private String applyCardMask() {
