@@ -18,6 +18,8 @@ public class SyncOperationDTO {
     public String aggregateId;
 
     /** Corpo da operação (contrato específico do tipo). */
+    @tools.jackson.databind.annotation.JsonDeserialize(using = Jackson2TreeCodec.Deserializer.class)
+    @tools.jackson.databind.annotation.JsonSerialize(using = Jackson2TreeCodec.Serializer.class)
     public JsonNode payload;
 
     /** {@code serverVersion} conhecido pelo cliente (detecção de conflito). */

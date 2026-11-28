@@ -16,6 +16,10 @@ módulo `archbase_offline` do `archbase_flutter`. Ver o contrato em
   **tipo desconhecido** (REJECTED), **dependências** no lote (BLOCKED) e
   **transitório** (FAILED, o cliente reenvia).
 
+- **`payload` como `JsonNode` do Jackson 2** (`com.fasterxml.jackson.databind.JsonNode`), lido também pelo Jackson 3
+  que o Spring MVC do Boot 4 usa no corpo da requisição. Até a 3.5.0 o Jackson 3 não construía esse tipo e todo lote
+  com `payload` era recusado com 400 antes de chegar ao handler.
+
 ## Como o app usa
 
 ### Com o starter (recomendado)
