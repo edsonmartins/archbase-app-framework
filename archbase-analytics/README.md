@@ -18,7 +18,7 @@ biblioteca; quem registra os beans é o [archbase-starter-analytics](../archbase
 
 ## O que traz
 
-`spring-boot-starter-web`, `com.fasterxml.jackson.core:jackson-databind` (Jackson 2), `spring-jdbc`,
+`spring-boot-starter-web`, `tools.jackson.core:jackson-databind` (Jackson 3, o do Spring Boot 4), `spring-jdbc`,
 `spring-security-core` e `micrometer-core`.
 
 ## Portas que a aplicação implementa
@@ -107,17 +107,11 @@ ambiente real use `secret-validation=fail`.
 
 ## Limitações
 
-- **Exige um `ObjectMapper` do Jackson 2 como bean.** O minter e os dois controllers recebem
-  `com.fasterxml.jackson.databind.ObjectMapper`, e o Spring Boot 4 só registra o do Jackson 3
-  (`tools.jackson`). Nada no Archbase declara o do Jackson 2. Sem ele, ligar `enabled=true` impede a subida
-  (`No qualifying bean of type 'com.fasterxml.jackson.databind.ObjectMapper'`). Declare-o:
-
-  ```java
-  @Bean
-  com.fasterxml.jackson.databind.ObjectMapper analyticsObjectMapper() {
-      return new com.fasterxml.jackson.databind.ObjectMapper();
-  }
-  ```
+- O minter e os dois controllers usam o Jackson 3 (`tools.jackson.databind.ObjectMapper`). O starter passa o
+  mapper da aplicação (o `jsonMapper` do Spring Boot 4) ou, sem ele, um `JsonMapper` padrão. Até a 3.5.0 o módulo
+  usava o Jackson 2: com `enabled=true` a aplicação não subia sem um `ObjectMapper` do Jackson 2 declarado à mão, e
+  mesmo com ele as consultas salvas não funcionavam, porque recebiam e devolviam `JsonNode` do Jackson 2 pelo
+  conversor HTTP do Boot 4. Esse bean, se a aplicação o declarou, pode ser removido.
 
 - Os controllers são `@Controller` condicionados a `archbase.analytics.enabled=true`. Uma aplicação que faz
   component scan de `br.com.archbase.analytics` com o analytics ligado os registra pela varredura, mesmo sem as

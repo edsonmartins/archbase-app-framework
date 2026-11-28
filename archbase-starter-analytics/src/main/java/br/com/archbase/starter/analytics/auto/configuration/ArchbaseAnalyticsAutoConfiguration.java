@@ -8,7 +8,9 @@ import br.com.archbase.analytics.proxy.AnalyticsProxyController;
 import br.com.archbase.analytics.savedquery.SavedQueryController;
 import br.com.archbase.analytics.token.CubeSecretValidator;
 import br.com.archbase.analytics.token.CubeTokenMinter;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.ObjectProvider;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -42,9 +44,9 @@ public class ArchbaseAnalyticsAutoConfiguration {
      */
     @Bean
     @ConditionalOnMissingBean
-    public CubeTokenMinter cubeTokenMinter(ObjectMapper objectMapper, AnalyticsProperties props) {
+    public CubeTokenMinter cubeTokenMinter(ObjectProvider<ObjectMapper> objectMapper, AnalyticsProperties props) {
         CubeSecretValidator.validar(props);
-        return new CubeTokenMinter(objectMapper, props.getSecret(), props.getTokenTtlSeconds());
+        return new CubeTokenMinter(mapper(objectMapper), props.getSecret(), props.getTokenTtlSeconds());
     }
 
     @Bean
@@ -52,15 +54,26 @@ public class ArchbaseAnalyticsAutoConfiguration {
     @ConditionalOnMissingBean
     public AnalyticsProxyController analyticsProxyController(
             AnalyticsAuditPort audit, DataScopeProvider scopeProvider,
-            CubeTokenMinter minter, ObjectMapper objectMapper, AnalyticsProperties props) {
-        return new AnalyticsProxyController(audit, scopeProvider, minter, objectMapper, props);
+            CubeTokenMinter minter, ObjectProvider<ObjectMapper> objectMapper, AnalyticsProperties props) {
+        return new AnalyticsProxyController(audit, scopeProvider, minter, mapper(objectMapper), props);
     }
 
     @Bean
     @ConditionalOnBean(SavedQueryStorePort.class)
     @ConditionalOnMissingBean
     public SavedQueryController savedQueryController(
-            SavedQueryStorePort store, ObjectMapper objectMapper) {
-        return new SavedQueryController(store, objectMapper);
+            SavedQueryStorePort store, ObjectProvider<ObjectMapper> objectMapper) {
+        return new SavedQueryController(store, mapper(objectMapper));
+    }
+
+    /**
+     * O mapper do Jackson 3 da aplicação (o {@code jsonMapper} do Spring Boot 4); sem ele, um padrão.
+     *
+     * <p>Até a 3.5.0 o módulo usava o {@code ObjectMapper} do Jackson 2, que o Spring Boot 4 não registra: com
+     * {@code archbase.analytics.enabled=true} a aplicação não subia. E as consultas salvas recebiam e devolviam
+     * {@code JsonNode} do Jackson 2, que o conversor HTTP do Boot 4 (Jackson 3) não sabe ler nem escrever.
+     */
+    private static ObjectMapper mapper(ObjectProvider<ObjectMapper> objectMapper) {
+        return objectMapper.getIfAvailable(() -> JsonMapper.builder().build());
     }
 }

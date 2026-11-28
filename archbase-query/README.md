@@ -132,9 +132,19 @@ inicialização:
 | `setMaxPageSize(int)` | Limite usado por `ArchbasePageableGuard` |
 | `clear()` | Apaga mapeamentos, listas, seletores protegidos e o cache de metamodelo (não os conversores nem o limite de página) |
 
-Listas de propriedade e de operador valem para a **classe que declara o atributo final**. Em `categoria.nome`, conta
-a configuração de `Categoria`, não a da entidade raiz: uma whitelist só na raiz não impede filtrar por atributos de
-entidades associadas.
+Cada segmento do seletor é conferido contra a classe que o declara. Em `categoria.nome`:
+
+- `nome` é conferido nas listas de `Categoria`;
+- `categoria` é conferido na **lista negra** da entidade raiz, sempre: com `categoria` nela, nenhum caminho que passe
+  por ela é aceito;
+- `categoria` só é conferido na **lista branca** da raiz com `archbase.rsql.strict-path-access-control=true`
+  (`RSQLCommonSupport.setStrictPathAccessControl`). No padrão, uma lista branca só na raiz não impede filtrar pelos
+  atributos das associadas — quem lista em cada classe só os campos dela continua funcionando.
+
+Um seletor que termina numa associação (`categoria==1`) é recusado com `IllegalArgumentException`.
+
+Até a 3.5.0 só o último segmento era conferido (a lista negra na raiz não bloqueava `categoria.nome`), o seletor
+terminado em associação lançava `NullPointerException`, e o caminho QueryDSL não conferia os seletores protegidos.
 
 ### Seletores protegidos
 
@@ -155,14 +165,11 @@ aplicação monta por conta própria precisam chamar o guard.
 
 - **Estado global por JVM.** Mapeamentos, listas e conversores são estáticos: valem para todos os contextos Spring
   da JVM e persistem entre testes até `clear()`.
-- **QueryDSL não verifica seletores protegidos.** `ArchbaseRSQLQueryDslSupport.toPredicate` aplica listas de
-  propriedade e de operador, mas não chama `RSQLOrBypassAnalyzer`.
 - `toSort("campo1:asc;campo2,desc;assoc.campo3")`: direção depois de `:` ou `,`, ASC quando omitida. Passa pela
   **lista negra** (em cada segmento) e pelo `propertyPathMapper`, mas não pela lista branca nem por `addMapping`. Até a
   3.5.0 não passava por controle nenhum, só `:` funcionava e um item sem direção lançava
   `ArrayIndexOutOfBoundsException`.
 - `=ke=` e afins não escapam `%` e `_` do valor: o cliente pode usá-los como curinga.
-- Montar joins e checar acesso registra linhas em INFO a cada consulta (`join(...)`, `accessControl(...)`).
 - **Row-level security não está implementado.** O pacote `br.com.archbase.query.rls.support` tem `@DynamicFilter`,
   `RowLevelSecurityFilter` e `ArchbaseRowLevelSecurityFilterEntityLocator`, mas nada os registra nem os chama:
   `ArchbaseQueryMonitor` está inteiramente comentado e o localizador não é bean. Anotar uma entidade com

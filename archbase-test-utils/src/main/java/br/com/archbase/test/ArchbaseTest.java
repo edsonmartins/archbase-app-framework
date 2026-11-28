@@ -46,14 +46,17 @@ public @interface ArchbaseTest {
     String[] properties() default {};
 
     /**
-     * Alias para {@link ActiveProfiles#profiles}.
-     * Se vazio, usa "test" como padrão.
+     * Perfis ativos; alias para {@link ActiveProfiles#profiles}. Padrão: {@code "test"}.
+     *
+     * <p>{@code value} e {@code profiles} são o mesmo atributo e precisam do mesmo padrão. Até a 3.5.0 um era
+     * {@code {}} e o outro {@code "test"}, e o Spring recusava a anotação ({@code AnnotationConfigurationException:
+     * Misconfigured aliases}): {@code @ArchbaseTest} não podia ser usada.
      */
     @AliasFor(annotation = ActiveProfiles.class, attribute = "profiles")
-    String[] value() default {};
+    String[] value() default "test";
 
     /**
-     * Alias para {@link ActiveProfiles#profiles}.
+     * Perfis ativos; o mesmo que {@link #value()}.
      */
     @AliasFor(annotation = ActiveProfiles.class, attribute = "profiles")
     String[] profiles() default "test";

@@ -43,14 +43,20 @@ public class WithMockArchbaseUserFactory implements WithSecurityContextFactory<W
     }
 
     /**
-     * Principal simples para testes.
+     * Principal simples para testes. Implementa {@link java.security.Principal}, então
+     * {@code authentication.getName()} devolve o {@code username}; até a 3.5.0 devolvia o {@code toString()} do
+     * record.
+     *
+     * <p>Não é a {@code UserEntity} do {@code archbase-security}: {@code @HasPermission} nega e
+     * {@code ArchbaseCurrentUser} não o reconhece. {@code tenantId}, {@code companyId} e {@code projectId} ficam só no
+     * principal; não preenchem o {@code ArchbaseTenantContext}.
      */
     public record ArchbaseTestPrincipal(
             String username,
             String tenantId,
             String companyId,
             String projectId
-    ) {
+    ) implements java.security.Principal {
         public ArchbaseTestPrincipal {
             if (username == null || username.isBlank()) {
                 username = "test@example.com";
@@ -60,6 +66,7 @@ public class WithMockArchbaseUserFactory implements WithSecurityContextFactory<W
             }
         }
 
+        @Override
         public String getName() {
             return username;
         }

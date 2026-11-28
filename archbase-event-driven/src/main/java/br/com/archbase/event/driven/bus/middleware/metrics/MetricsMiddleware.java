@@ -8,7 +8,6 @@ import br.com.archbase.event.driven.spec.query.contracts.Query;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
-import java.util.concurrent.TimeUnit;
 
 /**
  * Middleware para coletar métricas de Commands, Queries e Events.
@@ -27,32 +26,37 @@ public class MetricsMiddleware implements Middleware {
     private static final Log log = LogFactory.getLog(MetricsMiddleware.class);
     private static final boolean MICROMETER_AVAILABLE = isMicrometerAvailable();
 
-    private final Object meterRegistry;
+    /** {@link MetricasMicrometer}, guardado como {@code Object} para esta classe carregar sem o Micrometer. */
+    private final Object metricas;
     private final boolean enabled;
 
     /**
-     * Cria um MetricsMiddleware com Micrometer se disponível.
+     * Usa o {@code Metrics.globalRegistry} do Micrometer, se ele estiver no classpath (o Spring Boot registra o seu
+     * registry nele por padrão).
+     *
+     * <p>Até a 3.5.0 as chamadas ao Micrometer eram feitas por reflexão com nomes errados ({@code globalRegistry} é
+     * campo, não método; {@code builder} e {@code tag} procurados na classe errada), os erros eram engolidos e nenhuma
+     * métrica era registrada — e cada barramento criado registrava um WARN.
      */
     public MetricsMiddleware() {
-        this.meterRegistry = getMeterRegistry();
-        this.enabled = this.meterRegistry != null && MICROMETER_AVAILABLE;
+        this.metricas = MICROMETER_AVAILABLE ? MetricasMicrometer.global() : null;
+        this.enabled = metricas != null;
         if (!enabled) {
-            log.info("Micrometer não encontrado. MetricsMiddleware desabilitado.");
+            log.debug("Micrometer não encontrado. MetricsMiddleware desabilitado.");
         }
     }
 
     /**
      * Cria um MetricsMiddleware com registry específico.
      *
-     * @param meterRegistry MeterRegistry do Micrometer (opcional)
+     * @param meterRegistry {@code io.micrometer.core.instrument.MeterRegistry}; {@code null} desabilita
      */
     public MetricsMiddleware(Object meterRegistry) {
-        this.meterRegistry = meterRegistry;
-        this.enabled = meterRegistry != null && MICROMETER_AVAILABLE;
+        this.metricas = MICROMETER_AVAILABLE && meterRegistry != null ? MetricasMicrometer.de(meterRegistry) : null;
+        this.enabled = metricas != null;
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public <R> R handle(Message<R> message, NextMiddlewareFunction<Message<R>, R> next) {
         if (!enabled) {
             return next.call(message);
@@ -65,15 +69,22 @@ public class MetricsMiddleware implements Middleware {
 
         try {
             R result = next.call(message);
-
-            long duration = System.nanoTime() - startTime;
-            recordSuccess(messageType, messageName, duration);
+            registrar(() -> ((MetricasMicrometer) metricas).sucesso(messageType, messageName, System.nanoTime() - startTime));
             return result;
-
-        } catch (Exception ex) {
-            long duration = System.nanoTime() - startTime;
-            recordError(messageType, messageName, ex, duration);
+        } catch (RuntimeException ex) {
+            long duracao = System.nanoTime() - startTime;
+            registrar(() -> ((MetricasMicrometer) metricas).erro(messageType, messageName,
+                    ex.getClass().getSimpleName(), duracao));
             throw ex;
+        }
+    }
+
+    /** Falha de métrica não derruba o despacho. */
+    private static void registrar(Runnable registro) {
+        try {
+            registro.run();
+        } catch (RuntimeException e) {
+            log.debug("Erro ao registrar métricas: " + e.getMessage());
         }
     }
 
@@ -89,117 +100,10 @@ public class MetricsMiddleware implements Middleware {
 
     private static boolean isMicrometerAvailable() {
         try {
-            Class.forName("io.micrometer.core.instrument.MeterRegistry");
+            Class.forName("io.micrometer.core.instrument.MeterRegistry", false, MetricsMiddleware.class.getClassLoader());
             return true;
         } catch (ClassNotFoundException e) {
             return false;
-        }
-    }
-
-    private static Object getMeterRegistry() {
-        if (!MICROMETER_AVAILABLE) {
-            return null;
-        }
-        try {
-            // Tenta obter do contexto do Spring se disponível
-            Class<?> metricsClass = Class.forName("io.micrometer.core.instrument.Metrics");
-            return metricsClass.getMethod("globalRegistry").invoke(null);
-        } catch (Exception e) {
-            log.warn("Não foi possível obter MeterRegistry global do Micrometer");
-            return null;
-        }
-    }
-
-    private void recordSuccess(String type, String message, long durationNanos) {
-        if (!enabled) return;
-        try {
-            // Incrementar contador de sucesso
-            incrementCounter("archbase." + type + ".success", type, message, null);
-            incrementCounter("archbase." + type + ".dispatched", type, message, null);
-
-            // Registrar timer
-            recordTimer("archbase." + type + ".duration", type, message, "success", durationNanos);
-        } catch (Exception e) {
-            log.debug("Erro ao registrar métricas: " + e.getMessage());
-        }
-    }
-
-    private void recordError(String type, String message, Exception ex, long durationNanos) {
-        if (!enabled) return;
-        try {
-            // Incrementar contador de erro
-            incrementCounter("archbase." + type + ".error", type, message, ex.getClass().getSimpleName());
-
-            // Registrar timer
-            recordTimer("archbase." + type + ".duration", type, message, "error", durationNanos);
-        } catch (Exception e) {
-            log.debug("Erro ao registrar métricas: " + e.getMessage());
-        }
-    }
-
-    private void incrementCounter(String name, String type, String message, String exception) {
-        try {
-            Class<?> counterClass = Class.forName("io.micrometer.core.instrument.Counter");
-            Class<?> counterBuilderClass = Class.forName("io.micrometer.core.instrument.Counter$Builder");
-
-            Object builder = counterBuilderClass
-                    .getMethod("builder", String.class)
-                    .invoke(null, name);
-
-            // Adicionar tags
-            builder = counterBuilderClass
-                    .getMethod("tag", String.class, String.class)
-                    .invoke(builder, "type", type);
-            builder = counterBuilderClass
-                    .getMethod("tag", String.class, String.class)
-                    .invoke(builder, "message", message);
-
-            if (exception != null) {
-                builder = counterBuilderClass
-                        .getMethod("tag", String.class, String.class)
-                        .invoke(builder, "exception", exception);
-            }
-
-            Object counter = counterBuilderClass
-                    .getMethod("register", Class.forName("io.micrometer.core.instrument.MeterRegistry"))
-                    .invoke(builder, meterRegistry);
-
-            counterClass.getMethod("increment").invoke(counter);
-        } catch (Exception e) {
-            log.trace("Erro ao incrementar contador: " + e.getMessage());
-        }
-    }
-
-    private void recordTimer(String name, String type, String message, String status, long durationNanos) {
-        try {
-            Class<?> timerClass = Class.forName("io.micrometer.core.instrument.Timer");
-            Class<?> sampleClass = Class.forName("io.micrometer.core.instrument.Timer$Sample");
-
-            Object builder = timerClass
-                    .getMethod("builder", String.class)
-                    .invoke(null, name);
-
-            // Adicionar tags
-            builder = timerClass
-                    .getMethod("tag", String.class, String.class)
-                    .invoke(builder, "type", type);
-            builder = timerClass
-                    .getMethod("tag", String.class, String.class)
-                    .invoke(builder, "message", message);
-            builder = timerClass
-                    .getMethod("tag", String.class, String.class)
-                    .invoke(builder, "status", status);
-
-            Object timer = timerClass
-                    .getMethod("register", Class.forName("io.micrometer.core.instrument.MeterRegistry"))
-                    .invoke(builder, meterRegistry);
-
-            // Registrar tempo
-            timerClass
-                    .getMethod("record", Object.class, long.class, TimeUnit.class)
-                    .invoke(timer, null, durationNanos, TimeUnit.NANOSECONDS);
-        } catch (Exception e) {
-            log.trace("Erro ao registrar timer: " + e.getMessage());
         }
     }
 

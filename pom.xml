@@ -118,6 +118,8 @@
         <guava.version>33.6.0-jre</guava.version>
         <reflections.version>0.10.2</reflections.version>
         <json-unit-assertj.version>5.1.2</json-unit-assertj.version>
+        <!-- 1.0.1 não lê bytecode Java 25 (major 69): importava zero classes e as regras passavam sem examinar nada -->
+        <archunit.version>1.4.2</archunit.version>
         <caelum-stella-core.version>2.2.2</caelum-stella-core.version>
         <hypersistence-utils.version>3.15.4</hypersistence-utils.version>
         <openfeign-querydsl.version>7.2</openfeign-querydsl.version>
@@ -255,7 +257,7 @@
             <dependency>
                 <groupId>com.tngtech.archunit</groupId>
                 <artifactId>archunit</artifactId>
-                <version>1.0.1</version>
+                <version>${archunit.version}</version>
             </dependency>
             <dependency>
                 <groupId>net.javacrumbs.json-unit</groupId>

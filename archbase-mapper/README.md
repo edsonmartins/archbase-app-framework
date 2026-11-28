@@ -24,11 +24,10 @@ Nenhum starter do Archbase traz este módulo; declare-o diretamente.
 
 ## Auto-configuração
 
-`ArchbaseMapperAutoConfiguration` está registrada no `AutoConfiguration.imports`, sem condição, mas **não registra
-nenhum bean**:
-
-- faz `@ComponentScan` de `br.com.archbase.mapper`, onde não há classe anotada com `@Component`;
-- o método `mapperConfiguration()` não tem `@Bean`, então `MapperConfiguration` nunca vira bean.
+`ArchbaseMapperAutoConfiguration` está registrada no `AutoConfiguration.imports`, sem condição, e registra só o
+`MapperConfiguration` (`@ConditionalOnMissingBean`), ponto de extensão sem configuração própria. Não procura mappers.
+Até a 3.5.0 não registrava nada: o método não tinha `@Bean`, e um `@ComponentScan` do próprio pacote não encontrava
+nada.
 
 Não há propriedades. Mappers da aplicação entram no contexto pelos meios normais (`@Component`, ou
 `@Mapper(componentModel = "spring")` do MapStruct).
@@ -87,10 +86,9 @@ O MapStruct gera `toDto` e `toEntity`; os métodos `default` são herdados.
 
 - `updateFromDto` ignora a entidade recebida e devolve `toEntity(dto)`, um objeto novo. Para atualizar uma entidade
   gerenciada, sobrescreva o método (no MapStruct, com `@MappingTarget`).
-- `getTargetClass()` / `getSourceClass()` leem o primeiro item de `getClass().getGenericInterfaces()`. Só funcionam
-  quando a classe concreta declara `implements ArchbaseMapper<S, T>` como primeira interface (caso do exemplo
-  manual acima). Na implementação gerada pelo MapStruct a primeira interface é `ClienteMapper`, não parametrizada,
-  e `createDto()` / `createEntity()` lançam `UnsupportedOperationException`; sobrescreva-os nesse caso.
+- `getTargetClass()` / `getSourceClass()` resolvem `S` e `T` na hierarquia inteira, inclusive na implementação
+  gerada pelo MapStruct (`ClienteMapperImpl implements ClienteMapper`). Até a 3.5.0 olhavam só a primeira interface
+  da classe e, nesse caso, `createDto()` / `createEntity()` falhavam sempre.
 - Os métodos de coleção não tratam `null`: passar lista nula lança `NullPointerException`.
 
 ## Referência

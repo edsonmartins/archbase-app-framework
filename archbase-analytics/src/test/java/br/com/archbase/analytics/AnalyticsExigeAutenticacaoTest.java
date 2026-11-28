@@ -2,7 +2,7 @@ package br.com.archbase.analytics;
 
 import br.com.archbase.analytics.port.SavedQueryStorePort;
 import br.com.archbase.analytics.savedquery.SavedQueryController;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

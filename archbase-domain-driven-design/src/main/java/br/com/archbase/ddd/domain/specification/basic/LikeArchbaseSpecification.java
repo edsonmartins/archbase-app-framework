@@ -3,7 +3,7 @@ package br.com.archbase.ddd.domain.specification.basic;
 import br.com.archbase.ddd.domain.specification.ValueBoundArchbaseSpecification;
 
 /**
- * Afirma se os candidatos estão contidos no valor de propriedade.
+ * Afirma se o valor da propriedade casa com o padrão, como o {@code like} do SQL ({@code %} e {@code _}).
  *
  * @param <T> tipo de candidatos sendo verificados
  * @author edsonmartins
@@ -25,7 +25,10 @@ public class LikeArchbaseSpecification<T> extends ValueBoundArchbaseSpecificatio
      */
     @Override
     protected boolean isSatisfyingValue(Object candidateValue) {
-        return ((String) getValue()).contains(String.valueOf(candidateValue));
+        // Como o like do banco (% e _). Até a 3.5.0 testava se o padrão continha o valor — o
+        // inverso — e Like e NotLike davam o mesmo resultado.
+        Boolean casa = PadraoLike.casa(getValue(), candidateValue);
+        return casa != null && casa;
     }
 
 }
