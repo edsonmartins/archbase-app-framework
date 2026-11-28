@@ -16,7 +16,7 @@ Não há BOM do Archbase: declare a versão explícita e use a mesma em todos os
 
 ## O que traz
 
-`archbase-offline-sync`, `spring-data-jpa`, `spring-boot-persistence` (`@EntityScan`) e `spring-boot-autoconfigure`.
+`archbase-offline-sync`, `spring-data-jpa`, `spring-boot-persistence` e `spring-boot-autoconfigure`.
 
 ## O que é preciso ligar
 
@@ -33,13 +33,14 @@ Não há propriedade: o starter carrega sempre que está no classpath. A aplica�
 
 ## Auto-configuração
 
-Registrada: `ArchbaseOfflineSyncAutoConfiguration`, sem condição.
+Registradas, sem condição: `ArchbaseOfflineSyncPackagesAutoConfiguration` (antes das auto-configurações do JPA) e
+`ArchbaseOfflineSyncAutoConfiguration` (depois delas).
 
 | Mecanismo | O que registra |
 |---|---|
 | `@ComponentScan` dos pacotes `...offline.sync.service` e `...offline.sync.web` | `SyncOperationProcessor`, `SyncOperationExecutor`, `SyncStatusQueryService`, `ProcessedSyncOperationCleanup` e `ArchbaseSyncController` |
-| `@EntityScan` | A entidade `ProcessedSyncOperation` |
-| `@EnableJpaRepositories` | `ProcessedSyncOperationRepository` |
+| Pacote `...offline.sync.persistence` somado aos pacotes de auto-configuração (e ao `@EntityScan` da aplicação, se houver) | A entidade `ProcessedSyncOperation` e, pela varredura do Boot, o `ProcessedSyncOperationRepository` |
+| `@EnableJpaRepositories` só se o repositório ainda não existe | `ProcessedSyncOperationRepository`, quando a aplicação declarou o próprio `@EnableJpaRepositories` e o Boot não varreu |
 | `@Bean` com `@ConditionalOnMissingBean(AppVersionGate.class)` | `archbaseDefaultAppVersionGate`, que aceita qualquer versão |
 
 `ArchbaseSyncController` expõe:
@@ -54,13 +55,9 @@ Registrada: `ArchbaseOfflineSyncAutoConfiguration`, sem condição.
 
 ## Cuidados
 
-- **Não escreva o controller.** O passo 4 do [README do módulo](../archbase-offline-sync/README.md) manda a
-  aplicação expor `POST /api/v1/sync/operations`; com este starter, essa rota já existe, e um segundo mapeamento
-  idêntico impede a subida (mapeamento ambíguo).
-- O starter declara `@EntityScan` e `@EnableJpaRepositories` próprios. Quando há `@EntityScan` declarado, o Spring
-  Boot deixa de usar o pacote da classe `@SpringBootApplication` como padrão para entidades; declare os pacotes da
-  aplicação (`@EntityScan`/`@EnableJpaRepositories` ou `archbase.app.jpa.entities`/`archbase.app.jpa.repositories`
-  do `archbase-starter-core`).
+- **Não escreva o controller**: com este starter a rota já existe, e um segundo mapeamento idêntico impede a subida.
+- A entidade e o repositório do módulo somam aos da aplicação. Até a 3.5.0 o starter declarava `@EntityScan` e
+  `@EnableJpaRepositories` próprios, e adicioná-lo fazia sumir os repositórios da aplicação.
 - As rotas `/api/v1/sync/**` ficam sob a segurança da aplicação como qualquer outra; o starter não as libera nem
   as protege.
 
