@@ -29,7 +29,9 @@ public class ArchbaseErrorHandlingConfiguration {
                 fallbackApiExceptionHandler);
     }
 
+    /** {@code @ConditionalOnMissingBean}: a aplicação troca o tratamento genérico declarando o seu (antes, só com @Primary). */
     @Bean
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean(FallbackApiExceptionHandler.class)
     public FallbackApiExceptionHandler defaultHandler(ArchbaseErrorHandlingProperties properties) {
         return new SimpleFallbackApiExceptionHandler(properties);
     }

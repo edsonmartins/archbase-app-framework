@@ -27,21 +27,22 @@ Dependências de compilação: `spring-orm`, `spring-security-core` e `jackson-a
 | Bean | Tipo | Condição extra |
 |---|---|---|
 | `errorHandlingControllerAdvice` | `ErrorHandlingControllerAdvice` | — |
-| `defaultHandler` | `SimpleFallbackApiExceptionHandler` (`FallbackApiExceptionHandler`) | — |
+| `defaultHandler` | `SimpleFallbackApiExceptionHandler` (`FallbackApiExceptionHandler`) | sem outro `FallbackApiExceptionHandler` |
 | `typeMismatchApiExceptionHandler` | `TypeMismatchArchbaseApiExceptionHandler` | — |
 | `springValidationApiExceptionHandler` | `SpringValidationArchbaseApiExceptionHandler` | — |
 | `beanValidationApiExceptionHandler` | `BeanValidationArchbaseApiExceptionHandler` | classe `jakarta.validation.ConstraintViolationException` presente |
 | `springSecurityApiExceptionHandler` | `SpringSecurityArchbaseApiExceptionHandler` | classe `AccessDeniedException` presente |
 | `objectOptimisticLockingFailureApiExceptionHandler` | `ObjectOptimisticLockingFailureArchbaseApiExceptionHandler` | classe `ObjectOptimisticLockingFailureException` presente |
 
-Nenhum deles tem `@ConditionalOnMissingBean`. A configuração também carrega, via `@PropertySource`, o arquivo
+Só o `defaultHandler` tem `@ConditionalOnMissingBean`: declare um `FallbackApiExceptionHandler` para trocá-lo (até a 3.5.0 era preciso `@Primary`). A configuração também carrega, via `@PropertySource`, o arquivo
 `error-handling-defaults.properties` com os códigos padrão (tabela abaixo); valores do `application.properties`
 têm precedência.
 
 | Propriedade | Padrão | Efeito |
 |---|---|---|
 | `archbase.error.handling.enabled` | `true` | `false` desliga todo o módulo |
-| `archbase.error.handling.exception-logging` | `MESSAGE_ONLY` | `NO_LOGGING`, `MESSAGE_ONLY` (só a mensagem) ou `WITH_STACKTRACE`; sempre em nível ERROR |
+| `archbase.error.handling.exception-logging` | `MESSAGE_ONLY` | `NO_LOGGING`, `MESSAGE_ONLY` (só a mensagem) ou `WITH_STACKTRACE`. Resposta 5xx em ERROR; 4xx em WARN, com a pilha só em DEBUG |
+| `archbase.error.handling.hide-server-error-messages` | `false` | `true` troca a mensagem das respostas 5xx do tratamento genérico por `Erro interno do servidor`; o log continua completo |
 | `archbase.error.handling.codes.<chave>` | ver abaixo | Troca o `code` da resposta. Chave: nome completo da classe da exceção, código da restrição de validação (`NotNull`) ou `campo.Restrição` (`email.NotBlank`) |
 | `archbase.error.handling.messages.<chave>` | — | Troca a `message` de um erro de campo. Chave: `campo.Restrição` ou `Restrição` |
 
@@ -50,10 +51,15 @@ têm precedência.
 `ErrorHandlingControllerAdvice` tem um único `@ExceptionHandler` para `Throwable` e se aplica só a classes
 anotadas com `@RestController` (`@ControllerAdvice(annotations = RestController.class)`). Para cada exceção:
 
-1. registra em log conforme `exception-logging`;
-2. percorre os beans `ArchbaseApiExceptionHandler` em ordem (`@Order`/`Ordered`) e usa o primeiro cujo
+1. percorre os beans `ArchbaseApiExceptionHandler` em ordem (`@Order`/`Ordered`) e usa o primeiro cujo
    `canHandle` devolve `true`;
-3. se nenhum aceita, usa o `FallbackApiExceptionHandler`.
+2. se nenhum aceita, usa o `FallbackApiExceptionHandler`;
+3. registra em log conforme `exception-logging` e o status da resposta.
+
+O `SimpleFallbackApiExceptionHandler` usa, na ordem: o status que a exceção traz (`ErrorResponse` do Spring —
+`ResponseStatusException`, `MissingServletRequestParameterException`, `HandlerMethodValidationException` — ou o
+`getStatusCode()` de `ArchbaseRuntimeException`); o `@ResponseStatus` da classe ou de uma superclasse; senão 500.
+Para `ErrorResponse`, a mensagem é o `detail`.
 
 | Handler | Exceções | Status | Extras na resposta |
 |---|---|---|---|
@@ -151,13 +157,13 @@ contexto não sobe.
 
 ## Limitações
 
-- **Só o status de `@ResponseStatus` é usado no fallback.** Exceções que carregam o status de outro jeito caem em
-  500: `ResponseStatusException`, as exceções do Spring MVC que não estão na tabela acima (por exemplo
-  `MissingServletRequestParameterException`, `HandlerMethodValidationException`) e `ArchbaseRuntimeException`, cujo
-  `getStatusCode()` e `getCode()` o módulo não lê.
-- A `message` é `getMessage()` da exceção, inclusive em 500: mensagens internas (SQL, nomes de classes, caminhos) vão
-  para o cliente.
-- O log é sempre em ERROR, inclusive para erros de validação 400.
+- Sem `hide-server-error-messages=true`, a `message` de um 500 é a `getMessage()` da exceção: mensagens internas
+  (SQL, nomes de classes, caminhos) vão para o cliente. Ligue em produção.
+- O `code` de uma `ArchbaseRuntimeException` continua sendo o nome da classe, não o `getCode()` dela: trocar mudaria
+  o campo para quem já o compara. Para um código próprio, use `archbase.error.handling.codes.<classe>` ou
+  `@ArchbaseResponseErrorCode`.
+- Até a 3.5.0, só o `@ResponseStatus` da própria classe contava (todos os casos acima respondiam 500), todo erro saía
+  em ERROR, e o arquivo `META-INF/spring.factories` (chaves que o Boot 4 ignora) duplicava o registro.
 - Só cobre `@RestController`. Exceções em `@Controller` com `@ResponseBody`, em filtros (inclusive os do Spring
   Security) e em aplicações reativas não passam por aqui.
 

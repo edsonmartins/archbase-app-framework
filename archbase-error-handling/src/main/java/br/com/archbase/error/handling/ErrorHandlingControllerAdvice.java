@@ -39,7 +39,6 @@ public class ErrorHandlingControllerAdvice {
     public <T> ResponseEntity<T> handleException(Throwable exception, WebRequest webRequest, Locale locale) {
         log.debug("webRequest: {}", webRequest);
         log.debug("locale: {}", locale);
-        logException(exception);
 
         ArchbaseApiErrorResponse errorResponse = null;
         for (ArchbaseApiExceptionHandler handler : handlers) {
@@ -52,15 +51,29 @@ public class ErrorHandlingControllerAdvice {
         if (errorResponse == null) {
             errorResponse = fallbackHandler.handle(exception);
         }
+        logException(exception, errorResponse.getHttpStatus());
 
         return (ResponseEntity<T>) ResponseEntity.status(errorResponse.getHttpStatus())
                 .body(errorResponse);
     }
 
-    private void logException(Throwable exception) {
-        if (properties.getExceptionLogging() == ArchbaseErrorHandlingProperties.ExceptionLogging.WITH_STACKTRACE) {
+    /**
+     * Erro do servidor (5xx) em ERROR, como sempre; erro do cliente (4xx) em WARN, com a pilha só em DEBUG. Até a
+     * 3.5.0 todo erro saía em ERROR — um 400 de validação disparava o mesmo alerta que uma falha de banco.
+     */
+    private void logException(Throwable exception, org.springframework.http.HttpStatusCode status) {
+        var modo = properties.getExceptionLogging();
+        if (modo == ArchbaseErrorHandlingProperties.ExceptionLogging.NO_LOGGING) {
+            return;
+        }
+        if (status != null && !status.is5xxServerError()) {
+            log.warn("{} {}", status.value(), exception.getMessage());
+            log.debug(exception.getMessage(), exception);
+            return;
+        }
+        if (modo == ArchbaseErrorHandlingProperties.ExceptionLogging.WITH_STACKTRACE) {
             log.error(exception.getMessage(), exception);
-        } else if (properties.getExceptionLogging() == ArchbaseErrorHandlingProperties.ExceptionLogging.MESSAGE_ONLY) {
+        } else {
             log.error(exception.getMessage());
         }
     }
