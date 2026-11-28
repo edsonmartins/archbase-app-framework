@@ -18,6 +18,13 @@ public class ArchbaseLogoutService implements LogoutHandler {
 
     private final AccessTokenJpaRepository tokenRepository;
 
+    /** Trilha de segurança; ausente ou desligada, o logout não é registrado. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private br.com.archbase.security.audit.ArchbaseSecurityEventLogger eventLogger;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private ArchbaseJwtService jwtService;
+
     /**
      * <b>Transacional de propósito.</b> Um {@link LogoutHandler} roda na cadeia de filtros do
      * Spring Security — fora do {@code OpenEntityManagerInView}, que só abre no interceptor do MVC.
@@ -57,7 +64,30 @@ public class ArchbaseLogoutService implements LogoutHandler {
 
         int revogados = tokenRepository.revokeAllTokensOfUser(ownerId);
         log.debug("Logout: {} token(s) revogado(s)", revogados);
+        registrarNaTrilha(jwt, ownerId);
 
         SecurityContextHolder.clearContext();
+    }
+
+    /**
+     * Até a 3.5.0 o tipo LOGOUT existia na trilha e nada o gravava. Usuário e tenant vêm do próprio token: o
+     * logout roda antes do filtro JWT, sem autenticação nem tenant no contexto. Se o token não puder ser lido
+     * (expirado, por exemplo), registra o id do dono da sessão.
+     */
+    private void registrarNaTrilha(String jwt, String ownerId) {
+        if (eventLogger == null) {
+            return;
+        }
+        String usuario = ownerId;
+        String tenant = null;
+        if (jwtService != null) {
+            try {
+                usuario = jwtService.extractUsername(jwt);
+                tenant = jwtService.extractTenantId(jwt);
+            } catch (Exception e) {
+                log.debug("Logout: token não pôde ser lido para a trilha; registrando o id do dono", e);
+            }
+        }
+        eventLogger.logout(usuario, "logout", tenant);
     }
 }

@@ -795,7 +795,9 @@ A aplicação precisa ter `@EnableScheduling`.
 ### 4.4 Auditoria
 
 A trilha de eventos de segurança do framework registra `LOGIN`, `LOGIN_FALHOU`, `LOGOUT`, `ACESSO_NEGADO`
-e `SIMULACAO` na tabela `SEGURANCA_EVENTO`:
+e `SIMULACAO` na tabela `SEGURANCA_EVENTO`. `LOGOUT` é gravado pelo `POST /api/v1/auth/logout` com o usuário e o
+tenant do token encerrado; `SIMULACAO`, pelo `POST /api/v1/security/diagnostics/simulate`, com quem perguntou e,
+no detalhe, sobre quem. Até a 3.5.0 esses dois tipos existiam e nada os gravava.
 
 ```properties
 archbase.security.audit.enabled=true
