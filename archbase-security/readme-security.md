@@ -76,8 +76,8 @@ Todos em `/api/v1/auth`, anônimos (dentro de `/api/v1/auth/**`).
 | Método e rota | Corpo | Observação |
 |---|---|---|
 | `POST /authenticate` | `email`, `password`, `tenantId` (opcional) | o login básico |
-| `POST /login` | `email`, `password`, `context`, `contextData` | chama o delegate e os enrichers (ver [Ganchos](#ganchos-de-regra-de-negócio)) |
-| `POST /login-flexible` | `identifier`, `password`, `context` | `identifier` precisa ser e-mail — telefone é recusado (`Login por telefone requer implementação específica`) |
+| `POST /login` | `email`, `password`, `context`, `contextData`, `tenantId` (opcional) | chama o delegate e os enrichers (ver [Ganchos](#ganchos-de-regra-de-negócio)) |
+| `POST /login-flexible` | `identifier`, `password`, `context`, `tenantId` (opcional) | `identifier` precisa ser e-mail — telefone é recusado (`Login por telefone requer implementação específica`) |
 | `POST /login-social` | `provider`, `token`, `context` | exige `ArchbaseSocialTokenValidator`; sem ele responde `501 SOCIAL_LOGIN_NOT_CONFIGURED` |
 | `POST /mfa/verify` | `challengeToken`, `code` | segundo passo do MFA |
 | `POST /refresh-token` | `token` | renovação (ver [Refresh](#refresh)) |
@@ -405,14 +405,19 @@ era devolvê-lo. A resolução funciona assim:
 
 | Pedido | Resultado |
 |---|---|
-| `tenantId` no corpo de `/authenticate` | usado — tem precedência |
+| `tenantId` no corpo de `/authenticate`, `/login` ou `/login-flexible` | usado — tem precedência |
 | sem `tenantId`, e-mail em **um** tenant | o tenant da linha do usuário |
 | sem `tenantId`, e-mail em **mais de um** tenant | `400` com `{"error": "TENANT_SELECTION_REQUIRED", "message": "Selecione o tenant para efetuar login"}` (em `/authenticate`, `/login` e `/login-flexible`) |
 
 > ⚠ **O cabeçalho `X-TENANT-ID` não entra nessa resolução.** A busca do tenant pelo e-mail é uma
 > consulta nativa que ignora o tenant do contexto. Para e-mail em vários tenants, mande `tenantId`
-> **no corpo** — e só `/authenticate` tem esse campo: `/login` e `/login-flexible` não o aceitam, então
-> com esses endpoints um e-mail em mais de um tenant não consegue entrar.
+> **no corpo**.
+
+O login roda numa sessão do Hibernate aberta **depois** de o tenant resolvido estar no contexto. Até a 3.5.0 a
+sessão abria antes — na entrada do método transacional, ou já no começo da requisição pelo open-in-view —, com o
+tenant do cabeçalho ou o padrão: sem `X-TENANT-ID`, quem não era do tenant padrão recebia `Login ou senha inválido`,
+inclusive com `tenantId` no corpo ou com o tenant descoberto pelo e-mail. Até a 3.5.0, `/login` e `/login-flexible`
+também não aceitavam `tenantId`.
 
 ### Rótulo das organizações: quem tem o cadastro é a aplicação
 
