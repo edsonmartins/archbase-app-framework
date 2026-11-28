@@ -22,6 +22,19 @@ public class ResourceStructure {
 
     public static final String OVERRIDE = "Override";
     private final static Map<Class<?>, Class<?>> mapConvert = new HashMap<>();
+
+    static {
+        // Até a 3.5.0 este mapa ficava vazio (só o RepositoryStructure o preenchia): id primitivo era recusado nos
+        // goals services e resources.
+        mapConvert.put(boolean.class, Boolean.class);
+        mapConvert.put(byte.class, Byte.class);
+        mapConvert.put(short.class, Short.class);
+        mapConvert.put(char.class, Character.class);
+        mapConvert.put(int.class, Integer.class);
+        mapConvert.put(long.class, Long.class);
+        mapConvert.put(float.class, Float.class);
+        mapConvert.put(double.class, Double.class);
+    }
     private ObjectBuilder objectBuilder;
     private CustomResourceLoader loader;
     private Integer error = 0;
@@ -87,7 +100,7 @@ public class ResourceStructure {
                             .addImport("org.springframework.web.bind.annotation.RequestMapping")
                             .addImport("org.springframework.web.bind.annotation.CrossOrigin")
                             .addImport("br.com.archbase.resource.logger.annotation.Logging")
-                            .addImport("io.swagger.annotations.Api")
+                            .addImport("io.swagger.v3.oas.annotations.tags.Tag")
                             .addImport("org.springframework.data.domain.Page")
                             .addImport("org.springframework.data.domain.Pageable")
                             .addImport("org.springframework.data.domain.PageImpl")
@@ -99,10 +112,10 @@ public class ResourceStructure {
                             .addImport("org.springframework.web.bind.annotation.RestController")
                             .addAnnotation("@SuppressWarnings(\"serial\")")
                             .addAnnotation("CrossOrigin(origins = \"*\")")
-                            .addAnnotation("Api(value=" + "\"" + entityName + "\")")
+                            .addAnnotation("Tag(name = " + "\"" + entityName + "\")")
                             .addAnnotation("Logging")
                             .addAnnotation("RestController")
-                            .addAnnotation("RequestMapping(value = \"/api.v" + apiVersion + "/" + firstCharToLowerCase(entityName) + "\")")
+                            .addAnnotation("RequestMapping(value = \"/api/v" + apiVersion + "/" + firstCharToLowerCase(entityName) + "\")")
                             .addAttribute(serviceName, serviceNameAttribute)
                             .addConstructor(new ObjectStructure.ObjectConstructor(ScopeValues.PUBLIC, resourceName)
                                     .addAnnotation(Autowired.class).addArgument(serviceName, serviceNameAttribute)

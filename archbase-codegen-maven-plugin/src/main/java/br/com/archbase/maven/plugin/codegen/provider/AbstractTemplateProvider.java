@@ -131,7 +131,8 @@ public abstract class AbstractTemplateProvider {
             if (!file.exists()) {
                 result = createFileFromTemplate(filePath, repositoryPackage, simpleClassName, postfix, beanDefinition, additionalPackage);
                 if (debug) {
-                    ArchbaseDataLogger.addRowGeneratedTable(postfix, fileHelper, Boolean.FALSE.equals(result.left()) ? fileCondition : "Error #" + result.right());
+                    // left == true é sucesso. Até a 3.5.0 a condição estava invertida: arquivo gerado aparecia como "Error #0".
+                    ArchbaseDataLogger.addRowGeneratedTable(postfix, fileHelper, Boolean.TRUE.equals(result.left()) ? fileCondition : "Error #" + result.right());
                 }
             }
         } else {

@@ -36,9 +36,11 @@ public class BuildUtils {
             StringBuilder diamondString = new StringBuilder();
             diamondString.append(cleanSpaces(objectClass));
             diamondString.append(CommonValues.DIAMOND_START);
-            for (Object obj : objects) {
-                diamondString.append(cleanSpaces(String.valueOf(obj)));
-                if (!String.valueOf(objects[objects.length - 1]).equals(String.valueOf(obj))) {
+            // Vírgula por posição. Até a 3.5.0 comparava o valor com o do último argumento: dois argumentos iguais
+            // (id Long e revisão Long) saíam colados, "<X,LongLong>".
+            for (int i = 0; i < objects.length; i++) {
+                diamondString.append(cleanSpaces(String.valueOf(objects[i])));
+                if (i < objects.length - 1) {
                     diamondString.append(CommonValues.COMA);
                 }
             }

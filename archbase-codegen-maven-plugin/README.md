@@ -53,7 +53,7 @@ hífen. Nenhum parâmetro tem `property`: não há propriedade `-D` para eles, s
 | `resource-postfix` | `String` | `Resource` | Sufixo do nome do controller |
 | `only-annotations` | `Boolean` | `false` | `true`: só entidades com `@ArchbaseDataGenerate`; `false`: também as com `@DomainEntity` |
 | `overwrite` | `Boolean` | `false` | `true` apaga e regrava arquivos que já existem; `false` mantém o arquivo existente |
-| `api-version` | `String` | `1` | Só o goal `resources` usa: entra no caminho `/api.v<api-version>/...` |
+| `api-version` | `String` | `1` | Só o goal `resources` usa: entra no caminho `/api/v<api-version>/...` |
 | `revision-number-class` | `String` | `java.lang.Integer` | Terceiro parâmetro de tipo (`N`, tipo da revisão) de repositório, serviço e controller |
 | `additional-extends` | `String[]` | — | Só o goal `repositories` usa: interfaces extras que o repositório estende, cada uma com nome qualificado (sem ponto é erro) e um único parâmetro de tipo, a entidade |
 | `dto-package` | `String` | — | Declarado, sem efeito: nenhum goal o lê |
@@ -128,30 +128,20 @@ Resultado, para `Cliente` (formato abreviado):
 - `ClienteRepository`: `@Repository public interface ClienteRepository extends ArchbaseCommonJpaRepository<Cliente,String,Integer>`.
 - `ClienteService`: `@Service public class ClienteService extends CommonArchbaseService<Cliente,String,Integer>`,
   com construtor `@Autowired` que recebe o `ClienteRepository` e chama `super(...)`.
-- `ClienteResource`: `@RestController`, `@RequestMapping(value = "/api.v1/cliente")`, `@CrossOrigin(origins = "*")`,
-  `@Logging`, `@Api(value="Cliente")`, estende `CommonArchbaseRestController<Cliente,String,Integer>` e
+- `ClienteResource`: `@RestController`, `@RequestMapping(value="/api/v1/cliente")`, `@CrossOrigin(origins = "*")`,
+  `@Logging`, `@Tag(name="Cliente")` (OpenAPI 3), estende `CommonArchbaseRestController<Cliente,String,Integer>` e
   implementa `getService`, `getRepository`, `createConcretePage` e `createConcreteList`.
 
 Ao final, o plugin imprime no log uma tabela com cada arquivo e o resultado.
 
 ## Limitações
 
-- **O controller gerado não compila sem Swagger 2.** Ele importa `io.swagger.annotations.Api` e anota a classe
-  com `@Api`. O Archbase traz `swagger-annotations-jakarta` (pacote `io.swagger.v3.oas.annotations`), não o
-  Swagger 2: remova a anotação e o import, ou adicione `io.swagger:swagger-annotations` ao projeto.
-- O controller gerado usa `@CrossOrigin(origins = "*")` e o caminho `/api.v<versão>/` (com ponto). Revise ambos
-  antes de usar.
-- Os arquivos são escritos em `<diretório atual>/src/main/java`, não no `basedir` do projeto. Em projeto
-  multi-módulo, rodar a partir da raiz grava na raiz: rode no diretório do módulo.
-- Identificador primitivo (`long`, `int`...) só é aceito pelo goal `repositories`; `services` e `resources`
-  recusam a entidade com `Type parameter '...' is incorrect`. Use o tipo empacotado.
-- Quando o tipo do identificador e `revision-number-class` têm o mesmo nome simples (por exemplo `Long` e
-  `java.lang.Long`), a lista de parâmetros de tipo sai sem a vírgula entre eles (`<Cliente,LongLong>`) e o
-  arquivo gerado não compila.
-- Na tabela do log, a coluna de resultado está invertida: arquivo gerado com sucesso aparece como `Error #0`,
-  e falha aparece como `Created`/`Overwritten`. Confira os arquivos em disco.
+- O controller gerado usa `@CrossOrigin(origins = "*")`. Revise antes de usar.
+- Até a 3.5.0: o controller gerado importava o Swagger 2 (`io.swagger.annotations.Api`) e não compilava com o
+  Archbase; o caminho era `/api.v<versão>/`; os arquivos iam para o diretório de onde o Maven foi chamado, não para o
+  `basedir` do módulo; `services` e `resources` recusavam id primitivo; dois parâmetros de tipo com o mesmo nome
+  saíam sem vírgula (`<Cliente,LongLong>`); e a tabela do log mostrava `Error #0` para arquivo gerado com sucesso.
 - `overwrite=true` apaga o arquivo existente, inclusive o que foi editado à mão.
-- O módulo não tem testes.
 
 ## Referência
 
