@@ -87,6 +87,38 @@ abstract class DdlEntregueBaseTest {
         }
     }
 
+    @Test
+    @DisplayName("a tabela criada pelo script tem toda coluna que a entidade mapeia")
+    void colunasDaEntidadeExistem() throws Exception {
+        try (Connection conn = DriverManager.getConnection(jdbcUrl(), usuario(), senha())) {
+            for (String comando : comandosDoScript()) {
+                try (Statement st = conn.createStatement()) {
+                    st.execute(comando);
+                } catch (Exception jaExiste) {
+                    // O teste anterior pode ter criado; o que importa é o estado final.
+                }
+            }
+            java.util.Set<String> naTabela = new java.util.HashSet<>();
+            try (Statement st = conn.createStatement();
+                 java.sql.ResultSet rs = st.executeQuery("SELECT * FROM processed_sync_operation WHERE 1 = 0")) {
+                java.sql.ResultSetMetaData md = rs.getMetaData();
+                for (int i = 1; i <= md.getColumnCount(); i++) {
+                    naTabela.add(md.getColumnName(i).toLowerCase(java.util.Locale.ROOT));
+                }
+            }
+            java.util.List<String> mapeadas = Arrays.stream(
+                            br.com.archbase.offline.sync.persistence.ProcessedSyncOperation.class.getDeclaredFields())
+                    .map(f -> f.getAnnotation(jakarta.persistence.Column.class))
+                    .filter(java.util.Objects::nonNull)
+                    .map(c -> c.name().toLowerCase(java.util.Locale.ROOT))
+                    .toList();
+            assertThat(mapeadas).as("a entidade mapeia colunas").isNotEmpty();
+            assertThat(naTabela)
+                    .as("sem a coluna, o INSERT da entidade falha e ddl-auto=validate não sobe")
+                    .containsAll(mapeadas);
+        }
+    }
+
     /** Divide o script em comandos, ignorando comentários de linha. */
     private List<String> comandosDoScript() throws IOException {
         try (InputStream in = getClass().getResourceAsStream(SCRIPT)) {

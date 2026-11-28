@@ -38,7 +38,9 @@ módulo `archbase_offline` do `archbase_flutter`. Ver o contrato em
    }
    ```
 4. Flyway: aplique `db/archbase-offline-sync/V001__processed_sync_operation.sql`
-   (renumere para a sequência do app).
+   (renumere para a sequência do app). Se você copiou o script antes da 3.5.0, falta a coluna `user_id`, que a
+   entidade mapeia desde a 3.0.10: o INSERT de cada operação falha e, com `ddl-auto=validate`, a aplicação não
+   sobe. Acrescente uma migração com `ALTER TABLE processed_sync_operation ADD COLUMN user_id VARCHAR(64);`.
 5. A limpeza remove operações com mais de 90 dias, todo dia às 03:00 — precisa de `@EnableScheduling` na aplicação.
 
 ### Só o módulo, sem o starter
