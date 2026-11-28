@@ -91,6 +91,9 @@ Estas valem ao atualizar, sem configuração. Confira se alguma atinge um fluxo 
 | 3.5.0 | `archbase-architecture-rules`: as regras de segurança dos controllers deixam de aceitar `@PermitAll` (ignorado pelo Archbase) e passam a aceitar `@RequireProfile`/`@RequireRole`/`@RequirePersona`, inclusive na classe | Build com essas regras e endpoints só com `@PermitAll`: passa a acusar — o endpoint estava protegido só pela cadeia de filtros |
 | 3.5.0 | Beans com `@ArchbaseInterceptor` passam a ser registrados no Spring MVC (antes, nenhum era: o registrador ficava fora da varredura) | Interceptor anotado que estava inerte passa a rodar |
 | 3.5.0 | `isSatisfiedBy` de `LikeArchbaseSpecification`/`NotLikeArchbaseSpecification` passa a seguir o `like` do banco (`%`, `_`, texto inteiro). Antes testava se o padrão continha o valor, e as duas davam o mesmo resultado | Código que avaliava essas specifications em memória: o resultado muda para o correto |
+| 3.5.0 | `DELETE /api/v1/user/{id}` funciona com `spring.jpa.open-in-view=false` (antes respondia 500, `LazyInitializationException`: `removeUser` não abria transação) | Nenhuma |
+| 3.5.0 | `Endereco.cidadeUf()` (e o `toString()`) com só a cidade ou só a UF devolve só o que existe; antes saía `"Campinas-null"` ou `"null-SP"` | Quem comparava ou gravava esse texto vê o valor sem `null` |
+| 3.5.0 | `@DomainIdentifier` e `@DomainTransient` aceitam campo e método, além de tipo | Nenhuma (só amplia onde a anotação compila) |
 
 Proteções novas que entraram **desligadas** — o padrão reproduz o comportamento anterior — estão em
 [security-hardening.md](security-hardening.md), com a referência rápida do que ligar em produção. As da 3.3.0
