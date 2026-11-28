@@ -65,6 +65,7 @@ Estas valem ao atualizar, sem configuração. Confira se alguma atinge um fluxo 
 | 3.5.0 | `ConstraintViolationException` (direta ou como causa) responde 400 com `fieldErrors` no `archbase-error-handling`; antes caía no tratamento genérico e respondia 500 | Cliente que tratava esse 500 |
 | 3.5.0 | **Negação de `@HasPermission` volta a responder 403** (código `ACCESS_DENIED`). Com o Spring Security 7 ela lança `AuthorizationDeniedException`, subclasse de `AccessDeniedException`; o `archbase-error-handling` comparava a classe exata e respondia 500. As demais exceções de segurança mapeadas também passam a valer para subclasses | Cliente que tratava esse 500 como falta de permissão |
 | 3.5.0 | `archbase-mapper`: `getTargetClass`/`getSourceClass` (e `createDto`/`createEntity`) funcionam na implementação gerada pelo MapStruct, e a auto-configuração passa a registrar o `MapperConfiguration` | Aditivo |
+| 3.5.0 | `isSatisfiedBy` de `LikeArchbaseSpecification`/`NotLikeArchbaseSpecification` passa a seguir o `like` do banco (`%`, `_`, texto inteiro). Antes testava se o padrão continha o valor, e as duas davam o mesmo resultado | Código que avaliava essas specifications em memória: o resultado muda para o correto |
 
 Proteções novas que entraram **desligadas** — o padrão reproduz o comportamento anterior — estão em
 [security-hardening.md](security-hardening.md), com a referência rápida do que ligar em produção. As da 3.3.0
