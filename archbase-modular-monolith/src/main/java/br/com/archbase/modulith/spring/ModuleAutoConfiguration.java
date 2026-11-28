@@ -72,6 +72,19 @@ public class ModuleAutoConfiguration {
                 .build();
     }
 
+    /** Saúde dos módulos, com o actuator no classpath ({@code archbase.modulith.health-checks-enabled}, padrão true). */
+    @org.springframework.context.annotation.Configuration(proxyBeanMethods = false)
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnClass(name = "org.springframework.boot.health.contributor.HealthIndicator")
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(prefix = "archbase.modulith",
+            name = "health-checks-enabled", havingValue = "true", matchIfMissing = true)
+    static class Saude {
+        @Bean
+        @org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean(ModuleHealthIndicator.class)
+        ModuleHealthIndicator moduleHealthIndicator(ModuleRegistry moduleRegistry) {
+            return new ModuleHealthIndicator(moduleRegistry);
+        }
+    }
+
     @Bean
     public ModuleDiscoveryListener moduleDiscoveryListener(
             ApplicationContext applicationContext,
@@ -158,6 +171,33 @@ public class ModuleAutoConfiguration {
 
             // Iniciar módulos na ordem correta
             startModules();
+        }
+
+        /**
+         * Para os módulos na ordem inversa da subida, chamando {@code onStop}. Até a 3.5.0 o fechamento do contexto não
+         * chamava nada: {@code onStop} e {@code getShutdownOrder} não tinham uso.
+         */
+        @EventListener
+        public void onContextClosed(org.springframework.context.event.ContextClosedEvent event) {
+            if (event.getApplicationContext() != applicationContext) {
+                return;
+            }
+            for (ModuleDescriptor module : moduleRegistry.getShutdownOrder()) {
+                if (module.getState() != ModuleState.STARTED) {
+                    continue;
+                }
+                try {
+                    module.setState(ModuleState.STOPPING);
+                    if (module.hasLifecycle()) {
+                        module.getLifecycle().onStop();
+                    }
+                    module.setState(ModuleState.STOPPED);
+                    log.info("Module stopped: {}", module.getName());
+                } catch (Exception e) {
+                    module.setState(ModuleState.FAILED);
+                    log.error("Failed to stop module: {}", module.getName(), e);
+                }
+            }
         }
 
         private void startModules() {
