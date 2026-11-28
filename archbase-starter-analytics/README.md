@@ -15,7 +15,7 @@ Não há BOM do Archbase: declare a versão explícita e use a mesma em todos os
 
 ## O que traz
 
-Só `archbase-analytics` (e, por ele, `spring-boot-starter-web`, Jackson 2, `spring-security-core`).
+Só `archbase-analytics` (e, por ele, `spring-boot-starter-web`, Jackson 3, `spring-security-core`).
 
 ## O que é preciso ligar
 
@@ -26,7 +26,6 @@ Adicionar o starter não registra nada. Para o analytics funcionar, a aplicaçã
 | `archbase.analytics.enabled=true` | Sem isso, nenhum bean é criado |
 | `archbase.analytics.secret` com 32 bytes ou mais, igual ao `CUBEJS_API_SECRET` do Cube | Assina o token de escopo |
 | `archbase.analytics.secret-validation=fail` | Recomendado: o padrão `warn` deixa subir com segredo vazio |
-| Bean `com.fasterxml.jackson.databind.ObjectMapper` (Jackson 2) | O Spring Boot 4 não registra mais esse tipo; sem ele, não sobe — ver [limitações do módulo](../archbase-analytics/README.md#limitações) |
 | Beans `DataScopeProvider` e `AnalyticsAuditPort` | Sem os dois, o proxy não é registrado |
 | Bean `SavedQueryStorePort` | Sem ele, as consultas salvas não são registradas |
 | Autenticação no `SecurityContextHolder` (por exemplo, `archbase-security`) | Os controllers respondem 401 a quem não está autenticado |

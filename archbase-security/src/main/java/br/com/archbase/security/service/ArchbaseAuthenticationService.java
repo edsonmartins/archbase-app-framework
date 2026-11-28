@@ -198,7 +198,6 @@ public class ArchbaseAuthenticationService {
         return businessEntityId;
     }
 
-    @Transactional
     public AuthenticationResponse authenticate(AuthenticationRequest request) {
         String rateLimitKey = ArchbaseAuthRateLimiter.key("login", request.getEmail());
         if (rateLimiter.isBlocked(rateLimitKey)) {
@@ -228,85 +227,91 @@ public class ArchbaseAuthenticationService {
                 ArchbaseTenantContext.setTenantId(tenant);
             }
 
-            authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(
-                            request.getEmail(),
-                            request.getPassword()
-                    )
-            );
+            // Daqui em diante, numa sessão aberta DEPOIS de o tenant estar no contexto. O resolvedor do Hibernate lê o
+            // tenant quando a sessão abre; até a 3.5.0 este método era @Transactional, a sessão abria na entrada — com o
+            // tenant do cabeçalho ou, sem ele, o padrão — e o tenant escolhido (tenantId) ou descoberto pelo e-mail não
+            // valia: quem não era do tenant padrão recebia "Login ou senha inválido" sem o X-TENANT-ID.
+            return naSessaoDoTenant(() -> {
+                authenticationManager.authenticate(
+                        new UsernamePasswordAuthenticationToken(
+                                request.getEmail(),
+                                request.getPassword()
+                        )
+                );
 
-            // Senha conferiu: zera a contagem para o usuário legítimo não carregar o histórico de
-            // tentativas de um atacante que usou o mesmo e-mail.
-            rateLimiter.recordSuccess(rateLimitKey);
+                // Senha conferiu: zera a contagem para o usuário legítimo não carregar o histórico de
+                // tentativas de um atacante que usou o mesmo e-mail.
+                rateLimiter.recordSuccess(rateLimitKey);
 
-            var user = repository.findByEmail(request.getEmail())
-                    .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
+                var user = repository.findByEmail(request.getEmail())
+                        .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
 
-            // Senha local desligada para esta conta (credencial é de outro provedor). Cai no mesmo
-            // tratamento de senha errada: resposta idêntica, contagem e trilha — dizer "use o IdP"
-            // revelaria que a conta existe e é federada.
-            if (!allowsLocalPassword(user)) {
-                throw new BadCredentialsException("Senha local desabilitada para esta conta");
-            }
-
-            // Segundo fator (MFA): senha conferiu, mas falta o TOTP. Não emite tokens ainda —
-            // devolve um desafio; o cliente completa em POST /auth/mfa/verify.
-            if (mfaService != null && mfaService.isMfaEnabled(user)) {
-                log.debug("MFA requerido para usuário {}, emitindo desafio", user.getEmail());
-                return AuthenticationResponse.builder()
-                        .mfaRequired(true)
-                        .challengeToken(jwtService.generateMfaChallengeToken(user).token())
-                        .build();
-            }
-
-            // Marcar tokens expirados antes de buscar tokens válidos
-            int expiredCount = accessTokenPersistenceAdapter.markExpiredTokens();
-            if (expiredCount > 0) {
-                log.debug("Marcados {} tokens como expirados antes da autenticação", expiredCount);
-            }
-
-            // Verificar se existe um token válido
-            AccessTokenEntity accessToken = accessTokenPersistenceAdapter.findValidTokenByUser(user);
-
-            // Verificar se o token existe e não está expirado
-            if (accessToken != null && tokenGuardadoAindaVale(accessToken.getToken())) {
-                // QUEM NÃO PODE TER VÁRIAS SESSÕES: a anterior morre INTEIRA, agora.
-                //
-                // Revogar só os refresh e reusar o access deixava a sessão anterior num estado
-                // ambíguo: ela seguia navegando com o access válido — por até um dia inteiro — mas
-                // com o refresh morto, então a renovação era negada a cada tentativa. O cliente
-                // ficava num laço de 401 sem nunca ser deslogado, e nos logs isso aparecia como um
-                // erro recorrente de minuto em minuto sem nenhuma causa visível. Aconteceu em
-                // produção e custou uma investigação inteira até virar isto aqui.
-                //
-                // Sessão única precisa significar sessão única: entrou de novo, a de antes acaba.
-                // Um meio-termo em que a sessão velha continua lendo dados mas não consegue se
-                // renovar não é mais seguro que derrubá-la — é só mais difícil de entender.
-                if (!Boolean.TRUE.equals(user.getAllowMultipleLogins())) {
-                    log.debug("Sessão única para o usuário {}: revogando a sessão anterior por inteiro",
-                            user.getEmail());
-                    revokeAllUserTokens(user);
-                    AccessTokenEntity novoAccessToken = saveUserToken(user, jwtService.generateToken(user));
-                    return buildAuthenticationResponse(novoAccessToken, issueRefreshToken(user), user);
+                // Senha local desligada para esta conta (credencial é de outro provedor). Cai no mesmo
+                // tratamento de senha errada: resposta idêntica, contagem e trilha — dizer "use o IdP"
+                // revelaria que a conta existe e é federada.
+                if (!allowsLocalPassword(user)) {
+                    throw new BadCredentialsException("Senha local desabilitada para esta conta");
                 }
 
-                log.debug("Token válido encontrado para o usuário {}, reusando token", user.getEmail());
-                // Quem PODE ter várias sessões reusa o access que ainda vale e ganha um refresh
-                // novo, sem tocar nas outras sessões. Revogar aqui derrubava sessões legítimas:
-                // abrir uma segunda aba ou recarregar a página matava o refresh que a primeira
-                // guardava, e ela caía sozinha na renovação seguinte.
+                // Segundo fator (MFA): senha conferiu, mas falta o TOTP. Não emite tokens ainda —
+                // devolve um desafio; o cliente completa em POST /auth/mfa/verify.
+                if (mfaService != null && mfaService.isMfaEnabled(user)) {
+                    log.debug("MFA requerido para usuário {}, emitindo desafio", user.getEmail());
+                    return AuthenticationResponse.builder()
+                            .mfaRequired(true)
+                            .challengeToken(jwtService.generateMfaChallengeToken(user).token())
+                            .build();
+                }
+
+                // Marcar tokens expirados antes de buscar tokens válidos
+                int expiredCount = accessTokenPersistenceAdapter.markExpiredTokens();
+                if (expiredCount > 0) {
+                    log.debug("Marcados {} tokens como expirados antes da autenticação", expiredCount);
+                }
+
+                // Verificar se existe um token válido
+                AccessTokenEntity accessToken = accessTokenPersistenceAdapter.findValidTokenByUser(user);
+
+                // Verificar se o token existe e não está expirado
+                if (accessToken != null && tokenGuardadoAindaVale(accessToken.getToken())) {
+                    // QUEM NÃO PODE TER VÁRIAS SESSÕES: a anterior morre INTEIRA, agora.
+                    //
+                    // Revogar só os refresh e reusar o access deixava a sessão anterior num estado
+                    // ambíguo: ela seguia navegando com o access válido — por até um dia inteiro — mas
+                    // com o refresh morto, então a renovação era negada a cada tentativa. O cliente
+                    // ficava num laço de 401 sem nunca ser deslogado, e nos logs isso aparecia como um
+                    // erro recorrente de minuto em minuto sem nenhuma causa visível. Aconteceu em
+                    // produção e custou uma investigação inteira até virar isto aqui.
+                    //
+                    // Sessão única precisa significar sessão única: entrou de novo, a de antes acaba.
+                    // Um meio-termo em que a sessão velha continua lendo dados mas não consegue se
+                    // renovar não é mais seguro que derrubá-la — é só mais difícil de entender.
+                    if (!Boolean.TRUE.equals(user.getAllowMultipleLogins())) {
+                        log.debug("Sessão única para o usuário {}: revogando a sessão anterior por inteiro",
+                                user.getEmail());
+                        revokeAllUserTokens(user);
+                        AccessTokenEntity novoAccessToken = saveUserToken(user, jwtService.generateToken(user));
+                        return buildAuthenticationResponse(novoAccessToken, issueRefreshToken(user), user);
+                    }
+
+                    log.debug("Token válido encontrado para o usuário {}, reusando token", user.getEmail());
+                    // Quem PODE ter várias sessões reusa o access que ainda vale e ganha um refresh
+                    // novo, sem tocar nas outras sessões. Revogar aqui derrubava sessões legítimas:
+                    // abrir uma segunda aba ou recarregar a página matava o refresh que a primeira
+                    // guardava, e ela caía sozinha na renovação seguinte.
+                    return buildAuthenticationResponse(accessToken, issueRefreshToken(user), user);
+                }
+
+                log.debug("Nenhum token válido encontrado para o usuário {}, criando novo token", user.getEmail());
+                // Sempre revogar tokens antigos antes de criar novos
+                revokeAllUserTokens(user);
+
+                // Gerar novos tokens
+                var jwtToken = jwtService.generateToken(user);
+                accessToken = saveUserToken(user, jwtToken);
+
                 return buildAuthenticationResponse(accessToken, issueRefreshToken(user), user);
-            }
-
-            log.debug("Nenhum token válido encontrado para o usuário {}, criando novo token", user.getEmail());
-            // Sempre revogar tokens antigos antes de criar novos
-            revokeAllUserTokens(user);
-
-            // Gerar novos tokens
-            var jwtToken = jwtService.generateToken(user);
-            accessToken = saveUserToken(user, jwtToken);
-
-            return buildAuthenticationResponse(accessToken, issueRefreshToken(user), user);
+            });
         } catch (CredentialsExpiredException e) {
             log.warn("Credenciais expiradas para usuário: {}", request.getEmail());
             throw e; // Re-lançar para tratamento específico no controller
@@ -339,7 +344,6 @@ public class ArchbaseAuthenticationService {
      *
      * @throws BadCredentialsException se o desafio for inválido/expirado ou o código não conferir
      */
-    @Transactional
     public AuthenticationResponse completeMfaAuthentication(String challengeToken, String code) {
         try {
             if (challengeToken == null || !jwtService.isMfaChallengeToken(challengeToken)) {
@@ -350,34 +354,69 @@ public class ArchbaseAuthenticationService {
                 ArchbaseTenantContext.setTenantId(tenant);
             }
             String email = jwtService.extractUsername(challengeToken);
+            // Sessão aberta com o tenant do desafio já no contexto — ver authenticate.
+            return naSessaoDoTenant(() -> {
 
-            // Segundo fator é um código de 6 dígitos: sem contagem de tentativas, o desafio de 5
-            // minutos é tempo de sobra para varrer boa parte do espaço.
-            String rateLimitKey = ArchbaseAuthRateLimiter.key("mfa", email);
-            if (rateLimiter.isBlocked(rateLimitKey)) {
-                log.warn("Verificação de MFA bloqueada por excesso de tentativas: {}", email);
-                throw new ArchbaseTooManyAttemptsException(
-                        "Muitas tentativas de verificação. Tente novamente em alguns minutos.",
-                        rateLimiter.secondsUntilUnblock(rateLimitKey));
-            }
+                // Segundo fator é um código de 6 dígitos: sem contagem de tentativas, o desafio de 5
+                // minutos é tempo de sobra para varrer boa parte do espaço.
+                String rateLimitKey = ArchbaseAuthRateLimiter.key("mfa", email);
+                if (rateLimiter.isBlocked(rateLimitKey)) {
+                    log.warn("Verificação de MFA bloqueada por excesso de tentativas: {}", email);
+                    throw new ArchbaseTooManyAttemptsException(
+                            "Muitas tentativas de verificação. Tente novamente em alguns minutos.",
+                            rateLimiter.secondsUntilUnblock(rateLimitKey));
+                }
 
-            var user = repository.findByEmail(email)
-                    .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
+                var user = repository.findByEmail(email)
+                        .orElseThrow(() -> new ArchbaseValidationException("Usuário não encontrado"));
 
-            if (mfaService == null || !mfaService.verificar(user, code)) {
-                rateLimiter.recordFailure(rateLimitKey);
-                throw new BadCredentialsException("Código de verificação inválido");
-            }
-            rateLimiter.recordSuccess(rateLimitKey);
+                if (mfaService == null || !mfaService.verificar(user, code)) {
+                    rateLimiter.recordFailure(rateLimitKey);
+                    throw new BadCredentialsException("Código de verificação inválido");
+                }
+                rateLimiter.recordSuccess(rateLimitKey);
 
-            // Segundo fator confirmado — emite tokens novos (revoga os antigos).
-            accessTokenPersistenceAdapter.markExpiredTokens();
-            revokeAllUserTokens(user);
-            var jwtToken = jwtService.generateToken(user);
-            var accessToken = saveUserToken(user, jwtToken);
-            return buildAuthenticationResponse(accessToken, issueRefreshToken(user), user);
+                // Segundo fator confirmado — emite tokens novos (revoga os antigos).
+                accessTokenPersistenceAdapter.markExpiredTokens();
+                revokeAllUserTokens(user);
+                var jwtToken = jwtService.generateToken(user);
+                var accessToken = saveUserToken(user, jwtToken);
+                return buildAuthenticationResponse(accessToken, issueRefreshToken(user), user);
+            });
         } finally {
             ArchbaseTenantContext.clear();
+        }
+    }
+
+    @Autowired(required = false)
+    private org.springframework.transaction.PlatformTransactionManager transactionManager;
+
+    @Autowired(required = false)
+    private jakarta.persistence.EntityManagerFactory entityManagerFactory;
+
+    /**
+     * Executa numa transação nova, cuja sessão do Hibernate é aberta com o tenant que está no contexto agora.
+     *
+     * <p>Dois obstáculos. Uma transação já em curso tem a sessão aberta com o tenant de antes — daí o
+     * {@code REQUIRES_NEW}. E com o open-in-view (padrão do Spring Boot) o {@code EntityManager} da requisição é aberto
+     * antes do controller, com o tenant do cabeçalho ou o padrão, e o {@code JpaTransactionManager} o reaproveita mesmo
+     * com {@code REQUIRES_NEW}, porque ele ainda não tem transação — por isso é desligado da thread enquanto o trabalho
+     * roda e religado no fim. Sem gerenciador de transação (teste de unidade), executa direto.
+     */
+    private <T> T naSessaoDoTenant(java.util.function.Supplier<T> trabalho) {
+        if (transactionManager == null) {
+            return trabalho.get();
+        }
+        Object daRequisicao = entityManagerFactory == null ? null
+                : org.springframework.transaction.support.TransactionSynchronizationManager.unbindResourceIfPossible(entityManagerFactory);
+        try {
+            var transacao = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+            transacao.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            return transacao.execute(status -> trabalho.get());
+        } finally {
+            if (daRequisicao != null) {
+                org.springframework.transaction.support.TransactionSynchronizationManager.bindResource(entityManagerFactory, daRequisicao);
+            }
         }
     }
 
@@ -805,7 +844,9 @@ public class ArchbaseAuthenticationService {
      * @param httpRequest Request HTTP para contexto adicional
      * @return Resposta de autenticação enriquecida
      */
-    @Transactional
+    // Sem @Transactional: a sessão abriria na entrada, com o tenant padrão, e os hooks da aplicação
+    // (postAuthenticate, enrichers) leriam no tenant errado. Cada passo abre a sua sessão com o tenant que
+    // authenticate deixou no contexto.
     public AuthenticationResponse authenticateWithContext(
             ContextualAuthenticationRequest contextualRequest,
             HttpServletRequest httpRequest) {

@@ -3,7 +3,12 @@ package br.com.archbase.modulith.rules;
 import br.com.archbase.modulith.annotations.InternalApi;
 import br.com.archbase.modulith.annotations.Module;
 import br.com.archbase.modulith.annotations.ModuleApi;
+import com.tngtech.archunit.core.domain.Dependency;
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.lang.ArchCondition;
+import com.tngtech.archunit.lang.ConditionEvents;
+import com.tngtech.archunit.lang.SimpleConditionEvent;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.library.dependencies.SlicesRuleDefinition;
 
@@ -80,15 +85,19 @@ public final class ModuleBoundaryRules {
     }
 
     /**
-     * Regra: Classes anotadas com @Module devem ser classes de configuração.
+     * Regra: Classes anotadas com @Module devem ser componentes do Spring.
+     *
+     * <p>Basta a meta-anotação: {@link Module} já é meta-anotado com {@code @Component}, assim como
+     * {@code @Configuration}. Até a 3.5.0 a regra exigia {@code @Configuration} ou {@code @Component} diretamente na
+     * classe e acusava toda classe só com {@code @Module} — o que não aparecia porque o ArchUnit 1.0.1 não lia as
+     * classes do Java 25.
      *
      * @return Regra ArchUnit
      */
     public static ArchRule moduleClassesShouldBeConfigurations() {
         return classes()
                 .that().areAnnotatedWith(Module.class)
-                .should().beAnnotatedWith("org.springframework.context.annotation.Configuration")
-                .orShould().beAnnotatedWith("org.springframework.stereotype.Component")
+                .should().beMetaAnnotatedWith("org.springframework.stereotype.Component")
                 .because("Module classes should be Spring configurations or components");
     }
 
@@ -124,11 +133,46 @@ public final class ModuleBoundaryRules {
      * @return Regra ArchUnit
      */
     public static ArchRule modulesShouldNotAccessOtherModulesInternals(String basePackage) {
-        return noClasses()
+        return classes()
                 .that().resideInAPackage(basePackage + "..")
-                .should().dependOnClassesThat()
-                .resideInAPackage("..internal..")
+                .should(naoAcessarInternoDeOutroModulo(basePackage))
                 .because("Modules should not depend on internal packages of other modules");
+    }
+
+    /**
+     * O módulo é o primeiro segmento depois de {@code basePackage} ({@code com.acme.pedidos.internal.X} é do módulo
+     * {@code pedidos}). Até a 3.5.0 a regra proibia qualquer pacote {@code ..internal..}, inclusive os do próprio
+     * módulo — o que não aparecia porque o ArchUnit 1.0.1 não lia as classes do Java 25.
+     */
+    private static ArchCondition<JavaClass> naoAcessarInternoDeOutroModulo(String basePackage) {
+        String prefixo = basePackage + ".";
+        return new ArchCondition<>("not depend on internal packages of other modules") {
+            @Override
+            public void check(JavaClass origem, ConditionEvents events) {
+                String moduloDeOrigem = modulo(origem.getPackageName(), prefixo);
+                for (Dependency dependencia : origem.getDirectDependenciesFromSelf()) {
+                    String pacoteAlvo = dependencia.getTargetClass().getPackageName();
+                    String moduloAlvo = modulo(pacoteAlvo, prefixo);
+                    if (moduloAlvo != null && !moduloAlvo.equals(moduloDeOrigem) && interno(pacoteAlvo, prefixo)) {
+                        events.add(SimpleConditionEvent.violated(dependencia, dependencia.getDescription()));
+                    }
+                }
+            }
+        };
+    }
+
+    private static String modulo(String pacote, String prefixo) {
+        if (!pacote.startsWith(prefixo)) {
+            return null;
+        }
+        String resto = pacote.substring(prefixo.length());
+        int ponto = resto.indexOf('.');
+        return ponto < 0 ? resto : resto.substring(0, ponto);
+    }
+
+    private static boolean interno(String pacote, String prefixo) {
+        String resto = pacote.substring(prefixo.length());
+        return ("." + resto + ".").contains(".internal.");
     }
 
     /**

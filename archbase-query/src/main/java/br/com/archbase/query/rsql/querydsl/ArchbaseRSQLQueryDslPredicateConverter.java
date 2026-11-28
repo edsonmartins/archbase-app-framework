@@ -53,6 +53,7 @@ public class ArchbaseRSQLQueryDslPredicateConverter extends RSQLVisitorBase<Bool
                 }
 
                 if (isAssociationType(mappedProperty, classMetadata)) {
+                    segmentAccessControl(classMetadata.getJavaType(), mappedProperty);
                     Class<?> associationType = findPropertyType(mappedProperty, classMetadata);
                     String previousClass = classMetadata.getJavaType().getName();
                     classMetadata = getManagedType(associationType);
@@ -62,6 +63,7 @@ public class ArchbaseRSQLQueryDslPredicateConverter extends RSQLVisitorBase<Bool
                         path = (Path) ((CollectionPathBase) path).any();
                     }
                 } else if (isElementCollectionType(mappedProperty, classMetadata)) {
+                    segmentAccessControl(classMetadata.getJavaType(), mappedProperty);
                     String previousClass = classMetadata.getJavaType().getName();
                     attribute = classMetadata.getAttribute(property);
                     classMetadata = getManagedElementCollectionType(mappedProperty, classMetadata);
@@ -81,6 +83,7 @@ public class ArchbaseRSQLQueryDslPredicateConverter extends RSQLVisitorBase<Bool
                 } else {
                     log.debug("Crie o caminho da propriedade para o tipo [{}] propriedade [{}].", classMetadata.getJavaType().getName(), mappedProperty);
                     if (isEmbeddedType(mappedProperty, classMetadata)) {
+                        segmentAccessControl(classMetadata.getJavaType(), mappedProperty);
                         Class<?> embeddedType = findPropertyType(mappedProperty, classMetadata);
                         classMetadata = getManagedType(embeddedType);
                     } else {

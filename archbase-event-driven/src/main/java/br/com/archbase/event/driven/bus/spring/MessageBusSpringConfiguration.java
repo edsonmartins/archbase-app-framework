@@ -29,7 +29,9 @@ public class MessageBusSpringConfiguration {
     public CommandBus getCommandBus() {
         return new SimpleCommandBus(
                 findHandlerFactoryConfig().getCommandHandlerFactory(),
-                findMiddlewareConfig().getQueryMiddlewarePipeline()
+                // Até a 3.5.0 recebia o pipeline de consultas: um MiddlewareConfig próprio que mudasse só o de
+                // comandos não tinha efeito.
+                findMiddlewareConfig().getCommandMiddlewarePipeline()
         );
     }
 

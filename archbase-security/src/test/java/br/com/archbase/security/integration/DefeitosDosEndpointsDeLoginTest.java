@@ -241,6 +241,59 @@ class DefeitosDosEndpointsDeLoginTest {
         assertThat(corpo(r).get("access_token").asText()).isNotBlank();
     }
 
+    @Test
+    @DisplayName("e-mail em dois tenants com tenantId no /login e no /login-flexible entra no tenant escolhido")
+    void selecaoDeTenantComTenantIdNasOutrasRotas() throws Exception {
+        // Até a 3.5.0 os dois DTOs não tinham tenantId (e o /login o descartaria no toBasicRequest): quem tem o
+        // e-mail em dois tenants recebia TENANT_SELECTION_REQUIRED e não tinha como responder por essas rotas.
+        usuario(TENANT, "dois3@tenants.com", false);
+        usuario(OUTRO_TENANT, "dois3@tenants.com", false);
+
+        MvcResult login = post("/api/v1/auth/login",
+                Map.of("email", "dois3@tenants.com", "password", SENHA, "tenantId", OUTRO_TENANT));
+        assertThat(login.getResponse().getStatus()).isEqualTo(200);
+        assertThat(corpo(login).get("access_token").asText()).isNotBlank();
+        assertThat(corpo(login).get("tenant").get("tenantId").asText()).isEqualTo(OUTRO_TENANT);
+
+        MvcResult flex = post("/api/v1/auth/login-flexible",
+                Map.of("identifier", "dois3@tenants.com", "password", SENHA, "tenantId", TENANT));
+        assertThat(flex.getResponse().getStatus()).isEqualTo(200);
+        assertThat(corpo(flex).get("tenant").get("tenantId").asText()).isEqualTo(TENANT);
+    }
+
+    @Test
+    @DisplayName("fora do tenant padrão, sem X-TENANT-ID: o login entra no tenant escolhido ou descoberto")
+    void loginForaDoTenantPadrao() throws Exception {
+        // Senhas diferentes por tenant: com a mesma senha, entrar no tenant errado passaria despercebido — foi assim
+        // que o defeito sobreviveu ao teste do tenantId no /authenticate.
+        // Até a 3.5.0 a sessão do Hibernate abria na entrada do método @Transactional, com o tenant padrão, e o
+        // tenant escolhido ou descoberto não valia: "Login ou senha inválido".
+        usuario(TENANT, "dois-senhas@tenants.com", false, "senha-do-padrao");
+        usuario(OUTRO_TENANT, "dois-senhas@tenants.com", false, "senha-do-outro");
+        usuario(OUTRO_TENANT, "so-no-outro@tenants.com", false, "senha-do-outro");
+
+        for (String rota : List.of("/api/v1/auth/authenticate", "/api/v1/auth/login")) {
+            MvcResult escolhido = post(rota,
+                    Map.of("email", "dois-senhas@tenants.com", "password", "senha-do-outro", "tenantId", OUTRO_TENANT));
+            assertThat(escolhido.getResponse().getStatus()).as(rota).isEqualTo(200);
+            assertThat(corpo(escolhido).get("tenant").get("tenantId").asText()).as(rota).isEqualTo(OUTRO_TENANT);
+
+            MvcResult senhaDoOutroTenant = post(rota,
+                    Map.of("email", "dois-senhas@tenants.com", "password", "senha-do-padrao", "tenantId", OUTRO_TENANT));
+            assertThat(senhaDoOutroTenant.getResponse().getStatus()).as(rota + ": senha de outro tenant").isEqualTo(401);
+        }
+
+        MvcResult flex = post("/api/v1/auth/login-flexible",
+                Map.of("identifier", "dois-senhas@tenants.com", "password", "senha-do-outro", "tenantId", OUTRO_TENANT));
+        assertThat(flex.getResponse().getStatus()).isEqualTo(200);
+        assertThat(corpo(flex).get("tenant").get("tenantId").asText()).isEqualTo(OUTRO_TENANT);
+
+        MvcResult descoberto = post("/api/v1/auth/authenticate",
+                Map.of("email", "so-no-outro@tenants.com", "password", "senha-do-outro"));
+        assertThat(descoberto.getResponse().getStatus()).as("tenant descoberto pelo e-mail").isEqualTo(200);
+        assertThat(corpo(descoberto).get("tenant").get("tenantId").asText()).isEqualTo(OUTRO_TENANT);
+    }
+
     // ═══════════════════════════ apoio ═══════════════════════════
 
     private MvcResult post(String rota, Map<String, Object> corpo) throws Exception {
@@ -256,6 +309,10 @@ class DefeitosDosEndpointsDeLoginTest {
     }
 
     private void usuario(String tenant, String email, boolean mfa) {
+        usuario(tenant, email, mfa, SENHA);
+    }
+
+    private void usuario(String tenant, String email, boolean mfa, String senha) {
         ArchbaseTenantContext.setTenantId(tenant);
         try {
             UserEntity user = UserEntity.builder()
@@ -265,7 +322,7 @@ class DefeitosDosEndpointsDeLoginTest {
                     .description(email)
                     .email(email)
                     .userName(email)
-                    .password(passwordEncoder.encode(SENHA))
+                    .password(passwordEncoder.encode(senha))
                     .isAdministrator(false)
                     .accountDeactivated(false)
                     .accountLocked(false)

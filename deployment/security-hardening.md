@@ -60,6 +60,7 @@ mais abaixo; as marcadas com ⚠ exigem preparo antes de virar.
 | `archbase.security.cors.*` | **obrigatórias** | origens explícitas | Nunca `*` com `allow-credentials=true` |
 | `archbase.analytics.secret-validation` | `warn` | `fail` | Só com `archbase-analytics` |
 | `archbase.error.handling.hide-server-error-messages` | `false` | `true` | Sem ele, a mensagem de um 500 (SQL, classes, caminhos) vai para o cliente |
+| `archbase.rsql.strict-path-access-control` | `false` | `true` se usa lista branca do RSQL | ⚠ com lista branca na raiz, filtrar por `associacao.campo` passa a exigir `associacao` na lista |
 
 ### Empresa no cabeçalho (`X-COMPANY-ID`)
 

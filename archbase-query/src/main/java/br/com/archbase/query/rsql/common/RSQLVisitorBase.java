@@ -46,6 +46,9 @@ public abstract class RSQLVisitorBase<R, A> implements RSQLVisitor<R, A> {
     @Setter
     protected static ConfigurableConversionService defaultConversionService;
 
+    /** Ver {@link RSQLCommonSupport#setStrictPathAccessControl(boolean)}. */
+    protected static volatile boolean strictPathAccessControl;
+
     static {
         Map<Class, Class> map = new HashMap<>();
         map.put(boolean.class, Boolean.class);
@@ -123,7 +126,7 @@ public abstract class RSQLVisitorBase<R, A> implements RSQLVisitor<R, A> {
     }
 
     protected void accessControl(Class type, String name) {
-        log.info("accessControl(type:{},name:{})", type, name);
+        log.debug("accessControl(type:{},name:{})", type, name);
 
         if (propertyWhitelist != null && propertyWhitelist.containsKey(type) && !propertyWhitelist.get(type).contains(name)) {
             throw new IllegalArgumentException("Propriedade " + type.getName() + "." + name + " não está na lista de permissões");
@@ -131,6 +134,26 @@ public abstract class RSQLVisitorBase<R, A> implements RSQLVisitor<R, A> {
 
         if (propertyBlacklist != null && propertyBlacklist.containsKey(type) && propertyBlacklist.get(type).contains(name)) {
             throw new IllegalArgumentException("Propriedade " + type.getName() + "." + name + " está na lista negra");
+        }
+    }
+
+    /**
+     * Confere um segmento intermediário do caminho — a associação ou o embutido que leva ao atributo final, contra a
+     * classe que o declara ({@code cliente} em {@code Pedido}, para o seletor {@code cliente.cpf}).
+     *
+     * <p>A lista negra vale sempre: até a 3.5.0 só o último segmento era conferido, e pôr {@code cliente} na lista
+     * negra de {@code Pedido} não impedia filtrar por {@code cliente.cpf}. A lista branca só vale para o segmento
+     * intermediário com {@link RSQLCommonSupport#setStrictPathAccessControl(boolean)} ligado
+     * ({@code archbase.rsql.strict-path-access-control}), porque há quem liste em {@code Pedido} só os campos
+     * próprios e conte com a lista da classe associada para governar os dela.
+     */
+    protected void segmentAccessControl(Class owner, String name) {
+        if (propertyBlacklist != null && propertyBlacklist.containsKey(owner) && propertyBlacklist.get(owner).contains(name)) {
+            throw new IllegalArgumentException("Propriedade " + owner.getName() + "." + name + " está na lista negra");
+        }
+        if (strictPathAccessControl && propertyWhitelist != null && propertyWhitelist.containsKey(owner)
+                && !propertyWhitelist.get(owner).contains(name)) {
+            throw new IllegalArgumentException("Propriedade " + owner.getName() + "." + name + " não está na lista de permissões");
         }
     }
 
