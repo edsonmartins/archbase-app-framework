@@ -19,7 +19,7 @@ Não há BOM do Archbase: declare a versão explícita e use a mesma em todos os
 | Dependência | Observação |
 |---|---|
 | `archbase-error-handling` | O `@ControllerAdvice` só age em aplicação web servlet (ver abaixo) |
-| `archbase-validation` | Validação fluente e Bean Validation; traz `hibernate-validator` (e, transitivamente, `h2` em compile) |
+| `archbase-validation` | Validação fluente e Bean Validation; traz `hibernate-validator` |
 | `archbase-domain-driven-design-spec` | Contratos DDD; traz `hibernate-core` e `spring-data-commons`, mas nenhuma auto-configuração JPA |
 | `archbase-event-driven-spec` | Só contratos e anotações CQRS. **Não** traz `CommandBus`/`EventBus`/`QueryBus`: esses estão em `archbase-event-driven` |
 | `archbase-logging` | Logging estruturado, desligado por padrão |

@@ -70,9 +70,12 @@
             <artifactId>lombok</artifactId>
             <optional>true</optional>
         </dependency>
+        <!-- Só para testes. Em compile, ia para o classpath de toda aplicação que usa o starter-core: sem URL de banco
+             configurada, o Spring Boot subia com um H2 em memória em vez de falhar. -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 
