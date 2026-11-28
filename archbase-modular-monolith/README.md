@@ -14,7 +14,7 @@ de fronteira entre módulos.
 
 Traz `archbase-domain-driven-design-spec`, `archbase-event-driven`, `archbase-architecture-rules` (escopo
 compile), `spring-boot-starter`, `spring-boot-starter-actuator`, `spring-boot-health`,
-`spring-boot-starter-data-jpa`, `tools.jackson.core:jackson-databind` e `com.tngtech.archunit:archunit` **1.0.1**
+`spring-boot-starter-data-jpa`, `tools.jackson.core:jackson-databind` e `com.tngtech.archunit:archunit` 1.4.2 (a versão do pom raiz)
 (ver limitações).
 
 ## Auto-configuração
@@ -142,10 +142,9 @@ ModuleBoundaryRules.modulesShouldNotHaveCyclicDependencies("com.acme.app.modules
 
 ## Limitações
 
-- **ArchUnit 1.0.1 não lê Java 25.** O módulo declara `archunit` 1.0.1, e é essa versão que vai para a aplicação.
-  Ela importa zero classes de bytecode Java 25, e as regras acima falham com "failed to check any classes" (ou,
-  com `allowEmptyShould(true)`/`archRule.failOnEmptyShould=false`, passam sem examinar nada). Declare
-  `com.tngtech.archunit:archunit` 1.4.2 no projeto para usar as regras.
+- Até a 3.5.0 o módulo declarava ArchUnit 1.0.1, que não lê bytecode Java 25: as regras falhavam com "failed to
+  check any classes" ou, com `allowEmptyShould`, passavam sem examinar nada. Com 1.4.2 elas examinam as classes, e
+  quem as usa pode ver violações que antes não apareciam.
 - `subscribe(tipo, sourceModule, handler)` filtra pela origem do evento: `getSourceModule()` ou, se vier vazio, o
   `sourceModule` da anotação `@IntegrationEvent`. Evento sem origem só chega a quem assinou sem `sourceModule`.
 - No fechamento do contexto, `ModuleLifecycle.onStop()` é chamado em cada módulo iniciado, na ordem de
@@ -155,10 +154,10 @@ ModuleBoundaryRules.modulesShouldNotHaveCyclicDependencies("com.acme.app.modules
 - **Outbox sem relay e com tabela disputada:** nada lê `outbox_event`. `OutboxEventRecord` é entidade aninhada em
   `SimpleIntegrationEventBus` (precisa estar no scan de entidades) e usa a mesma tabela que o `OutboxEvent` de
   `archbase-event-driven` mapeia pela nomenclatura padrão, com `timestamp` `Instant` lá `Long` e `id` texto.
-- `moduleClassesShouldBeConfigurations()` exige `@Configuration` ou `@Component` **diretos**: uma classe só com
-  `@Module` viola a regra, embora seja componente (conferido).
-- `modulesShouldNotAccessOtherModulesInternals(base)` proíbe dependência de qualquer `..internal..`, inclusive do
-  próprio módulo.
+- `moduleClassesShouldBeConfigurations()` aceita a meta-anotação: uma classe só com `@Module` é componente e passa.
+  `modulesShouldNotAccessOtherModulesInternals(base)` considera módulo o primeiro segmento depois de `base` e só acusa
+  acesso ao `..internal..` de **outro** módulo. Até a 3.5.0 a primeira exigia `@Configuration`/`@Component` diretos e a
+  segunda proibia também o `internal` do próprio módulo.
 - `@ModuleDependency`/`@ModuleDependencies`, `@IntegrationEvent` (`reliable`, `retentionMinutes` etc.) e
   `@InternalApi.severity` não são lidos em tempo de execução; só `dependsOn` de `@Module` entra no grafo.
 
