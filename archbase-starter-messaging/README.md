@@ -45,24 +45,17 @@ starter está no classpath.
 | O que | Condição | Efeito |
 |---|---|---|
 | Bean `archbaseMessagingObjectMapper` (`tools.jackson.databind.ObjectMapper`) | sem outro `ObjectMapper` do Jackson 3 | `JsonMapper` com `FAIL_ON_EMPTY_BEANS` e `FAIL_ON_UNKNOWN_PROPERTIES` desligados e `ACCEPT_EMPTY_STRING_AS_NULL_OBJECT` ligado |
-| `@ComponentScan` de `br.com.archbase.error.handling`, `br.com.archbase.validation`, `br.com.archbase.logging` | — | ver abaixo |
 
-O que a varredura efetivamente registra:
-
-- `br.com.archbase.error.handling`: `ArchbaseErrorHandlingConfiguration` só vale em aplicação web servlet. Num
-  worker sem `spring-boot-starter-web` (que o starter não traz) nada dali entra.
-- `br.com.archbase.validation`: nenhum componente (o `ArchbaseValidationExceptionAdvice` é `@Aspect` sem
-  `@Component`). A validação fluente é biblioteca: use as classes diretamente.
-- `br.com.archbase.logging`: `ArchbaseLoggingAutoConfiguration`, que já viria pelo `.imports` do próprio módulo e
-  exige `archbase.logging.enabled=true`.
+O tratamento de erros, a validação e o logging chegam como dependências e se registram pelas próprias
+auto-configurações: o de erros só em aplicação web servlet, o de logging com `archbase.logging.enabled=true`, e a
+validação fluente é biblioteca (use as classes diretamente).
 
 O `ObjectMapper` registrado é o do Jackson 3. Código que injeta `com.fasterxml.jackson.databind.ObjectMapper`
 (Jackson 2) não o recebe e precisa declarar o seu.
 
-## Limitações
-
-Em aplicação web, a varredura de `br.com.archbase.error.handling` registra `ErrorHandlingControllerAdvice` como
-componente, além do bean que `ArchbaseErrorHandlingConfiguration` já declara: ficam duas instâncias do advice.
+Até a 3.5.0 a auto-configuração também fazia `@ComponentScan` desses três pacotes. Num worker não fazia diferença,
+mas numa aplicação web a varredura registrava o `ErrorHandlingControllerAdvice` por fora da configuração dele, e a
+aplicação não subia (`NoSuchBeanDefinitionException: ArchbaseErrorHandlingProperties`).
 
 ## Referência
 
