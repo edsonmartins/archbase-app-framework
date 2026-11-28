@@ -67,5 +67,19 @@
             <artifactId>h2</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Teste combinado com o Control Plane: os dois autenticadores externos no mesmo contexto -->
+        <dependency>
+            <groupId>br.com.archbase</groupId>
+            <artifactId>archbase-controlplane</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>br.com.archbase</groupId>
+            <artifactId>archbase-controlplane</artifactId>
+            <version>${project.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 </project>
